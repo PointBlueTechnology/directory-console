@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.pointblue.console</groupId>
+    <artifactId>directory-console</artifactId>
+    <version>0.1.0</version>
+    <packaging>pom</packaging>
+    <name>Directory Console</name>
+    <description>An eDirectory and Identity Manager console built on the DirXMLDev core
+        (DESIGN-directory-console.md). Libraries here are shared with DirXMLDevWeb.</description>
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+        </license>
+    </licenses>
+
+    <modules>
+        <module>console-auth</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- The DirXMLDev release these modules build on (its Json helper today, its DN library
+             next). Install it with `mvn -o install -DskipTests` in the DirXMLDev checkout. -->
+        <dirxmldev.version>0.21.0</dirxmldev.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.pointblue.dirxml</groupId>
+                <artifactId>dirxml-dev</artifactId>
+                <version>${dirxmldev.version}</version>
+                <!-- only DirXMLDev's own classes: its engine and simulator dependencies are
+                     not needed by these libraries and are not on Maven Central -->
+                <exclusions>
+                    <exclusion>
+                        <groupId>*</groupId>
+                        <artifactId>*</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>junit</groupId>
+                <artifactId>junit</artifactId>
+                <version>4.13.2</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.2.5</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

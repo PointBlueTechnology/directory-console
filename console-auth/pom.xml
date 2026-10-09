@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.pointblue.console</groupId>
+        <artifactId>directory-console</artifactId>
+        <version>0.1.0</version>
+    </parent>
+
+    <artifactId>console-auth</artifactId>
+    <name>console-auth</name>
+    <description>OpenID Connect sign-in (authorization code + PKCE, ID-token verification against the
+        provider's JWKS) and merged TLS trust, independent of any HTTP server.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.pointblue.dirxml</groupId>
+            <artifactId>dirxml-dev</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+        </dependency>
+    </dependencies>
+</project>
