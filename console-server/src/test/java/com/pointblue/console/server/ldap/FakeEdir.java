@@ -7,6 +7,18 @@ import com.unboundid.ldap.listener.InMemoryDirectoryServer;
 import com.unboundid.ldap.listener.InMemoryDirectoryServerConfig;
 import com.unboundid.ldap.listener.InMemoryExtendedOperationHandler;
 import com.unboundid.ldap.listener.InMemoryListenerConfig;
+import com.unboundid.ldap.listener.interceptor.InMemoryInterceptedAddRequest;
+import com.unboundid.ldap.listener.interceptor.InMemoryInterceptedModifyRequest;
+import com.unboundid.ldap.listener.interceptor.InMemoryOperationInterceptor;
+import com.unboundid.ldap.sdk.Attribute;
+import com.unboundid.ldap.sdk.Modification;
+import com.unboundid.ldap.sdk.ModificationType;
+import com.unboundid.ldap.sdk.ReadOnlyAddRequest;
+import com.unboundid.ldap.sdk.ReadOnlyModifyRequest;
+import com.unboundid.ldap.sdk.AddRequest;
+import com.unboundid.ldap.sdk.ModifyRequest;
+import java.security.SecureRandom;
+import java.util.concurrent.atomic.AtomicLong;
 import com.unboundid.ldap.listener.InMemoryRequestHandler;
 import com.unboundid.ldap.sdk.ExtendedRequest;
 import com.unboundid.ldap.sdk.ExtendedResult;
@@ -24,6 +36,8 @@ import javax.net.ssl.SSLContext;
  * An in-memory LDAPS server standing in for eDirectory in tests: the test PKI's server certificate,
  * no schema checking (eDirectory attributes such as groupMembership and loginDisabled), and the
  * GetEffectivePrivileges extended operation answering a fixed value and recording what it was asked.
+ * Like eDirectory, every entry gets a 16-byte {@code GUID} and a {@code revision} that changes on each
+ * modify; {@code cn=subschema,o=system} (named by the root DSE) holds eDirectory-style class and attribute descriptions (a sample of ig4's).
  */
 public final class FakeEdir implements AutoCloseable {
 
@@ -46,6 +60,37 @@ public final class FakeEdir implements AutoCloseable {
 
         InMemoryDirectoryServerConfig cfg = new InMemoryDirectoryServerConfig("o=acme", "o=system");
         cfg.setSchema(null);
+        // the in-memory server keeps cn=schema for itself; the root DSE names this fake's schema entry instead
+        cfg.setRootDSEEntry(new com.unboundid.ldap.sdk.Entry("", new Attribute("objectClass", "top", "ds-root-dse"),
+            new Attribute("subschemaSubentry", "cn=subschema,o=system"), new Attribute("namingContexts", "o=acme", "o=system"),
+            new Attribute("vendorName", "FakeEdir")));
+        SecureRandom random = new SecureRandom();
+        AtomicLong revision = new AtomicLong(1);
+        cfg.addInMemoryOperationInterceptor(new InMemoryOperationInterceptor() {
+            @Override
+            public void processAddRequest(InMemoryInterceptedAddRequest request) {
+                ReadOnlyAddRequest r = request.getRequest();
+                if (r.getDN().equalsIgnoreCase("cn=subschema,o=system")) {
+                    return;
+                }
+                AddRequest a = r.duplicate();
+                if (!a.hasAttribute("GUID")) {
+                    byte[] g = new byte[16];
+                    random.nextBytes(g);
+                    a.addAttribute(new Attribute("GUID", g));
+                }
+                a.addAttribute("revision", String.valueOf(revision.incrementAndGet()));
+                request.setRequest(a);
+            }
+
+            @Override
+            public void processModifyRequest(InMemoryInterceptedModifyRequest request) {
+                ReadOnlyModifyRequest r = request.getRequest();
+                java.util.List<Modification> mods = new ArrayList<>(r.getModifications());
+                mods.add(new Modification(ModificationType.REPLACE, "revision", String.valueOf(revision.incrementAndGet())));
+                request.setRequest(new ModifyRequest(r.getDN(), mods));
+            }
+        });
         cfg.setListenerConfigs(InMemoryListenerConfig.createLDAPSConfig("ldaps", InetAddress.getLoopbackAddress(), 0,
             ctx.getServerSocketFactory(), null));
         cfg.addExtendedOperationHandler(new InMemoryExtendedOperationHandler() {
@@ -81,12 +126,63 @@ public final class FakeEdir implements AutoCloseable {
             }
         });
         server = new InMemoryDirectoryServer(cfg);
-        server.add("dn: o=acme", "objectClass: organization", "o: acme");
-        server.add("dn: o=system", "objectClass: organization", "o: system");
+        this.random = random;
+        this.revision = revision;
+        add("dn: o=acme", "objectClass: organization", "o: acme");
+        add("dn: o=system", "objectClass: organization", "o: system");
+        server.add(SCHEMA);
         for (String entry : ldif) {
-            server.add(entry.split("\n"));
+            add(entry.split("\n"));
         }
         server.startListening();
+    }
+
+    /** A sample of eDirectory 9.2.8's schema (ig4), enough for the console's container and syntax decisions. */
+    static final String[] SCHEMA = {
+        "dn: cn=subschema,o=system",
+        "objectClass: subschema",
+        "cn: schema",
+        "objectClasses: ( 2.5.6.0 NAME 'Top' STRUCTURAL MUST objectClass MAY ( ACL $ GUID $ revision ) X-NDS_NONREMOVABLE '1' X-NDS_AMBIGUOUS_NAMING '1' X-NDS_AMBIGUOUS_CONTAINMENT '1' X-NDS_ACL_TEMPLATES '16#subtree#[Creator]#[Entry Rights]' )",
+        "objectClasses: ( 2.5.6.4 NAME 'Organization' SUP ( ndsLoginProperties $ ndsContainerLoginProperties ) STRUCTURAL MUST o MAY ( description $ l ) X-NDS_NAMING 'o' X-NDS_CONTAINMENT ( 'Top' 'treeRoot' 'domain' ) X-NDS_NAME 'Organization' )",
+        "objectClasses: ( 2.5.6.5 NAME 'organizationalUnit' SUP ( ndsLoginProperties $ ndsContainerLoginProperties ) STRUCTURAL MUST ou MAY ( description $ l ) X-NDS_NAMING 'ou' X-NDS_CONTAINMENT ( 'Locality' 'Organization' 'organizationalUnit' 'domain' ) X-NDS_NAME 'Organizational Unit' )",
+        "objectClasses: ( 2.16.840.1.113719.1.1.6.1.30 NAME 'ndsLoginProperties' SUP Top ABSTRACT MAY ( loginDisabled $ groupMembership ) )",
+        "objectClasses: ( 2.16.840.1.113719.1.1.6.1.31 NAME 'ndsContainerLoginProperties' SUP Top ABSTRACT MAY loginScript )",
+        "objectClasses: ( 2.5.6.6 NAME 'Person' SUP ndsLoginProperties STRUCTURAL MUST ( cn $ sn ) MAY ( description $ telephoneNumber ) X-NDS_NAMING ( 'cn' 'uid' ) X-NDS_CONTAINMENT ( 'Organization' 'organizationalUnit' 'domain' ) X-NDS_NAME 'Person' X-NDS_NOT_CONTAINER '1' )",
+        "objectClasses: ( 2.5.6.7 NAME 'organizationalPerson' SUP Person STRUCTURAL MAY ( ou $ title ) X-NDS_NAMING ( 'cn' 'ou' 'uid' ) X-NDS_NOT_CONTAINER '1' )",
+        "objectClasses: ( 2.16.840.1.113730.3.2.2 NAME 'inetOrgPerson' SUP organizationalPerson STRUCTURAL MAY ( groupMembership $ mail $ jpegPhoto $ uid ) X-NDS_NAME 'User' X-NDS_NOT_CONTAINER '1' )",
+        "objectClasses: ( 2.5.6.9 NAME ( 'groupOfNames' 'group' 'groupOfUniqueNames' ) SUP Top STRUCTURAL MUST cn MAY ( description $ member $ owner ) X-NDS_NAMING 'cn' X-NDS_CONTAINMENT ( 'Organization' 'organizationalUnit' 'domain' ) X-NDS_NAME 'Group' X-NDS_NOT_CONTAINER '1' X-NDS_NONREMOVABLE '1' )",
+        "objectClasses: ( 2.16.840.1.113719.1.14.6.1.1 NAME 'DirXML-DriverSet' SUP Top STRUCTURAL MUST cn MAY description X-NDS_NAMING 'cn' X-NDS_CONTAINMENT ( 'Organization' 'organizationalUnit' ) )",
+        "objectClasses: ( 2.16.840.1.113719.1.14.6.1.2 NAME 'DirXML-Driver' SUP Top STRUCTURAL MUST cn MAY description X-NDS_NAMING 'cn' X-NDS_CONTAINMENT 'DirXML-DriverSet' )",
+        "attributeTypes: ( 2.5.4.0 NAME 'objectClass' SYNTAX 1.3.6.1.4.1.1466.115.121.1.38 X-NDS_NAME 'Object Class' )",
+        "attributeTypes: ( 2.5.4.3 NAME ( 'cn' 'commonName' ) SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{64} X-NDS_NAME 'CN' X-NDS_LOWER_BOUND '1' X-NDS_UPPER_BOUND '64' )",
+        "attributeTypes: ( 2.5.4.4 NAME ( 'sn' 'surname' ) SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{64} X-NDS_NAME 'Surname' )",
+        "attributeTypes: ( 2.5.4.10 NAME ( 'o' 'organizationName' ) SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{64} X-NDS_NAME 'O' )",
+        "attributeTypes: ( 2.5.4.11 NAME ( 'ou' 'organizationalUnitName' ) SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{64} X-NDS_NAME 'OU' )",
+        "attributeTypes: ( 2.5.4.13 NAME 'description' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{1024} X-NDS_NAME 'Description' )",
+        "attributeTypes: ( 2.5.4.31 NAME ( 'member' 'uniqueMember' ) SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 X-NDS_NAME 'Member' X-NDS_NONREMOVABLE '1' )",
+        "attributeTypes: ( 2.16.840.1.113719.1.1.4.1.25 NAME 'groupMembership' SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 X-NDS_NAME 'Group Membership' )",
+        "attributeTypes: ( 2.16.840.1.113719.1.1.4.1.2 NAME 'ACL' SYNTAX 2.16.840.1.113719.1.1.5.1.17 X-NDS_NONREMOVABLE '1' X-NDS_FILTERED_REQUIRED '1' )",
+        "attributeTypes: ( 2.16.840.1.113719.1.1.4.1.501 NAME 'GUID' SYNTAX 1.3.6.1.4.1.1466.115.121.1.40{16} SINGLE-VALUE NO-USER-MODIFICATION USAGE directoryOperation X-NDS_PUBLIC_READ '1' )",
+        "attributeTypes: ( 2.16.840.1.113719.1.27.4.48 NAME 'revision' SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE NO-USER-MODIFICATION USAGE directoryOperation )",
+        "attributeTypes: ( 0.9.2342.19200300.100.1.60 NAME 'jpegPhoto' SYNTAX 1.3.6.1.4.1.1466.115.121.1.40{32768} X-NDS_NAME 'jpegPhoto' )",
+        "attributeTypes: ( 0.9.2342.19200300.100.1.3 NAME 'mail' SYNTAX 1.3.6.1.4.1.1466.115.121.1.26{256} X-NDS_NAME 'Internet EMail Address' )",
+        "attributeTypes: ( 2.5.4.12 NAME 'title' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{64} X-NDS_NAME 'Title' )",
+        "attributeTypes: ( 2.16.840.1.113719.1.1.4.1.46 NAME 'loginDisabled' SYNTAX 1.3.6.1.4.1.1466.115.121.1.7 SINGLE-VALUE X-NDS_NAME 'Login Disabled' )",
+    };
+
+    private SecureRandom random;
+    private AtomicLong revision;
+
+    /** Load an entry directly (no client request), with the GUID and revision eDirectory would give it. */
+    public void add(String... lines) throws com.unboundid.ldap.sdk.LDAPException, com.unboundid.ldif.LDIFException {
+        com.unboundid.ldap.sdk.Entry e = new com.unboundid.ldap.sdk.Entry(lines);
+        if (!e.hasAttribute("GUID")) {
+            byte[] g = new byte[16];
+            random.nextBytes(g);
+            e.addAttribute(new Attribute("GUID", g));
+        }
+        e.setAttribute("revision", String.valueOf(revision.incrementAndGet()));
+        server.add(e);
     }
 
     public int port() {

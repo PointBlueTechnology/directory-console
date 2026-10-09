@@ -4,9 +4,10 @@ An eDirectory and Identity Manager console built on the
 [DirXMLDev](https://github.com/PointBlueTechnology/DirXMLDev) core. The design is
 `../DESIGN-directory-console.md`; the Phase 1 spike results are `../SPIKES-phase1.md`.
 
-Status: Phase 1, the service skeleton: bootstrap mode, the console's own TLS, the trust store with
-probe and import, sealed versioned configuration, the hash-chained audit log, direct and contextless
-sign-in with roles, and the container. The API is usable; the web UI comes later.
+Status: Phase 2, directory objects, on top of Phase 1's service skeleton (bootstrap mode, the
+console's own TLS, the trust store with probe and import, sealed versioned configuration, the
+hash-chained audit log, direct and contextless sign-in with roles, and the container). The API is
+usable; the web UI comes later.
 
 | Module | What |
 |---|---|
@@ -36,8 +37,36 @@ docker compose exec console java -jar /app/console.jar admin verify-audit
 The image is distroless Java 21 as the nonroot user with a read-only root file system; it holds no
 OpenText code (the build refuses an engine class).
 
-DN handling (RFC 4514 / 4515, dot notation, GUIDs) lives in the DirXMLDev core,
-package `com.pointblue.dirxml.dev.dn`.
+## Directory objects
+
+Signed in, a person works on objects by GUID; DNs appear only in JSON. Every call runs on the person's
+own directory connection, so eDirectory applies their rights; any console role reads, `editor` writes.
+
+```
+GET    /api/v2/trees/{tree}/roots
+GET    /api/v2/trees/{tree}/objects?dn=…                 resolve a DN (any spelling)
+GET    /api/v2/trees/{tree}/objects/{guid}               read, with an ETag
+GET    /api/v2/trees/{tree}/objects/{guid}/children      ?offset=&count=&startAt=&kind=containers|leaves|all
+GET    /api/v2/trees/{tree}/objects/{guid}/rights        the signed-in person's effective rights
+POST   /api/v2/trees/{tree}/search                       structured filter, or one ldapFilter expression
+PATCH  /api/v2/trees/{tree}/objects/{guid}               {"changes": [{"op", "attribute", "values"}]}
+POST   /api/v2/trees/{tree}/objects/{guid}/children      create: {"objectClass", "name": {"type", "value"}, "attributes"}
+POST   /api/v2/trees/{tree}/objects/{guid}/rename        {"name"}
+POST   /api/v2/trees/{tree}/objects/{guid}/move          {"newParent": guid}
+DELETE /api/v2/trees/{tree}/objects/{guid}
+GET    /api/v2/trees/{tree}/schema/classes[/{name}], /schema/attributes[/{name}]
+```
+
+Writes need `If-Match` with the ETag of the last read (`*` overrides), and are audited with attribute
+names, never values. Lists are sorted windows with a total: small results are sorted by the console,
+large ones use eDirectory's server-side sort and virtual list view, split by naming attribute because
+eDirectory's sort leaves out entries without the sort attribute (`DESIGN-directory-console.md` §8.1).
+
+DN handling (RFC 4514 / 4515, dot notation, GUIDs) is in `ldap/Names.java` for now; it moves onto
+DirXMLDev's DN library (`com.pointblue.dirxml.dev.dn`) once that is released.
+
+`LiveObjectsCheck` (test sources) drives the whole API against a lab vault; it writes only inside one
+container it creates and removes.
 
 ## Build
 

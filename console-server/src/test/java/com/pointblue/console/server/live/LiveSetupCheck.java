@@ -38,8 +38,8 @@ import javax.naming.ldap.LdapName;
  */
 public final class LiveSetupCheck {
 
-    private static HttpClient http;
-    private static String base;
+    static HttpClient http;
+    static String base;
 
     public static void main(String[] args) throws Exception {
         LegacyTls.enable();
@@ -140,7 +140,7 @@ public final class LiveSetupCheck {
     record Reply(int status, Map<String, Object> body, HttpResponse<String> raw) {
     }
 
-    private static Reply call(String method, String path, Object body, Map<String, String> headers) throws Exception {
+    static Reply call(String method, String path, Object body, Map<String, String> headers) throws Exception {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(60))
             .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(Json.compact(body)));
         if (body != null) {
@@ -156,7 +156,7 @@ public final class LiveSetupCheck {
         return new Reply(r.statusCode(), o instanceof Map ? Json.asMap(o) : Map.of(), r);
     }
 
-    private static void step(String what, Reply r) {
+    static void step(String what, Reply r) {
         boolean ok = r.status / 100 == 2;
         System.out.println("[" + (ok ? "ok" : "FAIL") + "] " + what + " -> " + r.status + (ok ? "" : " " + r.body.get("title") + ": " + r.body.get("detail")));
     }

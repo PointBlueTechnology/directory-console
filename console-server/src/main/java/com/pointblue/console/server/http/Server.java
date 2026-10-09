@@ -62,6 +62,7 @@ public final class Server {
     private final HttpsServer http;
     private volatile Bootstrap bootstrap;
     private volatile Setup setup;
+    private final Objects objects = new Objects(this);
 
     /** Open the data directory and listen on {@code port}. {@code publicUrl} is how browsers reach this server. */
     public Server(DataDir data, int port, String publicUrl, PrintStream out) throws IOException, GeneralSecurityException {
@@ -207,6 +208,10 @@ public final class Server {
         }
         if (path.startsWith("/api/v2/setup")) {
             throw new Http.Problem(404, "not-found", "setup is finished");
+        }
+        if (path.startsWith("/api/v2/trees/")) {
+            objects.handle(ex, path, method);
+            return;
         }
         switch (method + " " + path) {
             case "GET /api/v2/directories" -> directories(ex);
