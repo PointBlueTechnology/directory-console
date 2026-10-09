@@ -26,3 +26,9 @@ mvn install
 ## License
 
 [MIT](LICENSE).
+
+## Releases
+
+Each release attaches the module jars (`console-auth-<version>.jar`). DirXMLDevWeb's CI and
+image build download them from here; because this repository is private, they authenticate
+with a token stored as the `DIRECTORY_CONSOLE_TOKEN` secret in DirXMLDevWeb.

@@ -1,0 +1,26 @@
+# Every pull request and push to main: the libraries' tests, against DirXMLDev's released jar.
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: DirXMLDev jar from its release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CORE=$(sed -n 's#.*<dirxmldev.version>\([^<]*\)</dirxmldev.version>.*#\1#p' pom.xml | head -1)
+          gh release download "v$CORE" --repo PointBlueTechnology/DirXMLDev -p "dirxml-dev-$CORE.jar" -D /tmp
+          mvn -B -q install:install-file -Dfile=/tmp/dirxml-dev-$CORE.jar -DgroupId=com.pointblue.dirxml -DartifactId=dirxml-dev -Dversion=$CORE -Dpackaging=jar
+      - run: mvn -B test
