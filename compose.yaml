@@ -1,0 +1,24 @@
+# Directory Console on one host: `docker compose up -d`, then `docker compose logs console` shows the
+# setup URL, the one-time token and the console certificate's fingerprint (DESIGN section 5.1).
+# Port 80 is only for ACME HTTP-01 (Phase 5); leave it out until then.
+services:
+  console:
+    image: directory-console:0.1.0
+    build: container
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    environment:
+      # how browsers reach the console: its host goes into the generated certificate
+      CONSOLE_PUBLIC_URL: https://localhost:8443
+    volumes:
+      - console-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  console-data:
