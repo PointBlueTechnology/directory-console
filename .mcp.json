@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "patternfly-mcp": {
+      "command": "npx",
+      "args": ["-y", "@patternfly/patternfly-mcp@2.5.0"],
+      "description": "PatternFly 6 rules, documentation and component schemas (the console UI's design language; DESIGN-directory-console.md section 13.1). Pinned: raise the version deliberately. Needs Node 22+."
+    }
+  }
+}
