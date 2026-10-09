@@ -27,12 +27,12 @@ import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 
 /** An eDirectory-like PKI for tests: a self-signed "Organizational CA" and server certificates it signs. */
-final class TestPki {
+public final class TestPki {
 
-    final KeyPair caKey;
-    final X509Certificate ca;
+    public final KeyPair caKey;
+    public final X509Certificate ca;
 
-    TestPki(String tree) throws Exception {
+    public TestPki(String tree) throws Exception {
         caKey = Certs.ecKeyPair();
         X500Name name = new X500Name("OU=Organizational CA,O=" + tree);
         X509v3CertificateBuilder b = new JcaX509v3CertificateBuilder(name, BigInteger.ONE,
@@ -42,11 +42,11 @@ final class TestPki {
         ca = new JcaX509CertificateConverter().getCertificate(b.build(new JcaContentSignerBuilder("SHA256withECDSA").build(caKey.getPrivate())));
     }
 
-    record Server(KeyPair key, X509Certificate cert) {
+    public record Server(KeyPair key, X509Certificate cert) {
     }
 
     /** A server certificate for {@code names} (DNS names or IPs), signed by this CA. */
-    Server server(String cn, List<String> names) throws Exception {
+    public Server server(String cn, List<String> names) throws Exception {
         KeyPair kp = Certs.ecKeyPair();
         GeneralName[] sans = names.stream().map(n -> Certs.isIp(n) ? new GeneralName(GeneralName.iPAddress, n) : new GeneralName(GeneralName.dNSName, n)).toArray(GeneralName[]::new);
         // the issuer must be the CA's subject exactly (encoded form, not a re-parsed string) for path building
@@ -60,7 +60,7 @@ final class TestPki {
     }
 
     /** A TLS listener on loopback presenting {@code server}'s chain (leaf + CA) to every client, until closed. */
-    static ServerSocket listen(KeyPair key, X509Certificate... chain) throws Exception {
+    public static ServerSocket listen(KeyPair key, X509Certificate... chain) throws Exception {
         KeyStore ks = KeyStore.getInstance("PKCS12");
         ks.load(null, null);
         ks.setKeyEntry("s", key.getPrivate(), "pw".toCharArray(), chain);
@@ -71,7 +71,7 @@ final class TestPki {
         return serve(ctx);
     }
 
-    static ServerSocket serve(SSLContext ctx) throws IOException {
+    public static ServerSocket serve(SSLContext ctx) throws IOException {
         SSLServerSocket ss = (SSLServerSocket) ctx.getServerSocketFactory().createServerSocket(0, 5, InetAddress.getLoopbackAddress());
         Thread t = new Thread(() -> {
             while (!ss.isClosed()) {
