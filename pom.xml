@@ -20,6 +20,7 @@
 
     <modules>
         <module>console-auth</module>
+        <module>console-server</module>
     </modules>
 
     <properties>
@@ -28,6 +29,7 @@
         <!-- The DirXMLDev release these modules build on (its Json helper today, its DN library
              next). Install it with `mvn -o install -DskipTests` in the DirXMLDev checkout. -->
         <dirxmldev.version>0.21.0</dirxmldev.version>
+        <bouncycastle.version>1.80</bouncycastle.version>
     </properties>
 
     <dependencyManagement>
@@ -44,6 +46,18 @@
                         <artifactId>*</artifactId>
                     </exclusion>
                 </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>com.pointblue.console</groupId>
+                <artifactId>console-auth</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- certificates and CSRs for the console's own TLS (the JDK has no public API to make them);
+                 acme4j uses the same library in Phase 5 -->
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcpkix-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
             </dependency>
             <dependency>
                 <groupId>junit</groupId>
