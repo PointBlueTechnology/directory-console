@@ -38,7 +38,11 @@ public final class DirectLogin {
     public sealed interface Outcome permits SignedIn, Choose, Refused {
     }
 
-    public record SignedIn(Sessions.Principal principal, Ldap connection) implements Outcome {
+    /** {@code engine} is null when Identity Manager's engine could not be opened; {@code engineProblem} says why. */
+    public record SignedIn(Sessions.Principal principal, Ldap connection, com.pointblue.console.server.idm.Engines.Opened engine, String engineProblem) implements Outcome {
+        public SignedIn(Sessions.Principal principal, Ldap connection) {
+            this(principal, connection, null, "no engine connection was opened");
+        }
     }
 
     public record Candidate(String token, String context, String label) {
@@ -70,6 +74,13 @@ public final class DirectLogin {
     private final TrustStore trust;
     private final Clock clock;
     private final Map<String, Choice> choices = new ConcurrentHashMap<>();
+
+    private volatile com.pointblue.console.server.idm.Engines engines = com.pointblue.console.server.idm.Engines.none("not configured");
+
+    /** Where Identity Manager engine connections come from (detected at start; a fake in tests). */
+    public void engines(com.pointblue.console.server.idm.Engines e) {
+        this.engines = e;
+    }
 
     public DirectLogin(TrustStore trust) {
         this(trust, Clock.systemUTC());
@@ -163,8 +174,18 @@ public final class DirectLogin {
             if (display == null && me != null) {
                 display = me.first("cn");
             }
+            com.pointblue.console.server.idm.Engines.Opened engine = null;
+            String engineProblem = engines.unavailable();
+            if (engineProblem == null) {
+                // the engine connection is bound now, while the password is in hand; it is not kept
+                try {
+                    engine = engines.open(conn, trust, d.target(), dn, password);
+                } catch (Exception e) {
+                    engineProblem = "the Identity Manager engine connection could not be opened: " + e.getMessage();
+                }
+            }
             return new SignedIn(new Sessions.Principal(dn, dn, display == null ? dn : display, d.id(), Set.copyOf(roles),
-                breakGlass && roles.size() == 1 ? "break-glass" : "direct"), conn);
+                breakGlass && roles.size() == 1 ? "break-glass" : "direct"), conn, engine, engineProblem);
         } catch (NamingException e) {
             conn.close();
             return new Refused("unavailable", "Your account could not be read after sign-in: " + e.getMessage());

@@ -211,6 +211,22 @@ public final class Ldap implements AutoCloseable {
     }
 
     /**
+     * The underlying JNDI context, lent to DirXMLDev's {@code Vault} for Identity Manager operations.
+     * Callers hold this object's monitor while using it ({@code synchronized (ldap) {…}}), as every
+     * method here does, so the context is never used from two threads at once.
+     */
+    public LdapContext context() {
+        return ctx;
+    }
+
+    /** TLS sockets that trust what the console's trust store trusts for {@code t} (and {@code subject}'s own entries). */
+    public static javax.net.ssl.SSLSocketFactory socketFactory(TrustStore trust, Target t, String subject) throws GeneralSecurityException, java.io.IOException {
+        SSLContext ssl = SSLContext.getInstance("TLS");
+        ssl.init(null, new TrustManager[] {trust.trustManager(t.host(), t.port(), t.directoryId(), subject)}, null);
+        return ssl.getSocketFactory();
+    }
+
+    /**
      * Search with {@code filter} taking {@code args} as {@code {0}}, {@code {1}}… (escaped by JNDI).
      * At most {@code limit} entries (0: no limit).
      */

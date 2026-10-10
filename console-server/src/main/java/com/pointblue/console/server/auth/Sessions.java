@@ -30,14 +30,21 @@ public final class Sessions {
         public final Principal principal;
         public final Instant created;
         final Ldap ldap;
+        /** Identity Manager's engine, bound as the person at sign-in; null when unavailable (see {@link #engineProblem}). */
+        public final com.pointblue.dirxml.dev.operate.Operate.Engine engine;
+        public final String engineProblem;
+        final AutoCloseable engineHandle;
         volatile Instant lastSeen;
         volatile Instant authenticatedAt;
 
-        Session(String id, String csrf, Principal principal, Ldap ldap, Instant now) {
+        Session(String id, String csrf, Principal principal, Ldap ldap, com.pointblue.console.server.idm.Engines.Opened engine, String engineProblem, Instant now) {
             this.id = id;
             this.csrf = csrf;
             this.principal = principal;
             this.ldap = ldap;
+            this.engine = engine == null ? null : engine.engine();
+            this.engineHandle = engine == null ? null : engine.handle();
+            this.engineProblem = engineProblem;
             this.created = now;
             this.lastSeen = now;
             this.authenticatedAt = now;
@@ -67,7 +74,11 @@ public final class Sessions {
     }
 
     public Session create(Principal p, Ldap ldap) {
-        Session s = new Session(token(), token(), p, ldap, clock.instant());
+        return create(p, ldap, null, "no engine connection was opened");
+    }
+
+    public Session create(Principal p, Ldap ldap, com.pointblue.console.server.idm.Engines.Opened engine, String engineProblem) {
+        Session s = new Session(token(), token(), p, ldap, engine, engineProblem, clock.instant());
         sessions.put(s.id, s);
         return s;
     }
@@ -89,6 +100,13 @@ public final class Sessions {
 
     public void remove(String id) {
         Session s = sessions.remove(id);
+        if (s != null && s.engineHandle != null) {
+            try {
+                s.engineHandle.close();
+            } catch (Exception ignored) {
+                // already gone
+            }
+        }
         if (s != null && s.ldap != null) {
             s.ldap.close();
         }

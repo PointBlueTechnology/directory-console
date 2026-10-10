@@ -62,7 +62,8 @@ public final class Server {
     private final HttpsServer http;
     private volatile Bootstrap bootstrap;
     private volatile Setup setup;
-    private final Objects objects = new Objects(this);
+    final Objects objects = new Objects(this);
+    private final Idm idm = new Idm(this);
     private final StaticFiles ui = new StaticFiles("web");
 
     /** Open the data directory and listen on {@code port}. {@code publicUrl} is how browsers reach this server. */
@@ -81,6 +82,7 @@ public final class Server {
         this.publicUrl = publicUrl.replaceAll("/+$", "");
         this.hosts = Set.copyOf(names.stream().map(h -> h.toLowerCase(Locale.ROOT)).toList());
         this.login = new DirectLogin(trust);
+        this.login.engines(com.pointblue.console.server.idm.Engines.detect());
         this.http = HttpsServer.create(new InetSocketAddress(port), 64);
         http.setHttpsConfigurator(new HttpsConfigurator(tls.context()) {
             @Override
@@ -140,6 +142,9 @@ public final class Server {
                 Http.problem(ex, p);
             } catch (RuntimeException e) {
                 Http.problem(ex, new Http.Problem(500, "internal", "unexpected error: " + e.getClass().getSimpleName()));
+            } catch (LinkageError e) {
+                // a library class is missing (an engine jar not mounted): answer, never drop the connection
+                Http.problem(ex, new Http.Problem(500, "missing-library", "a library this needs is not installed: " + e.getMessage()));
             }
         } catch (IOException e) {
             // the client went away
@@ -214,6 +219,10 @@ public final class Server {
         }
         if (path.startsWith("/api/v2/setup")) {
             throw new Http.Problem(404, "not-found", "setup is finished");
+        }
+        if (path.startsWith("/api/v2/trees/") && path.matches("/api/v2/trees/[^/]+/idm(/.*)?")) {
+            idm.handle(ex, path, method);
+            return;
         }
         if (path.startsWith("/api/v2/trees/")) {
             objects.handle(ex, path, method);
@@ -319,7 +328,7 @@ public final class Server {
             case DirectLogin.SignedIn s -> {
                 failedByClient.clear(client);
                 failedByName.clear(nameKey);
-                Sessions.Session session = sessions.create(s.principal(), s.connection());
+                Sessions.Session session = sessions.create(s.principal(), s.connection(), s.engine(), s.engineProblem());
                 audit.log(new AuditLog.Actor(s.principal().subject(), s.principal().dn(), s.principal().via()), "sign-in", dirId,
                     Map.of("roles", s.principal().roles().stream().map(Role::id).sorted().toList(), "client", client), "ok");
                 ex.getResponseHeaders().add("Set-Cookie", COOKIE + "=" + session.id + "; Path=/; Secure; HttpOnly; SameSite=Strict");

@@ -17,13 +17,16 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: DirXMLDev jar from its release
+      - name: DirXMLDev and simulator jars from their releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           CORE=$(sed -n 's#.*<dirxmldev.version>\([^<]*\)</dirxmldev.version>.*#\1#p' pom.xml | head -1)
           gh release download "v$CORE" --repo PointBlueTechnology/DirXMLDev -p "dirxml-dev-$CORE.jar" -D /tmp
           mvn -B -q install:install-file -Dfile=/tmp/dirxml-dev-$CORE.jar -DgroupId=com.pointblue.dirxml -DartifactId=dirxml-dev -Dversion=$CORE -Dpackaging=jar
+          SIM=$(sed -n 's#.*<simulator.version>\([^<]*\)</simulator.version>.*#\1#p' pom.xml | head -1)
+          gh release download "v$SIM" --repo PointBlueTechnology/DirXMLSimulator -p "dirxml-simulator-$SIM.jar" -D /tmp
+          mvn -B -q install:install-file -Dfile=/tmp/dirxml-simulator-$SIM.jar -DgroupId=com.pointblue.dirxml -DartifactId=dirxml-simulator -Dversion=$SIM -Dpackaging=jar
       - uses: actions/setup-node@v4
         with:
           node-version: "24"

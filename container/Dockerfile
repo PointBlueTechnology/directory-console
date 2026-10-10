@@ -16,4 +16,6 @@ EXPOSE 8443
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD ["java", "-jar", "/app/console.jar", "admin", "health"]
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-jar", "/app/console.jar"]
+# /engine: the customer's Identity Manager engine jars (dirxml_misc.jar, ldap.jar), mounted read-only;
+# OpenText's code never ships in this image. Without them everything but Identity Manager works.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-cp", "/app/console.jar:/app/lib/*:/engine/*", "com.pointblue.console.server.Main"]
