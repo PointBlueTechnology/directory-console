@@ -6,13 +6,16 @@ An eDirectory and Identity Manager console built on the
 
 Status: Phase 2, directory objects, on top of Phase 1's service skeleton (bootstrap mode, the
 console's own TLS, the trust store with probe and import, sealed versioned configuration, the
-hash-chained audit log, direct and contextless sign-in with roles, and the container). The API is
-usable; the web UI comes later.
+hash-chained audit log, direct and contextless sign-in with roles, and the container). The web UI
+covers sign-in, browsing, object details and editing, search and the schema; setup and the
+administration pages still use the API.
 
 | Module | What |
 |---|---|
 | `console-auth` | OpenID Connect sign-in (authorization code + PKCE, ID-token verification against the provider's JWKS, groups claim) and merged TLS trust (the JDK's store plus operator-added certificates). No HTTP server assumed. Shared with DirXMLDevWeb. |
 | `console-server` | The service: `java -jar console.jar` with its dependencies in `lib/`. |
+| `console-web` | The web UI: React and PatternFly 6, built into `console.jar` and served by the console under its strict content security policy. |
+| `console-theme` | `@pointblue/console-theme`: Point Blue's PatternFly design-token overrides, shared with DirXMLDevWeb. |
 
 ## Run it
 
@@ -67,6 +70,25 @@ DirXMLDev's DN library (`com.pointblue.dirxml.dev.dn`) once that is released.
 
 `LiveObjectsCheck` (test sources) drives the whole API against a lab vault; it writes only inside one
 container it creates and removes.
+
+## Web UI
+
+```
+cd console-web
+npm ci --ignore-scripts
+npm run dev       # http://localhost:5173, proxying /api to the console at https://localhost:8443 (CONSOLE_URL)
+npm test          # unit tests
+npm run build     # dist/, which Maven puts into console.jar
+npm run preview   # the build at http://localhost:4173, under the console's production policy
+```
+
+The development server enforces the same content security policy as the console, plus a nonce for
+Vite's hot reload, so a component that needs inline script or style fails during development.
+For a console to point it at without a directory, run `DemoServer` from the test sources: the
+in-memory fake directory with a sample tree, set up through the real setup API, on port 8443
+(sign in as `cn=admin,o=system` / `admin-pw`, or `viewer` / `viewer-pw` for the read-only role).
+
+The PatternFly MCP server (`.mcp.json`) gives coding agents PatternFly 6's rules and component docs.
 
 ## Build
 

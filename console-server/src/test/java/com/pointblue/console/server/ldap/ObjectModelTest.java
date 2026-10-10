@@ -29,6 +29,7 @@ public class ObjectModelTest {
         assertEquals("cn=Smith\\, John+uid=js,ou=Users\\+Admins,o=Acme", id.get("dn"));
         assertEquals("Smith, John", id.get("name"));
         assertEquals("ou=Users\\+Admins,o=Acme", id.get("parentDn"));
+        assertEquals(List.of(Map.of("dn", "o=Acme", "name", "Acme"), Map.of("dn", "ou=Users\\+Admins,o=Acme", "name", "Users+Admins")), id.get("ancestors"));
         List<?> rdns = (List<?>) id.get("rdns");
         assertEquals("leaf to root", 3, rdns.size());
         assertEquals("a multi-valued name keeps both parts", 2, ((List<?>) rdns.get(0)).size());
@@ -93,6 +94,9 @@ public class ObjectModelTest {
         assertTrue(s.may("inetOrgPerson").containsAll(List.of("mail", "title", "telephoneNumber", "loginDisabled", "ACL")));
         assertTrue(s.binaryAttributes().containsAll(List.of("GUID", "jpegPhoto")));
         assertNull(s.objectClass("noSuchClass"));
+        assertEquals("inherited from Person", List.of("cn", "ou", "uid"), s.naming("inetOrgPerson"));
+        assertEquals(List.of("Organization", "organizationalUnit", "domain"), s.containment("inetOrgPerson"));
+        assertEquals(List.of("ou"), s.naming("organizationalUnit"));
     }
 
     // ---- filters ----

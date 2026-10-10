@@ -40,6 +40,16 @@
 
     <build>
         <finalName>console</finalName>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- the web UI, when it has been built (cd console-web && npm ci && npm run build) -->
+            <resource>
+                <directory>../console-web/dist</directory>
+                <targetPath>web</targetPath>
+            </resource>
+        </resources>
         <plugins>
             <!-- a runnable jar: java -jar console.jar, its dependencies beside it in lib/ -->
             <plugin>

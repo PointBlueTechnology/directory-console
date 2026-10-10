@@ -1,4 +1,5 @@
-# Every pull request and push to main: the libraries' tests, against DirXMLDev's released jar.
+# Every pull request and push to main: the web UI's type check, tests and build, then the Java
+# modules' tests against DirXMLDev's released jar (with the built UI in the server).
 name: test
 on:
   push:
@@ -23,4 +24,15 @@ jobs:
           CORE=$(sed -n 's#.*<dirxmldev.version>\([^<]*\)</dirxmldev.version>.*#\1#p' pom.xml | head -1)
           gh release download "v$CORE" --repo PointBlueTechnology/DirXMLDev -p "dirxml-dev-$CORE.jar" -D /tmp
           mvn -B -q install:install-file -Dfile=/tmp/dirxml-dev-$CORE.jar -DgroupId=com.pointblue.dirxml -DartifactId=dirxml-dev -Dversion=$CORE -Dpackaging=jar
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: console-web/package-lock.json
+      - name: Web UI
+        working-directory: console-web
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npm run build
       - run: mvn -B test

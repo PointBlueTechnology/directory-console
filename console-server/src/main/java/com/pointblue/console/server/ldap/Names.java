@@ -132,6 +132,12 @@ public final class Names {
         out.put("rdns", rdns);
         out.put("name", rdns.isEmpty() ? "" : rdns.get(0).get(0).get("value"));
         out.put("parentDn", n.size() <= 1 ? "" : n.getPrefix(n.size() - 1).toString());
+        // the containers above, root first, for a breadcrumb (the client never splits a DN)
+        List<Map<String, String>> ancestors = new ArrayList<>();
+        for (int k = 1; k < n.size(); k++) {
+            ancestors.add(Map.of("dn", n.getPrefix(k).toString(), "name", String.valueOf(avas(n.get(k - 1)).get(0).getValue())));
+        }
+        out.put("ancestors", ancestors);
         out.put("display", Map.of("dot", String.join(".", dot), "slash", "\\" + String.join("\\", slash)));
         return out;
     }

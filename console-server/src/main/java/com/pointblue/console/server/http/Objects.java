@@ -112,7 +112,7 @@ final class Objects {
                 case "POST objects/{guid}/rename" -> rename(ex, l, schema, s, guid, false);
                 case "POST objects/{guid}/move" -> rename(ex, l, schema, s, guid, true);
                 case "DELETE objects/{guid}" -> delete(ex, l, schema, s, guid);
-                case "GET schema/classes" -> Http.json(ex, 200, schema.objectClasses().stream().map(Objects::classJson).toList());
+                case "GET schema/classes" -> Http.json(ex, 200, schema.objectClasses().stream().map(c -> classJson(c, schema)).toList());
                 case "GET schema/attributes" -> Http.json(ex, 200, schema.attributeTypes().stream().map(Objects::attributeJson).toList());
                 case "GET schema/classes/{name}" -> schemaClass(ex, schema, p[3]);
                 case "GET schema/attributes/{name}" -> {
@@ -183,7 +183,8 @@ final class Objects {
         return c.schema;
     }
 
-    private static Map<String, Object> classJson(Schema.ObjectClass c) {
+    /** A class; {@code naming} and {@code containment} are inherited from superiors when the class does not set them. */
+    private static Map<String, Object> classJson(Schema.ObjectClass c, Schema schema) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("name", c.name());
         m.put("names", c.names());
@@ -191,8 +192,8 @@ final class Objects {
         m.put("kind", c.kind());
         m.put("superiors", c.superiors());
         m.put("container", c.container());
-        m.put("containment", c.containment());
-        m.put("naming", c.naming());
+        m.put("containment", schema.containment(c.name()));
+        m.put("naming", schema.naming(c.name()));
         m.put("must", c.must());
         m.put("may", c.may());
         return m;
@@ -203,7 +204,7 @@ final class Objects {
         if (c == null) {
             throw new Http.Problem(404, "not-found", "no object class " + decode(segment));
         }
-        Map<String, Object> m = classJson(c);
+        Map<String, Object> m = classJson(c, schema);
         m.put("allMust", List.copyOf(schema.must(c.name())));
         m.put("allMay", List.copyOf(schema.may(c.name())));
         Http.json(ex, 200, m);
@@ -265,7 +266,7 @@ final class Objects {
         Set<String> op = Set.of("guid", "revision", "modifytimestamp", "createtimestamp", "creatorsname", "modifiersname", "subordinatecount");
         e.attributes().forEach((k, vs) -> {
             Schema.AttributeType t = schema.attribute(k);
-            String name = t == null ? k : t.name();
+            String name = t == null ? e.name(k) : t.name();
             if (k.equals("guid")) {
                 return;
             }

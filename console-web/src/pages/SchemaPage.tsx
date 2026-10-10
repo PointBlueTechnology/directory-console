@@ -1,0 +1,159 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Button, Card, CardBody, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm,
+  Label, LabelGroup, PageSection, SearchInput, Spinner, Title, ToggleGroup, ToggleGroupItem,
+} from '@patternfly/react-core';
+import { Table, Tbody, Td, Tr } from '@patternfly/react-table';
+import type { SchemaAttribute, SchemaClass } from '../api';
+import { useSession } from '../session';
+import { linkProps, navigate } from '../router';
+import { ProblemAlert } from '../components/Problem';
+
+const SYNTAXES: Record<string, string> = {
+  '1.3.6.1.4.1.1466.115.121.1.15': 'Directory string',
+  '1.3.6.1.4.1.1466.115.121.1.12': 'DN (reference)',
+  '1.3.6.1.4.1.1466.115.121.1.27': 'Integer',
+  '1.3.6.1.4.1.1466.115.121.1.7': 'Boolean',
+  '1.3.6.1.4.1.1466.115.121.1.24': 'Generalized time',
+  '1.3.6.1.4.1.1466.115.121.1.26': 'IA5 string',
+  '1.3.6.1.4.1.1466.115.121.1.40': 'Octet string (binary)',
+  '1.3.6.1.4.1.1466.115.121.1.38': 'OID',
+  '1.3.6.1.4.1.1466.115.121.1.50': 'Telephone number',
+  '2.16.840.1.113719.1.1.5.1.17': 'eDirectory ACL',
+};
+
+/** The directory's classes and attribute types, read-only. */
+export function SchemaPage({ kind = 'classes', name }: { kind?: 'classes' | 'attributes'; name?: string }) {
+  const { tree } = useSession();
+  const [classes, setClasses] = useState<SchemaClass[] | null>(null);
+  const [attributes, setAttributes] = useState<SchemaAttribute[] | null>(null);
+  const [filter, setFilter] = useState('');
+  const [error, setError] = useState<unknown>(null);
+
+  useEffect(() => {
+    tree.classes().then((c) => setClasses(c.sort((a, b) => a.name.localeCompare(b.name)))).catch(setError);
+    tree.attributes().then((a) => setAttributes(a.sort((x, y) => x.name.localeCompare(y.name)))).catch(setError);
+  }, [tree]);
+
+  const f = filter.toLowerCase();
+  const shownClasses = useMemo(() => (classes ?? []).filter((c) => c.names.some((n) => n.toLowerCase().includes(f))), [classes, f]);
+  const shownAttributes = useMemo(() => (attributes ?? []).filter((a) => a.names.some((n) => n.toLowerCase().includes(f)) || (a.ndsName ?? '').toLowerCase().includes(f)), [attributes, f]);
+
+  return (
+    <PageSection isFilled>
+      <Title headingLevel="h1">Schema</Title>
+      <ProblemAlert error={error} />
+      <div className="dc-browser">
+        <Card isCompact>
+          <CardBody>
+            <ToggleGroup aria-label="Show">
+              <ToggleGroupItem text={`Classes${classes ? ` (${classes.length})` : ''}`} isSelected={kind === 'classes'} onChange={() => navigate('/schema')} />
+              <ToggleGroupItem text={`Attributes${attributes ? ` (${attributes.length})` : ''}`} isSelected={kind === 'attributes'}
+                onChange={() => navigate('/schema/attributes/' + encodeURIComponent(attributes?.[0]?.name ?? 'cn'))} />
+            </ToggleGroup>
+            <SearchInput className="dc-tab-body" placeholder="Filter by name" aria-label="Filter by name" value={filter}
+              onChange={(_e, v) => setFilter(v)} onClear={() => setFilter('')} />
+            <div className="dc-tree">
+              {(kind === 'classes' ? classes : attributes) === null && <Spinner aria-label="Loading the schema" />}
+              <Table aria-label={kind === 'classes' ? 'Classes' : 'Attributes'} variant="compact">
+                <Tbody>
+                  {(kind === 'classes' ? shownClasses : shownAttributes).map((x) => (
+                    <Tr key={x.oid} isClickable isRowSelected={x.name === name} onRowClick={() => navigate(`/schema/${kind}/${encodeURIComponent(x.name)}`)}>
+                      <Td>{x.name}</Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </div>
+          </CardBody>
+        </Card>
+        <Card isCompact>
+          <CardBody>
+            {!name && <Title headingLevel="h2">Choose a {kind === 'classes' ? 'class' : 'attribute'}</Title>}
+            {name && kind === 'classes' && <ClassDetails name={name} />}
+            {name && kind === 'attributes' && attributes && <AttributeDetails a={attributes.find((a) => a.names.some((n) => n.toLowerCase() === name.toLowerCase()))} />}
+          </CardBody>
+        </Card>
+      </div>
+    </PageSection>
+  );
+}
+
+function ClassDetails({ name }: { name: string }) {
+  const { tree } = useSession();
+  const [c, setC] = useState<SchemaClass | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  useEffect(() => {
+    setC(null);
+    tree.schemaClass(name).then(setC).catch(setError);
+  }, [tree, name]);
+  if (error) {
+    return <ProblemAlert error={error} />;
+  }
+  if (!c) {
+    return <Spinner aria-label="Loading" />;
+  }
+  return (
+    <>
+      <Title headingLevel="h2">{c.name}</Title>
+      <LabelGroup>
+        <Label color="blue">{c.kind}</Label>
+        <Label>{c.container ? 'container' : 'leaf'}</Label>
+      </LabelGroup>
+      <DescriptionList isHorizontal className="dc-tab-body">
+        <Item term="OID" value={<span className="dc-mono">{c.oid}</span>} />
+        {c.names.length > 1 && <Item term="Also called" value={c.names.slice(1).join(', ')} />}
+        <Item term="Inherits from" value={<Links kind="classes" names={c.superiors} />} />
+        <Item term="Named by" value={c.naming.join(', ') || '—'} />
+        <Item term="Can be created in" value={<Links kind="classes" names={c.containment} />} />
+        <Item term="Required" value={<Links kind="attributes" names={c.allMust ?? c.must} />} />
+        <Item term="Optional" value={<Links kind="attributes" names={c.allMay ?? c.may} />} />
+      </DescriptionList>
+    </>
+  );
+}
+
+function AttributeDetails({ a }: { a?: SchemaAttribute }) {
+  if (!a) {
+    return <Title headingLevel="h2">No such attribute</Title>;
+  }
+  return (
+    <>
+      <Title headingLevel="h2">{a.name}</Title>
+      <LabelGroup>
+        {a.singleValue && <Label>single value</Label>}
+        {a.readOnly && <Label color="orange">maintained by the directory</Label>}
+        {a.operational && <Label>operational</Label>}
+        {a.binary && <Label>binary</Label>}
+      </LabelGroup>
+      <DescriptionList isHorizontal className="dc-tab-body">
+        <Item term="OID" value={<span className="dc-mono">{a.oid}</span>} />
+        {a.names.length > 1 && <Item term="Also called" value={a.names.slice(1).join(', ')} />}
+        {a.ndsName && <Item term="eDirectory name" value={a.ndsName} />}
+        <Item term="Syntax" value={<>{SYNTAXES[a.syntax] ?? 'Other'} <span className="dc-mono dc-subtle">{a.syntax}</span></>} />
+      </DescriptionList>
+    </>
+  );
+}
+
+function Item({ term, value }: { term: string; value: React.ReactNode }) {
+  return (
+    <DescriptionListGroup>
+      <DescriptionListTerm>{term}</DescriptionListTerm>
+      <DescriptionListDescription>{value}</DescriptionListDescription>
+    </DescriptionListGroup>
+  );
+}
+
+function Links({ kind, names }: { kind: 'classes' | 'attributes'; names: string[] }) {
+  if (names.length === 0) {
+    return <>—</>;
+  }
+  return (
+    <>
+      {names.map((n, i) => (
+        <span key={n}>{i > 0 && ', '}<Button variant="link" isInline component="a" {...linkProps(`/schema/${kind}/${encodeURIComponent(n)}`)}>{n}</Button></span>
+      ))}
+    </>
+  );
+}

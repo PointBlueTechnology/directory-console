@@ -63,6 +63,7 @@ public final class Server {
     private volatile Bootstrap bootstrap;
     private volatile Setup setup;
     private final Objects objects = new Objects(this);
+    private final StaticFiles ui = new StaticFiles("web");
 
     /** Open the data directory and listen on {@code port}. {@code publicUrl} is how browsers reach this server. */
     public Server(DataDir data, int port, String publicUrl, PrintStream out) throws IOException, GeneralSecurityException {
@@ -193,6 +194,11 @@ public final class Server {
             } else {
                 Http.json(ex, 200, Map.of("status", "ready"));
             }
+            return;
+        }
+        if (!path.startsWith("/api/")) {
+            // the web UI, in bootstrap mode too (it then shows where to find the setup token)
+            ui.serve(ex, path, method);
             return;
         }
         Bootstrap b = bootstrap;

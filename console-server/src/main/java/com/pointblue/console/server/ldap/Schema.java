@@ -163,6 +163,33 @@ public final class Schema {
         return d;
     }
 
+    /** The naming attributes of {@code className}, inherited from the nearest superior that names them. */
+    public List<String> naming(String className) {
+        return inherited(className, ObjectClass::naming, 0);
+    }
+
+    /** The classes {@code className} may be created under, inherited the same way. */
+    public List<String> containment(String className) {
+        return inherited(className, ObjectClass::containment, 0);
+    }
+
+    private List<String> inherited(String className, java.util.function.Function<ObjectClass, List<String>> f, int guard) {
+        ObjectClass c = objectClass(className);
+        if (c == null || guard > 32) {
+            return List.of();
+        }
+        if (!f.apply(c).isEmpty()) {
+            return f.apply(c);
+        }
+        for (String s : c.superiors()) {
+            List<String> v = inherited(s, f, guard + 1);
+            if (!v.isEmpty()) {
+                return v;
+            }
+        }
+        return List.of();
+    }
+
     /** MUST and MAY of {@code className}, including its superiors'. */
     public Set<String> must(String className) {
         return collect(className, true, new LinkedHashSet<>(), 0);

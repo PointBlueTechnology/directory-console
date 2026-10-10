@@ -71,7 +71,20 @@ public final class Ldap implements AutoCloseable {
         }
     }
 
-    public record Entry(String dn, Map<String, List<Object>> attributes) {
+    /**
+     * An entry: {@code attributes} keyed by lowercased name (for lookups), {@code names} giving each
+     * key's spelling as the server sent it.
+     */
+    public record Entry(String dn, Map<String, List<Object>> attributes, Map<String, String> names) {
+        public Entry(String dn, Map<String, List<Object>> attributes) {
+            this(dn, attributes, Map.of());
+        }
+
+        /** The attribute's name as the server spelled it. */
+        public String name(String key) {
+            return names.getOrDefault(key, key);
+        }
+
         public String first(String attr) {
             List<Object> v = attributes.get(attr.toLowerCase(java.util.Locale.ROOT));
             return v == null || v.isEmpty() ? null : String.valueOf(v.get(0));
@@ -211,7 +224,7 @@ public final class Ldap implements AutoCloseable {
         try {
             while (r.hasMore()) {
                 SearchResult e = r.next();
-                out.add(new Entry(e.getNameInNamespace(), attributes(e.getAttributes())));
+                out.add(entry(e.getNameInNamespace(), e.getAttributes()));
             }
         } catch (javax.naming.SizeLimitExceededException e) {
             // limit reached: the caller asked for at most `limit`
@@ -225,7 +238,7 @@ public final class Ldap implements AutoCloseable {
     public synchronized Entry read(String dn, String... attrs) throws NamingException {
         controls();
         try {
-            return new Entry(dn, attributes(ctx.getAttributes(dn, attrs.length == 0 ? null : attrs)));
+            return entry(dn, ctx.getAttributes(dn, attrs.length == 0 ? null : attrs));
         } catch (javax.naming.NameNotFoundException e) {
             return null;
         }
@@ -296,7 +309,7 @@ public final class Ldap implements AutoCloseable {
             try {
                 while (r.hasMore()) {
                     SearchResult e = r.next();
-                    out.add(new Entry(e.getNameInNamespace(), attributes(e.getAttributes())));
+                    out.add(entry(e.getNameInNamespace(), e.getAttributes()));
                 }
             } finally {
                 r.close();
@@ -539,6 +552,18 @@ public final class Ldap implements AutoCloseable {
         } catch (NamingException e) {
             // already gone
         }
+    }
+
+    private static Entry entry(String dn, Attributes as) throws NamingException {
+        Map<String, String> names = new LinkedHashMap<>();
+        if (as != null) {
+            NamingEnumeration<String> ids = as.getIDs();
+            while (ids.hasMore()) {
+                String id = ids.next();
+                names.put(id.toLowerCase(java.util.Locale.ROOT), id);
+            }
+        }
+        return new Entry(dn, attributes(as), names);
     }
 
     private static Map<String, List<Object>> attributes(Attributes as) throws NamingException {

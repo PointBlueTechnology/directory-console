@@ -1,0 +1,41 @@
+/*
+ * Point Blue theme for PatternFly 6 (DESIGN-directory-console.md section 13.1).
+ * Import after @patternfly/patternfly's CSS. Only design tokens are overridden, so PatternFly
+ * upgrades keep working; components are never restyled here.
+ *
+ * Brand colours (confirmed 2026-10-09): Point Blue's blue (#3b82f6), darkened in the light theme so
+ * links and primary buttons keep a 4.5:1 contrast on white.
+ */
+:root {
+  --pf-t--global--color--brand--100: #3b82f6;
+  --pf-t--global--color--brand--200: #1d4ed8;
+  --pf-t--global--color--brand--300: #1e40af;
+}
+
+:root.pf-v6-theme-dark {
+  --pf-t--global--dark--color--brand--100: #60a5fa;
+  --pf-t--global--dark--color--brand--200: #93c5fd;
+}
+
+/* the product name in the masthead, when no logo image is used */
+.pb-wordmark {
+  font-family: var(--pf-t--global--font--family--heading);
+  font-size: var(--pf-t--global--font--size--heading--h3);
+  font-weight: var(--pf-t--global--font--weight--heading--default);
+  color: var(--pf-t--global--text--color--regular);
+  white-space: nowrap;
+}
+
+.pb-wordmark__accent {
+  color: var(--pf-t--global--color--brand--default);
+}
+
+/* the sign-in page: PatternFly expects a background image behind the white card; Point Blue uses a plain floor */
+.pf-v6-c-login {
+  background-color: var(--pf-t--global--background--color--secondary--default);
+}
+
+/* the wordmark is the masthead's home link; no underline */
+a:has(> .pb-wordmark) {
+  text-decoration: none;
+}

@@ -1,0 +1,59 @@
+/* Layout only; colours and type come from PatternFly tokens and the Point Blue theme. */
+.dc-browser {
+  display: grid;
+  grid-template-columns: minmax(16rem, 22rem) 1fr;
+  gap: var(--pf-t--global--spacer--md);
+  align-items: start;
+}
+
+@media (max-width: 62rem) {
+  .dc-browser {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dc-tree {
+  max-height: calc(100vh - 12rem);
+  overflow: auto;
+}
+
+.dc-mono {
+  font-family: var(--pf-t--global--font--family--mono);
+  overflow-wrap: anywhere;
+}
+
+.dc-values {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dc-values > li + li {
+  margin-block-start: var(--pf-t--global--spacer--xs);
+}
+
+.dc-filter-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) 10rem minmax(8rem, 2fr) auto;
+  gap: var(--pf-t--global--spacer--sm);
+  align-items: center;
+}
+
+.dc-subtle {
+  color: var(--pf-t--global--text--color--subtle);
+}
+
+.dc-name-row {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: var(--pf-t--global--spacer--sm);
+}
+
+.dc-tab-body {
+  margin-block-start: var(--pf-t--global--spacer--md);
+}
+
+/* page padding inside a drawer that spans the page */
+.dc-page {
+  padding: var(--pf-t--global--spacer--lg);
+}
