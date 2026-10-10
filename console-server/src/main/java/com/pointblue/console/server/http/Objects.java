@@ -61,7 +61,7 @@ final class Objects {
     static final int DEFAULT_WINDOW = 100;
     private static final Duration SCHEMA_TTL = Duration.ofHours(1);
     /** Operational attributes shown with every object. */
-    private static final String[] OPERATIONAL = {"GUID", "revision", "modifyTimestamp", "createTimestamp", "creatorsName", "modifiersName", "subordinateCount"};
+    private static final String[] OPERATIONAL = {"ACL", "GUID", "revision", "modifyTimestamp", "createTimestamp", "creatorsName", "modifiersName", "subordinateCount"};
     /** What a list row needs: the identity, the class, and the hints for whether it has children. */
     private static final String[] ROW = {"objectClass", "GUID", "subordinateCount"};
     /** Sort keys for a container's children: containers' naming attributes first, then cn. */
@@ -75,6 +75,7 @@ final class Objects {
 
     private final Server server;
     private final Map<String, CachedSchema> schemas = new ConcurrentHashMap<>();
+    private final Tasks tasks = new Tasks(this);
     private final Set<Ldap> prepared = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     Objects(Server server) {
@@ -106,6 +107,15 @@ final class Objects {
                 case "GET objects/{guid}" -> read(ex, l, schema, guid);
                 case "GET objects/{guid}/children" -> children(ex, l, schema, guid);
                 case "GET objects/{guid}/rights" -> rights(ex, l, s, guid);
+                case "POST objects/{guid}/password" -> tasks.password(ex, l, s, guid);
+                case "GET objects/{guid}/account" -> tasks.account(ex, l, guid);
+                case "PATCH objects/{guid}/account" -> tasks.updateAccount(ex, l, s, guid);
+                case "POST objects/{guid}/unlock" -> tasks.unlock(ex, l, s, guid);
+                case "GET objects/{guid}/memberships" -> tasks.memberships(ex, l, guid);
+                case "POST objects/{guid}/memberships" -> tasks.changeMemberships(ex, l, s, guid);
+                case "GET objects/{guid}/members" -> tasks.members(ex, l, guid);
+                case "POST objects/{guid}/members" -> tasks.changeMembers(ex, l, s, guid);
+                case "GET objects/{guid}/subtree" -> tasks.subtree(ex, l, guid);
                 case "POST search" -> search(ex, l, schema);
                 case "PATCH objects/{guid}" -> modify(ex, l, schema, s, guid);
                 case "POST objects/{guid}/children" -> create(ex, l, schema, s, guid);
@@ -229,7 +239,7 @@ final class Objects {
     // ---- reads ----------------------------------------------------------------------------------
 
     /** The entry with this GUID, with {@code attrs}; 404 when there is none (or the person cannot see it). */
-    private Ldap.Entry byGuid(Ldap l, String guid, String... attrs) throws NamingException {
+    Ldap.Entry byGuid(Ldap l, String guid, String... attrs) throws NamingException {
         List<Ldap.Entry> r = l.search("", "(GUID={0})", new Object[] {Names.guidBytes(guid)}, SearchControls.SUBTREE_SCOPE, attrs, 2);
         if (r.isEmpty()) {
             throw new Http.Problem(404, "no-such-object", "no object with GUID " + guid);
@@ -237,7 +247,7 @@ final class Objects {
         return r.get(0);
     }
 
-    private String dnOf(Ldap l, String guid) throws NamingException {
+    String dnOf(Ldap l, String guid) throws NamingException {
         return byGuid(l, guid, "1.1").dn();
     }
 
@@ -308,7 +318,7 @@ final class Objects {
         return m;
     }
 
-    private void read(HttpExchange ex, Ldap l, Schema schema, String guid) throws IOException, NamingException {
+    void read(HttpExchange ex, Ldap l, Schema schema, String guid) throws IOException, NamingException {
         Ldap.Entry e = byGuid(l, guid, fullRead());
         ex.getResponseHeaders().set("ETag", etag(e));
         Http.json(ex, 200, objectJson(e, schema));
@@ -396,11 +406,29 @@ final class Objects {
         }
     }
 
+    /**
+     * Effective rights on the object: of the signed-in person, or of {@code ?trustee=} (a GUID or a DN);
+     * {@code ?attribute=} adds the rights to that one attribute.
+     */
     private void rights(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
         String dn = dnOf(l, guid);
+        Map<String, String> q = Http.query(ex);
+        String trustee = s.principal.dn();
+        String t = q.get("trustee");
+        if (t != null && !t.isBlank()) {
+            trustee = Names.guid(t) ? dnOf(l, t) : Names.parse(t).toString();
+        }
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("entry", rightsJson(l.effectivePrivileges(dn, s.principal.dn(), "[Entry Rights]"), true));
-        out.put("allAttributes", rightsJson(l.effectivePrivileges(dn, s.principal.dn(), "[All Attributes Rights]"), false));
+        out.put("trustee", Map.of("dn", trustee, "name", Names.identity(trustee).get("name")));
+        out.put("entry", rightsJson(l.effectivePrivileges(dn, trustee, "[Entry Rights]"), true));
+        out.put("allAttributes", rightsJson(l.effectivePrivileges(dn, trustee, "[All Attributes Rights]"), false));
+        String attr = q.get("attribute");
+        if (attr != null && !attr.isBlank()) {
+            if (!Names.attributeName(attr)) {
+                throw new Http.Problem(400, "bad-field", "not an attribute name: " + attr);
+            }
+            out.put("attribute", Map.of("name", attr, "rights", rightsJson(l.effectivePrivileges(dn, trustee, attr), false)));
+        }
         Http.json(ex, 200, out);
     }
 
@@ -471,7 +499,7 @@ final class Objects {
     // ---- writes ---------------------------------------------------------------------------------
 
     /** The entry, after checking the request's If-Match against its current ETag. */
-    private Ldap.Entry current(HttpExchange ex, Ldap l, String guid) throws NamingException {
+    Ldap.Entry current(HttpExchange ex, Ldap l, String guid) throws NamingException {
         String ifMatch = ex.getRequestHeaders().getFirst("If-Match");
         if (ifMatch == null || ifMatch.isBlank()) {
             throw new Http.Problem(428, "precondition-required", "send If-Match with the ETag from your last read of this object");
@@ -484,7 +512,7 @@ final class Objects {
         return e;
     }
 
-    private Values.GuidResolver guids(Ldap l) {
+    Values.GuidResolver guids(Ldap l) {
         return g -> {
             List<Ldap.Entry> r = l.search("", "(GUID={0})", new Object[] {Names.guidBytes(g)}, SearchControls.SUBTREE_SCOPE, new String[] {"1.1"}, 1);
             return r.isEmpty() ? null : r.get(0).dn();
@@ -533,6 +561,7 @@ final class Objects {
             mods.add(new ModificationItem(code, a));
             summary.add(op + " " + a.getID());
         }
+        tasks.guardInheritanceMask(l, e.dn(), mods);
         try {
             l.modify(e.dn(), mods);
         } catch (NamingException x) {
@@ -632,12 +661,17 @@ final class Objects {
             newDn = Names.child(Names.parent(e.dn()), leaf.getType(), Http.string(b, "name", true));
             action = "object.rename";
         }
-        Map<String, Object> detail = Map.of("from", e.dn(), "to", newDn);
+        Map<String, Object> detail = new LinkedHashMap<>(Map.of("from", e.dn(), "to", newDn));
         try {
             l.rename(e.dn(), newDn);
         } catch (NamingException x) {
             audit(s, action, guid, detail, Ldap.Failure.of(x));
             throw x;
+        }
+        if (Boolean.TRUE.equals(b.get("leaveAlias"))) {
+            String alias = tasks.leaveAlias(l, e.dn(), newDn);
+            detail.put("alias", alias);
+            ex.getResponseHeaders().set("X-Alias", alias);
         }
         audit(s, action, guid, detail, null);
         read(ex, l, schema, guid);
@@ -645,6 +679,10 @@ final class Objects {
 
     private void delete(HttpExchange ex, Ldap l, Schema schema, Sessions.Session s, String guid) throws IOException, NamingException {
         Ldap.Entry e = current(ex, l, guid);
+        if ("true".equals(Http.query(ex).get("subtree"))) {
+            tasks.deleteSubtree(ex, l, s, guid, e);
+            return;
+        }
         try {
             l.delete(e.dn());
         } catch (NamingException x) {
@@ -656,7 +694,7 @@ final class Objects {
     }
 
     /** Writes are audited with attribute names only: values (a password among them) never reach the log. */
-    private void audit(Sessions.Session s, String action, String target, Map<String, Object> detail, Ldap.Failure failed) throws IOException {
+    void audit(Sessions.Session s, String action, String target, Map<String, Object> detail, Ldap.Failure failed) throws IOException {
         Map<String, Object> d = new LinkedHashMap<>(detail);
         d.put("directory", s.principal.directoryId());
         if (failed != null) {

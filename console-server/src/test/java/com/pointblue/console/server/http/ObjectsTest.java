@@ -284,4 +284,116 @@ public class ObjectsTest {
         assertEquals(List.of("user0500", "user0501"), jump.names());
         assertEquals(503, Json.asInt(jump.body().get("offset"), -1));
     }
+
+    @Test
+    public void passwordAndAccountTasks() throws Exception {
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String smith = (String) resolve(h, "cn=Smith\\, John,ou=Users,o=acme").body().get("guid");
+        assertEquals(204, call("POST", "/api/v2/trees/acme/objects/" + smith + "/password", Map.of("password", "N3w-secret!", "mustChange", true), h).status());
+        Reply in = call("POST", "/api/v2/session", Map.of("directory", "acme", "name", "cn=Smith\\, John,ou=Users,o=acme", "password", "N3w-secret!"), Map.of());
+        assertEquals("the new password is accepted (a wrong one is 401); the person just has no console role", "no-role", in.body().get("title"));
+
+        Reply acct = call("GET", "/api/v2/trees/acme/objects/" + smith + "/account", null, h);
+        assertEquals(200, acct.status());
+        assertNotNull("must-change expired the password", acct.body().get("passwordExpires"));
+        Map<String, Object> change = new HashMap<>();
+        change.put("disabled", true);
+        change.put("loginExpires", "2030-12-31T23:00:00Z");
+        change.put("passwordMinimumLength", 8);
+        change.put("passwordExpirationDays", 90);
+        change.put("timeMap", "ff".repeat(42));
+        change.put("maxConnections", null);
+        Reply updated = call("PATCH", "/api/v2/trees/acme/objects/" + smith + "/account", change, with(h, acct.etag()));
+        assertEquals(200, updated.status());
+        assertEquals(true, updated.body().get("disabled"));
+        assertEquals("2030-12-31T23:00:00Z", updated.body().get("loginExpires"));
+        assertEquals(90, Json.asInt(updated.body().get("passwordExpirationDays"), -1));
+        assertEquals("ff".repeat(42), updated.body().get("timeMap"));
+        assertEquals(400, call("PATCH", "/api/v2/trees/acme/objects/" + smith + "/account", Map.of("timeMap", "ff"), with(h, "*")).status());
+        assertEquals(400, call("PATCH", "/api/v2/trees/acme/objects/" + smith + "/account", Map.of("disabled", "yes"), with(h, "*")).status());
+        assertEquals(412, call("PATCH", "/api/v2/trees/acme/objects/" + smith + "/account", Map.of("disabled", false), with(h, acct.etag())).status());
+
+        call("PATCH", "/api/v2/trees/acme/objects/" + smith + "/account", Map.of("disabled", false), with(h, "*"));
+        call("PATCH", "/api/v2/trees/acme/objects/" + smith, Map.of("changes", List.of(
+            Map.of("op", "replace", "attribute", "lockedByIntruder", "values", List.of("TRUE")),
+            Map.of("op", "replace", "attribute", "loginIntruderAttempts", "values", List.of("3")))), with(h, "*"));
+        assertEquals(true, call("GET", "/api/v2/trees/acme/objects/" + smith + "/account", null, h).body().get("lockedByIntruder"));
+        Reply unlocked = call("POST", "/api/v2/trees/acme/objects/" + smith + "/unlock", Map.of(), h);
+        assertEquals(200, unlocked.status());
+        assertEquals(false, unlocked.body().get("lockedByIntruder"));
+        assertEquals(null, unlocked.body().get("intruderAttempts"));
+    }
+
+    @Test
+    public void membershipIsWrittenOnBothSides() throws Exception {
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String smith = (String) resolve(h, "cn=Smith\\, John,ou=Users,o=acme").body().get("guid");
+        String viewers = (String) resolve(h, "cn=Viewers,ou=Groups,o=acme").body().get("guid");
+        Reply r = call("POST", "/api/v2/trees/acme/objects/" + smith + "/memberships", Map.of("add", List.of(viewers)), h);
+        assertEquals(200, r.status());
+        Map<String, Object> group = Json.asMap(resolve(h, "cn=Viewers,ou=Groups,o=acme").body().get("attributes"));
+        Map<String, Object> user = Json.asMap(resolve(h, "cn=Smith\\, John,ou=Users,o=acme").body().get("attributes"));
+        assertTrue(String.valueOf(group.get("member")).contains("Smith"));
+        assertTrue(String.valueOf(group.get("equivalentToMe")).contains("Smith"));
+        assertTrue(String.valueOf(user.get("groupMembership")).contains("Viewers"));
+        assertTrue(String.valueOf(user.get("securityEquals")).contains("Viewers"));
+        Reply again = call("POST", "/api/v2/trees/acme/objects/" + smith + "/memberships", Map.of("add", List.of(viewers)), h);
+        assertEquals("unchanged", Json.asMap(((List<?>) again.body().get("results")).get(0)).get("status"));
+
+        Reply groups = call("GET", "/api/v2/trees/acme/objects/" + smith + "/memberships", null, h);
+        assertEquals(List.of("Viewers"), ((List<?>) groups.body().get("items")).stream().map(i -> Json.asMap(i).get("name")).toList());
+        Reply members = call("GET", "/api/v2/trees/acme/objects/" + viewers + "/members", null, h);
+        assertEquals(List.of("Smith, John", "viewer"), ((List<?>) members.body().get("items")).stream().map(i -> Json.asMap(i).get("name")).toList());
+        assertEquals(false, members.body().get("dynamic"));
+
+        assertEquals(200, call("POST", "/api/v2/trees/acme/objects/" + viewers + "/members",
+            Map.of("remove", List.of(Map.of("dn", "cn=Smith\\, John,ou=Users,o=acme"))), h).status());
+        user = Json.asMap(resolve(h, "cn=Smith\\, John,ou=Users,o=acme").body().get("attributes"));
+        assertFalse(user.containsKey("groupMembership") && String.valueOf(user.get("groupMembership")).contains("Viewers"));
+        assertFalse(user.containsKey("securityEquals") && String.valueOf(user.get("securityEquals")).contains("Viewers"));
+    }
+
+    @Test
+    public void aliasSubtreeDeleteAndTheLockoutGuard() throws Exception {
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String users = (String) resolve(h, "ou=Users,o=acme").body().get("guid");
+        String groups = (String) resolve(h, "ou=Groups,o=acme").body().get("guid");
+        Reply sales = resolve(h, "ou=Sales,ou=Users,o=acme");
+        Reply moved = call("POST", "/api/v2/trees/acme/objects/" + sales.body().get("guid") + "/move",
+            Map.of("newParent", groups, "leaveAlias", true), with(h, sales.etag()));
+        assertEquals(200, moved.status());
+        assertEquals("created", moved.raw().headers().firstValue("X-Alias").orElse(""));
+        Map<String, Object> alias = Json.asMap(resolve(h, "ou=Sales,ou=Users,o=acme").body().get("attributes"));
+        assertEquals(List.of(Map.of("dn", "ou=Sales,ou=Groups,o=acme", "name", "Sales")), alias.get("aliasedObjectName"));
+
+        Reply count = call("GET", "/api/v2/trees/acme/objects/" + users + "/subtree", null, h);
+        int n = Json.asInt(count.body().get("count"), -1);
+        assertEquals("Users, three users and the alias", 5, n);
+        assertEquals(409, call("DELETE", "/api/v2/trees/acme/objects/" + users + "?subtree=true", null, with(h, "*")).status());
+        Map<String, String> confirm = with(h, "*");
+        confirm.put("X-Confirm-Count", String.valueOf(n + 1));
+        assertEquals("a stale count", 409, call("DELETE", "/api/v2/trees/acme/objects/" + users + "?subtree=true", null, confirm).status());
+        confirm.put("X-Confirm-Count", String.valueOf(n));
+        Reply gone = call("DELETE", "/api/v2/trees/acme/objects/" + users + "?subtree=true", null, confirm);
+        assertEquals(200, gone.status());
+        assertEquals(n, Json.asInt(gone.body().get("deleted"), -1));
+        assertEquals(404, resolve(h, "ou=Users,o=acme").status());
+
+        // an IRF that blocks Supervisor needs an explicit Supervisor trustee first
+        Map<String, Object> irf = Map.of("privileges", List.of("browse"), "scope", "subtree", "trustee", Map.of("special", "[Inheritance Mask]"), "attribute", "[Entry Rights]");
+        Reply refused = call("PATCH", "/api/v2/trees/acme/objects/" + groups, Map.of("changes", List.of(Map.of("op", "add", "attribute", "ACL", "values", List.of(irf)))), with(h, "*"));
+        assertEquals(409, refused.status());
+        assertEquals("would-lock-out", refused.body().get("title"));
+        Map<String, Object> explicit = Map.of("privileges", List.of("supervisor"), "scope", "subtree", "trustee", Map.of("dn", "cn=admin,o=system"), "attribute", "[Entry Rights]");
+        assertEquals(200, call("PATCH", "/api/v2/trees/acme/objects/" + groups, Map.of("changes", List.of(
+            Map.of("op", "add", "attribute", "ACL", "values", List.of(explicit, irf)))), with(h, "*")).status());
+        Map<String, Object> acl = Json.asMap(resolve(h, "ou=Groups,o=acme").body().get("attributes"));
+        assertEquals(2, ((List<?>) acl.get("ACL")).size());
+
+        Reply rights = call("GET", "/api/v2/trees/acme/objects/" + groups + "/rights?trustee=" + URLEncoder.encode("cn=viewer,ou=Groups,o=acme", StandardCharsets.UTF_8) + "&attribute=member", null, h);
+        assertEquals(200, rights.status());
+        assertEquals("viewer", Json.asMap(rights.body().get("trustee")).get("name"));
+        assertNotNull(rights.body().get("attribute"));
+        assertEquals("the trustee asked about", "cn=viewer,ou=Groups,o=acme", edir.privilegeRequests.get(edir.privilegeRequests.size() - 1)[1]);
+    }
 }

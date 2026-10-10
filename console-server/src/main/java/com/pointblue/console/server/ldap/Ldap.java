@@ -47,6 +47,8 @@ public final class Ldap implements AutoCloseable {
     /** eDirectory's GetEffectivePrivileges request and response. */
     static final String EFFECTIVE_PRIVILEGES = "2.16.840.1.113719.1.27.100.33";
     /** Virtual list view request and response. eDirectory honours them without listing them in the root DSE. */
+    /** Attributes always read as bytes, whatever the schema says (the login time map is a bit map). */
+    static final String BINARY = "GUID loginAllowedTimeMap";
     static final String VLV_REQUEST = "2.16.840.1.113730.3.4.9";
     static final String VLV_RESPONSE = "2.16.840.1.113730.3.4.10";
 
@@ -168,7 +170,7 @@ public final class Ldap implements AutoCloseable {
         env.put("com.sun.jndi.ldap.connect.pool", "false");
         env.put("com.sun.jndi.ldap.connect.timeout", String.valueOf(timeout.toMillis()));
         env.put("com.sun.jndi.ldap.read.timeout", String.valueOf(timeout.toMillis() * 6));
-        env.put("java.naming.ldap.attributes.binary", "GUID");
+        env.put("java.naming.ldap.attributes.binary", BINARY);
         DirectorySocketFactory.set(ssl.getSocketFactory());
         try {
             return new Ldap(new InitialLdapContext(env, null), dn);
@@ -541,7 +543,7 @@ public final class Ldap implements AutoCloseable {
     /** Attributes whose values come back as bytes, not text (added to what the connection already treats so). */
     public synchronized void binaryAttributes(java.util.Collection<String> names) throws NamingException {
         if (!names.isEmpty()) {
-            ctx.addToEnvironment("java.naming.ldap.attributes.binary", "GUID " + String.join(" ", names));
+            ctx.addToEnvironment("java.naming.ldap.attributes.binary", BINARY + " " + String.join(" ", names));
         }
     }
 

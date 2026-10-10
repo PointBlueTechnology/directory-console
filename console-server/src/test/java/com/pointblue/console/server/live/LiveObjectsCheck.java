@@ -138,6 +138,67 @@ public final class LiveObjectsCheck {
             ok("move into itself refused", into.status() == 409, into.status() + " " + into.body().get("title"));
             LiveSetupCheck.Reply nonLeaf = call("DELETE", "/api/v2/trees/" + tree + "/objects/" + b.body().get("guid"), null, csrf("*"));
             ok("delete non-leaf refused", nonLeaf.status() == 409, nonLeaf.status() + " " + nonLeaf.body().get("title") + " nds=" + nonLeaf.body().get("ndsError"));
+            // ---- Phase 2b tasks, inside the same container ----
+            LiveSetupCheck.Reply tu = call("POST", "/api/v2/trees/" + tree + "/objects/" + container + "/children",
+                Map.of("objectClass", "inetOrgPerson", "name", Map.of("type", "cn", "value", "dc task user"), "attributes", Map.of("sn", List.of("Task"))), csrf());
+            String user = (String) tu.body().get("guid");
+            ok("task user created", tu.status() == 201, tu.body().get("dn") + detail(tu));
+            byte[] rnd = new byte[18];
+            new java.security.SecureRandom().nextBytes(rnd);
+            String pw = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(rnd) + "aA1!";   // in memory only, never printed
+            LiveSetupCheck.Reply setPw = call("POST", "/api/v2/trees/" + tree + "/objects/" + user + "/password", Map.of("password", pw, "mustChange", true), csrf());
+            ok("set password (must change)", setPw.status() == 204, setPw.status() + detail(setPw));
+            LiveSetupCheck.Reply acct = get("/objects/" + user + "/account");
+            ok("account read", acct.status() == 200, "passwordExpires=" + acct.body().get("passwordExpires") + " disabled=" + acct.body().get("disabled"));
+            Map<String, Object> change = new HashMap<>();
+            change.put("disabled", true);
+            change.put("loginExpires", "2030-12-31T23:00:00Z");
+            change.put("maxConnections", 2);
+            change.put("passwordMinimumLength", 8);
+            change.put("passwordExpirationDays", 90);
+            change.put("graceLimit", 6);
+            change.put("timeMap", "01" + "00".repeat(40) + "80");
+            LiveSetupCheck.Reply upd = call("PATCH", "/api/v2/trees/" + tree + "/objects/" + user + "/account", change, csrf(acct.raw().headers().firstValue("ETag").orElse("*")));
+            ok("account update", upd.status() == 200 && Boolean.TRUE.equals(upd.body().get("disabled")) && ("01" + "00".repeat(40) + "80").equals(upd.body().get("timeMap")),
+                "loginExpires=" + upd.body().get("loginExpires") + " days=" + upd.body().get("passwordExpirationDays") + " timeMap ok=" + ("01" + "00".repeat(40) + "80").equals(upd.body().get("timeMap")) + detail(upd));
+            call("PATCH", "/api/v2/trees/" + tree + "/objects/" + user, Map.of("changes", List.of(
+                Map.of("op", "replace", "attribute", "lockedByIntruder", "values", List.of("TRUE")),
+                Map.of("op", "replace", "attribute", "loginIntruderAttempts", "values", List.of("3")))), csrf("*"));
+            LiveSetupCheck.Reply unlock = call("POST", "/api/v2/trees/" + tree + "/objects/" + user + "/unlock", Map.of(), csrf());
+            ok("unlock", unlock.status() == 200 && Boolean.FALSE.equals(unlock.body().get("lockedByIntruder")) && unlock.body().get("intruderAttempts") == null, String.valueOf(unlock.body()));
+            LiveSetupCheck.Reply grp = call("POST", "/api/v2/trees/" + tree + "/objects/" + container + "/children",
+                Map.of("objectClass", "groupOfNames", "name", Map.of("type", "cn", "value", "dc task group")), csrf());
+            String taskGroup = (String) grp.body().get("guid");
+            LiveSetupCheck.Reply join = call("POST", "/api/v2/trees/" + tree + "/objects/" + user + "/memberships", Map.of("add", List.of(taskGroup)), csrf());
+            Map<String, Object> ga = Json.asMap(get("/objects/" + taskGroup).body().get("attributes"));
+            Map<String, Object> ua = Json.asMap(get("/objects/" + user).body().get("attributes"));
+            ok("membership on both sides", join.status() == 200 && String.valueOf(ga.get("member")).contains("dc task user") && String.valueOf(ga.get("equivalentToMe")).contains("dc task user")
+                && String.valueOf(ua.get("groupMembership")).contains("dc task group") && String.valueOf(ua.get("securityEquals")).contains("dc task group"), String.valueOf(join.body().get("results")));
+            LiveSetupCheck.Reply mem = get("/objects/" + taskGroup + "/members");
+            ok("group members", mem.status() == 200 && Json.asInt(mem.body().get("total"), -1) == 1, String.valueOf(mem.body().get("items")));
+            LiveSetupCheck.Reply leave = call("POST", "/api/v2/trees/" + tree + "/objects/" + taskGroup + "/members", Map.of("remove", List.of(user)), csrf());
+            ua = Json.asMap(get("/objects/" + user).body().get("attributes"));
+            ok("leave on both sides", leave.status() == 200 && !String.valueOf(ua.get("groupMembership")).contains("dc task group") && !String.valueOf(ua.get("securityEquals")).contains("dc task group"),
+                String.valueOf(leave.body().get("results")));
+            LiveSetupCheck.Reply dyn = call("POST", "/api/v2/trees/" + tree + "/objects/" + container + "/children",
+                Map.of("objectClass", "dynamicGroup", "name", Map.of("type", "cn", "value", "dc dynamic"),
+                    "attributes", Map.of("memberQueryURL", List.of("ldap:///" + c.body().get("dn") + "??sub?(objectClass=inetOrgPerson)"))), csrf());
+            String dynGuid = (String) dyn.body().get("guid");
+            LiveSetupCheck.Reply dynMem = get("/objects/" + dynGuid + "/members");
+            ok("dynamic group computes members", dyn.status() == 201 && Boolean.TRUE.equals(dynMem.body().get("dynamic")) && Json.asInt(dynMem.body().get("total"), -1) >= 1,
+                "total=" + dynMem.body().get("total") + detail(dyn));
+            LiveSetupCheck.Reply dynAdd = call("POST", "/api/v2/trees/" + tree + "/objects/" + dynGuid + "/members", Map.of("add", List.of(user)), csrf());
+            ok("dynamic group refuses explicit members", dynAdd.status() == 409, dynAdd.status() + " " + dynAdd.body().get("title"));
+            LiveSetupCheck.Reply who = call("GET", "/api/v2/trees/" + tree + "/objects/" + container + "/rights?trustee=" + user + "&attribute=description", null, session);
+            ok("effective rights of another trustee", who.status() == 200, String.valueOf(who.body()));
+            Map<String, Object> irf = Map.of("privileges", List.of("browse"), "scope", "subtree", "trustee", Map.of("special", "[Inheritance Mask]"), "attribute", "[Entry Rights]");
+            LiveSetupCheck.Reply guard = call("PATCH", "/api/v2/trees/" + tree + "/objects/" + taskGroup,
+                Map.of("changes", List.of(Map.of("op", "add", "attribute", "ACL", "values", List.of(irf)))), csrf("*"));
+            ok("a lock-out filter is refused (nothing written)", guard.status() == 409 && "would-lock-out".equals(guard.body().get("title")), guard.status() + " " + guard.body().get("title"));
+            LiveSetupCheck.Reply moveAlias = call("POST", "/api/v2/trees/" + tree + "/objects/" + user + "/move", Map.of("newParent", b.body().get("guid"), "leaveAlias", true), csrf("*"));
+            ok("move leaving an alias", moveAlias.status() == 200 && "created".equals(moveAlias.raw().headers().firstValue("X-Alias").orElse("")),
+                moveAlias.raw().headers().firstValue("X-Alias").orElse("-") + detail(moveAlias));
+
             LiveSetupCheck.Reply rights = get("/objects/" + container + "/rights");
             ok("effective rights", rights.status() == 200, String.valueOf(rights.body()));
             LiveSetupCheck.Reply audit = call("GET", "/api/v2/audit/verify", null, session);
@@ -195,25 +256,13 @@ public final class LiveObjectsCheck {
         return call("PATCH", "/api/v2/trees/" + tree + "/objects/" + guid, Map.of("changes", changes), etag == null ? csrf() : csrf(etag));
     }
 
-    /** Delete everything under the container, deepest first, then the container. */
+    /** Delete the container and everything in it with the subtree delete (a confirmed count). */
     private static void cleanUp(String container) throws Exception {
-        LiveSetupCheck.Reply all = call("POST", "/api/v2/trees/" + tree + "/search", Map.of("base", Map.of("guid", container), "scope", "subtree", "page", Map.of("count", 100)), session);
-        List<Map<String, Object>> items = items(all);
-        items.sort(Comparator.comparingInt((Map<String, Object> r) -> ((List<?>) r.get("rdns")).size()).reversed());
-        int failed = 0;
-        for (Map<String, Object> r : items) {
-            LiveSetupCheck.Reply d = call("DELETE", "/api/v2/trees/" + tree + "/objects/" + r.get("guid"), null, csrf("*"));
-            for (int retry = 0; retry < 20 && (d.status() == 503 || d.status() == 409); retry++) {
-                // eDirectory finishes a move in the background ("previous move in progress", -637)
-                Thread.sleep(3000);
-                d = call("DELETE", "/api/v2/trees/" + tree + "/objects/" + r.get("guid"), null, csrf("*"));
-            }
-            if (d.status() != 204) {
-                failed++;
-                System.out.println("  cleanup " + r.get("dn") + ": " + d.status() + " " + d.body().get("detail"));
-            }
-        }
-        System.out.println("[" + (failed == 0 && !items.isEmpty() ? "ok" : "FAIL") + "] cleanup: " + items.size() + " objects deleted through the API");
+        LiveSetupCheck.Reply count = call("GET", "/api/v2/trees/" + tree + "/objects/" + container + "/subtree", null, session);
+        Map<String, String> h = csrf("*");
+        h.put("X-Confirm-Count", String.valueOf(count.body().get("count")));
+        LiveSetupCheck.Reply d = call("DELETE", "/api/v2/trees/" + tree + "/objects/" + container + "?subtree=true", null, h);
+        ok("cleanup: subtree delete", d.status() == 200, "deleted=" + d.body().get("deleted") + " of " + count.body().get("count") + detail(d));
     }
 
     @SuppressWarnings("unchecked")
