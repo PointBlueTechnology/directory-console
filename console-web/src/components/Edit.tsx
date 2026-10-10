@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Button, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, Form,
+  Alert, Button, Checkbox, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, Form,
   FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, Modal, ModalBody,
   ModalFooter, ModalHeader, TextArea, TextInput,
 } from '@patternfly/react-core';
@@ -111,13 +111,14 @@ export function AttributeModal({ obj, etag, onClose, onDone, allowed, initial }:
 export function RenameModal({ obj, etag, onClose, onDone }: EditProps) {
   const { tree } = useSession();
   const [name, setName] = useState(obj.name);
+  const [alias, setAlias] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
-      const r = await tree.rename(obj.guid, etag, name);
+      const r = await tree.rename(obj.guid, etag, name, alias);
       onDone(r.data, r.etag);
     } catch (e) {
       setError(e);
@@ -140,6 +141,8 @@ export function RenameModal({ obj, etag, onClose, onDone }: EditProps) {
               </HelperText>
             </FormHelperText>
           </FormGroup>
+          <Checkbox id="rename-alias" label="Leave an alias at the old name" description="References to the old name keep working"
+            isChecked={alias} onChange={(_e, v) => setAlias(v)} />
           <ProblemAlert error={error} />
         </Form>
       </ModalBody>
@@ -155,6 +158,7 @@ export function MoveModal({ obj, etag, onClose, onDone }: EditProps) {
   const { tree } = useSession();
   const [dn, setDn] = useState('');
   const [target, setTarget] = useState<DirObject | null>(null);
+  const [alias, setAlias] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const check = async () => {
@@ -178,7 +182,7 @@ export function MoveModal({ obj, etag, onClose, onDone }: EditProps) {
     setBusy(true);
     setError(null);
     try {
-      const r = await tree.move(obj.guid, etag, target.guid);
+      const r = await tree.move(obj.guid, etag, target.guid, alias);
       onDone(r.data, r.etag);
     } catch (e) {
       setError(e);
@@ -196,6 +200,10 @@ export function MoveModal({ obj, etag, onClose, onDone }: EditProps) {
             <TextInput id="parent" value={dn} onChange={(_e, v) => { setDn(v); setTarget(null); }} placeholder="ou=sales,o=acme" autoFocus />
           </FormGroup>
           {target && <Target obj={target} label="Into" />}
+          {target && (
+            <Checkbox id="move-alias" label="Leave an alias at the old place" description="References to the old name keep working"
+              isChecked={alias} onChange={(_e, v) => setAlias(v)} />
+          )}
           {target && <Alert variant="info" isInline isPlain title="eDirectory finishes a move in the background; the object may be busy for a few seconds." />}
           <ProblemAlert error={error} />
         </Form>
@@ -215,11 +223,23 @@ export function DeleteModal({ obj, etag, onClose, onDeleted }: Omit<EditProps, '
   const [typed, setTyped] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [below, setBelow] = useState<{ count: number; capped: boolean } | null>(null);
+  const [everything, setEverything] = useState(false);
+  useEffect(() => {
+    if (obj.container) {
+      tree.subtree(obj.guid).then(setBelow).catch(() => setBelow(null));
+    }
+  }, [tree, obj]);
+  const others = below ? below.count - 1 : 0;
   const remove = async () => {
     setBusy(true);
     setError(null);
     try {
-      await tree.remove(obj.guid, etag);
+      if (others > 0) {
+        await tree.removeSubtree(obj.guid, etag, below!.count);
+      } else {
+        await tree.remove(obj.guid, etag);
+      }
       onDeleted();
     } catch (e) {
       setError(e);
@@ -233,6 +253,13 @@ export function DeleteModal({ obj, etag, onClose, onDeleted }: Omit<EditProps, '
       <ModalBody>
         <Form id="delete-form" onSubmit={(e) => { e.preventDefault(); remove(); }}>
           <Target obj={obj} />
+          {others > 0 && (
+            <Alert variant="danger" isInline title={below!.capped ? `More than ${below!.count - 1} objects are under it` : `${others} object${others === 1 ? ' is' : 's are'} under it`}>
+              {below!.capped
+                ? 'Too many to delete at once. Delete smaller parts first.'
+                : <Checkbox id="everything" label={`Delete it and all ${others} object${others === 1 ? '' : 's'} under it`} isChecked={everything} onChange={(_e, v) => setEverything(v)} />}
+            </Alert>
+          )}
           <FormGroup label={`Type ${obj.name} to confirm`} fieldId="confirm" isRequired>
             <TextInput id="confirm" value={typed} onChange={(_e, v) => setTyped(v)} autoFocus />
           </FormGroup>
@@ -240,7 +267,8 @@ export function DeleteModal({ obj, etag, onClose, onDeleted }: Omit<EditProps, '
         </Form>
       </ModalBody>
       <ModalFooter>
-        <Button variant="danger" type="submit" form="delete-form" isLoading={busy} isDisabled={busy || typed !== obj.name}>Delete</Button>
+        <Button variant="danger" type="submit" form="delete-form" isLoading={busy}
+          isDisabled={busy || typed !== obj.name || (others > 0 && (!everything || below!.capped))}>{others > 0 ? `Delete ${below!.count} objects` : 'Delete'}</Button>
         <Button variant="link" onClick={onClose}>Cancel</Button>
       </ModalFooter>
     </Modal>
@@ -336,6 +364,140 @@ export function CreateModal({ parent, onClose, onCreated }: { parent: Row; onClo
       <ModalFooter>
         <Button variant="primary" type="submit" form="create-form" isLoading={busy} isDisabled={busy || !ready}>Create</Button>
         <Button variant="link" onClick={onClose}>Cancel</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+/** Set a user's password; optionally expire it so the person must choose a new one at the next login. */
+export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClose: () => void; onDone: () => void }) {
+  const { tree } = useSession();
+  const [pw, setPw] = useState('');
+  const [again, setAgain] = useState('');
+  const [mustChange, setMustChange] = useState(true);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await tree.password(obj.guid, pw, mustChange);
+      setPw('');
+      setAgain('');
+      onDone();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const mismatch = again.length > 0 && again !== pw;
+  return (
+    <Modal isOpen onClose={onClose} variant="small" aria-labelledby="pw-title">
+      <ModalHeader title="Set password" labelId="pw-title" />
+      <ModalBody>
+        <Form id="pw-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
+          <Target obj={obj} />
+          <FormGroup label="New password" fieldId="pw" isRequired>
+            <TextInput id="pw" type="password" autoComplete="new-password" value={pw} onChange={(_e, v) => setPw(v)} autoFocus />
+          </FormGroup>
+          <FormGroup label="Type it again" fieldId="pw2" isRequired>
+            <TextInput id="pw2" type="password" autoComplete="new-password" value={again} onChange={(_e, v) => setAgain(v)} validated={mismatch ? 'error' : 'default'} />
+            {mismatch && <FormHelperText><HelperText><HelperTextItem variant="error">The passwords differ</HelperTextItem></HelperText></FormHelperText>}
+          </FormGroup>
+          <Checkbox id="must-change" label="Must change it at the next login" isChecked={mustChange} onChange={(_e, v) => setMustChange(v)} />
+          <HelperText><HelperTextItem>The directory's password policy applies; a refusal shows its reason here.</HelperTextItem></HelperText>
+          <ProblemAlert error={error} />
+        </Form>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="primary" type="submit" form="pw-form" isLoading={busy} isDisabled={busy || !pw || pw !== again}>Set password</Button>
+        <Button variant="link" onClick={onClose}>Cancel</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+/** Add or remove auxiliary classes; adding one asks for the attributes it requires. */
+export function AuxClassModal({ obj, etag, onClose, onDone }: EditProps) {
+  const { tree } = useSession();
+  const [aux, setAux] = useState<SchemaClass[] | null>(null);
+  const [chosen, setChosen] = useState('');
+  const [cls, setCls] = useState<SchemaClass | null>(null);
+  const [required, setRequired] = useState<Record<string, string>>({});
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const have = obj.objectClasses.map((c) => c.toLowerCase());
+
+  useEffect(() => {
+    tree.classes().then((all) => setAux(all.filter((c) => c.kind === 'auxiliary').sort((a, b) => a.name.localeCompare(b.name)))).catch(setError);
+  }, [tree]);
+  useEffect(() => {
+    setCls(null);
+    setRequired({});
+    if (chosen) {
+      tree.schemaClass(chosen).then(setCls).catch(setError);
+    }
+  }, [tree, chosen]);
+
+  const present = (aux ?? []).filter((c) => c.names.some((n) => have.includes(n.toLowerCase())));
+  const missing = (cls?.allMust ?? []).filter((a) => a.toLowerCase() !== 'objectclass' && !(a in obj.attributes)
+    && !Object.keys(obj.attributes).some((k) => k.toLowerCase() === a.toLowerCase()));
+
+  const change = async (changes: Parameters<typeof tree.modify>[2]) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await tree.modify(obj.guid, etag, changes);
+      onDone(r.data, r.etag);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const add = () => change([
+    { op: 'add', attribute: 'objectClass', values: [chosen] },
+    ...missing.map((a) => ({ op: 'add' as const, attribute: a, values: [required[a].trim()] })),
+  ]);
+
+  return (
+    <Modal isOpen onClose={onClose} variant="medium" aria-labelledby="aux-title">
+      <ModalHeader title="Auxiliary classes" labelId="aux-title" />
+      <ModalBody>
+        <Target obj={obj} />
+        <Form id="aux-form" className="dc-tab-body" onSubmit={(e) => { e.preventDefault(); add(); }}>
+          <FormGroup label="On this object" fieldId="present">
+            {present.length === 0 ? <span className="dc-subtle">None</span> : (
+              <ul className="dc-values">
+                {present.map((c) => (
+                  <li key={c.name}>
+                    {c.name}{' '}
+                    <Button variant="link" isInline isDanger isDisabled={busy}
+                      onClick={() => change([{ op: 'remove', attribute: 'objectClass', values: [c.name] }])}>Remove</Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </FormGroup>
+          <FormGroup label="Add a class" fieldId="aux-add">
+            <FormSelect id="aux-add" value={chosen} onChange={(_e, v) => setChosen(v)} isDisabled={!aux}>
+              <FormSelectOption value="" label={aux ? 'Choose an auxiliary class' : 'Loading…'} isPlaceholder />
+              {(aux ?? []).filter((c) => !present.includes(c)).map((c) => <FormSelectOption key={c.name} value={c.name} label={c.name} />)}
+            </FormSelect>
+          </FormGroup>
+          {missing.map((a) => (
+            <FormGroup key={a} label={a} fieldId={`aux-${a}`} isRequired>
+              <TextInput id={`aux-${a}`} value={required[a] ?? ''} onChange={(_e, v) => setRequired({ ...required, [a]: v })} />
+            </FormGroup>
+          ))}
+          <ProblemAlert error={error} />
+        </Form>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="primary" type="submit" form="aux-form" isLoading={busy}
+          isDisabled={busy || !cls || missing.some((a) => !(required[a] ?? '').trim())}>Add class</Button>
+        <Button variant="link" onClick={onClose}>Close</Button>
       </ModalFooter>
     </Modal>
   );

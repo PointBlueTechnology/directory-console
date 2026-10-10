@@ -43,7 +43,8 @@ public final class DemoServer {
             "dn: cn=Viewers,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Viewers\nmember: cn=viewer,ou=Users,o=acme",
             "dn: cn=viewer,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: viewer\nsn: Viewer\nuserPassword: viewer-pw\ngroupMembership: cn=Viewers,ou=Groups,o=acme",
             "dn: cn=Smith\\, John,ou=Sales,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: Smith, John\nsn: Smith\ngivenName: John\nmail: jsmith@acme.example\ntitle: Account manager\ngroupMembership: cn=Viewers,ou=Groups,o=acme",
-            "dn: cn=Smith (Admin),ou=Engineering,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: Smith (Admin)\nsn: Smith\nloginDisabled: TRUE",
+            "dn: cn=Smith (Admin),ou=Engineering,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: Smith (Admin)\nsn: Smith\nloginDisabled: TRUE\nlockedByIntruder: TRUE\nloginIntruderAttempts: 5\nloginIntruderResetTime: 20301231120000Z",
+            "dn: cn=Everyone in Sales,ou=Groups,o=acme\nobjectClass: dynamicGroup\ncn: Everyone in Sales\nmemberQueryURL: ldap:///ou=Sales,ou=Users,o=acme??sub?(objectClass=inetOrgPerson)\nmember: cn=Smith\\, John,ou=Sales,ou=Users,o=acme",
             "dn: cn=Team #1,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Team #1\ndescription: A name with a hash\nmember: cn=Smith\\, John,ou=Sales,ou=Users,o=acme\n"
                 + "ACL: 2#entry#cn=Viewers,ou=Groups,o=acme#member\nACL: 16#subtree#[Creator]#[Entry Rights]"));
         String[] given = {"Ann", "Bob", "Carla", "Dev", "Eve", "Femi", "Gus", "Hana", "Ivan", "Jo"};

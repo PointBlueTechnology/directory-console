@@ -57,3 +57,64 @@
 .dc-page {
   padding: var(--pf-t--global--spacer--lg);
 }
+
+.dc-picker {
+  max-height: 16rem;
+  overflow: auto;
+}
+
+/* the login time grid: 7 rows of 48 half-hour cells */
+.dc-timegrid {
+  margin-block-start: var(--pf-t--global--spacer--sm);
+  overflow-x: auto;
+}
+
+.dc-timegrid__row {
+  display: grid;
+  grid-template-columns: 3rem repeat(48, minmax(0.6rem, 1fr));
+  gap: 1px;
+  align-items: center;
+  min-width: 34rem;
+}
+
+.dc-timegrid__row:first-child {
+  grid-template-columns: 3rem repeat(12, 1fr);
+}
+
+.dc-timegrid__hour {
+  font-size: var(--pf-t--global--font--size--xs);
+  color: var(--pf-t--global--text--color--subtle);
+}
+
+.dc-timegrid__day {
+  font-size: var(--pf-t--global--font--size--sm);
+  background: none;
+  border: none;
+  color: var(--pf-t--global--text--color--link--default);
+  text-align: start;
+  cursor: pointer;
+  padding: 0;
+}
+
+.dc-timegrid__cell {
+  height: 1.25rem;
+  border: 1px solid var(--pf-t--global--border--color--default);
+  background: var(--pf-t--global--background--color--primary--default);
+  padding: 0;
+  cursor: pointer;
+}
+
+.dc-timegrid__cell--on {
+  background: var(--pf-t--global--color--brand--default);
+  border-color: var(--pf-t--global--color--brand--default);
+}
+
+.dc-timegrid__cell:focus-visible,
+.dc-timegrid__day:focus-visible {
+  outline: 2px solid var(--pf-t--global--color--brand--hover);
+  outline-offset: 1px;
+}
+
+.dc-narrow {
+  max-width: 10rem;
+}

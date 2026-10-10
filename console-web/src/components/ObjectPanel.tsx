@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Bullseye, Button, ClipboardCopy, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm,
+  Alert, AlertActionCloseButton, Bullseye, Button, ClipboardCopy, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm,
   Dropdown, DropdownItem, DropdownList, Flex, FlexItem, Label, LabelGroup, MenuToggle, Spinner, Tab, Tabs, TabTitleText, Title,
 } from '@patternfly/react-core';
 import { EllipsisVIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { ApiError, type DirObject, type Rights } from '../api';
+import { ApiError, type DirObject, isGroup, isUser } from '../api';
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
 import { ValueView } from './ValueView';
-import { AttributeModal, DeleteModal, MoveModal, RenameModal } from './Edit';
+import { AttributeModal, AuxClassModal, DeleteModal, MoveModal, PasswordModal, RenameModal } from './Edit';
+import { AccountTab } from './AccountTab';
+import { GroupMembersTab, UserGroupsTab } from './MembershipTab';
+import { RightsTab } from './RightsTab';
+import { HeadingLevel } from '../heading';
 
-type Dialog = null | { kind: 'attr'; attribute?: string } | { kind: 'rename' } | { kind: 'move' } | { kind: 'delete' };
+type Dialog = null | { kind: 'attr'; attribute?: string } | { kind: 'rename' } | { kind: 'move' } | { kind: 'delete' }
+  | { kind: 'password' } | { kind: 'aux' };
 
 interface Props {
   guid: string;
@@ -25,7 +30,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
   const { tree, can } = useSession();
   const [obj, setObj] = useState<DirObject | null>(null);
   const [etag, setEtag] = useState('');
-  const [rights, setRights] = useState<Rights | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [allowed, setAllowed] = useState<string[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [tab, setTab] = useState<string | number>('attributes');
@@ -42,7 +47,6 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
       setObj(null);
       setError(e);
     });
-    tree.rights(guid).then(setRights).catch(() => setRights(null));
   }, [tree, guid]);
 
   useEffect(load, [load]);
@@ -60,12 +64,33 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
     setDialog(null);
     onChanged?.(o);
   };
+  /** Something changed through a tab: read the object again (new ETag, new values). */
+  const refreshed = () => {
+    tree.read(guid).then((r) => {
+      setObj(r.data);
+      setEtag(r.etag ?? '*');
+      onChanged?.(r.data);
+    }).catch(setError);
+  };
+  const user = isUser(obj);
+  const group = isGroup(obj);
+  const toggleDisabled = async () => {
+    setMenu(false);
+    try {
+      const a = await tree.account(obj.guid);
+      const r = await tree.updateAccount(obj.guid, a.etag ?? '*', { disabled: !a.data.disabled });
+      setNotice(r.data.disabled ? 'The account is now disabled.' : 'The account is now enabled.');
+      refreshed();
+    } catch (x) {
+      setError(x);
+    }
+  };
   const editor = can('editor');
   const attrs = Object.entries(obj.attributes).sort(([a], [b]) => a.localeCompare(b));
   const op = Object.fromEntries(Object.entries(obj.operational).map(([k, v]) => [k, scalar(v)]));
 
   return (
-    <>
+    <HeadingLevel.Provider value={headingLevel === 'h1' ? 'h2' : 'h3'}>
       <Flex justifyContent={{ default: 'justifyContentSpaceBetween' }} alignItems={{ default: 'alignItemsFlexStart' }} flexWrap={{ default: 'nowrap' }}>
         <FlexItem>
           <Title headingLevel={headingLevel}>{obj.name}</Title>
@@ -79,7 +104,10 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
             <Dropdown isOpen={menu} onOpenChange={setMenu} popperProps={{ position: 'right' }}
               toggle={(ref) => <MenuToggle ref={ref} variant="plain" aria-label="Actions" isExpanded={menu} onClick={() => setMenu(!menu)} icon={<EllipsisVIcon />} />}>
               <DropdownList>
+                {user && <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'password' }); }}>Set password</DropdownItem>}
+                {user && <DropdownItem onClick={toggleDisabled}>Enable or disable</DropdownItem>}
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'attr' }); }}>Edit an attribute</DropdownItem>
+                <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'aux' }); }}>Auxiliary classes</DropdownItem>
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'rename' }); }}>Rename</DropdownItem>
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'move' }); }}>Move</DropdownItem>
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'delete' }); }} isDanger>Delete</DropdownItem>
@@ -89,6 +117,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
         )}
       </Flex>
 
+      {notice && <Alert variant="success" isInline isPlain title={notice} actionClose={<AlertActionCloseButton onClose={() => setNotice(null)} />} />}
       <Tabs activeKey={tab} onSelect={(_e, k) => setTab(k)} aria-label="Object details" mountOnEnter>
         <Tab eventKey="attributes" title={<TabTitleText>Attributes</TabTitleText>}>
           <Table aria-label="Attributes" variant="compact">
@@ -116,6 +145,24 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
             </Tbody>
           </Table>
         </Tab>
+        {user && (
+          <Tab eventKey="account" title={<TabTitleText>Account</TabTitleText>}>
+            <AccountTab obj={obj} onChanged={refreshed} />
+          </Tab>
+        )}
+        {user && (
+          <Tab eventKey="groups" title={<TabTitleText>Groups</TabTitleText>}>
+            <UserGroupsTab obj={obj} onChanged={refreshed} />
+          </Tab>
+        )}
+        {group && (
+          <Tab eventKey="members" title={<TabTitleText>Members</TabTitleText>}>
+            <GroupMembersTab obj={obj} etag={etag} onChanged={refreshed} />
+          </Tab>
+        )}
+        <Tab eventKey="rights" title={<TabTitleText>Rights</TabTitleText>}>
+          <RightsTab obj={obj} etag={etag} onChanged={refreshed} />
+        </Tab>
         <Tab eventKey="identity" title={<TabTitleText>Identity</TabTitleText>}>
           <DescriptionList isHorizontal className="dc-tab-body">
             <Copy term="GUID" value={obj.guid} />
@@ -130,25 +177,17 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
             <Plain term="Revision" value={op.revision} />
           </DescriptionList>
         </Tab>
-        <Tab eventKey="rights" title={<TabTitleText>Your rights</TabTitleText>}>
-          {rights
-            ? (
-              <DescriptionList isHorizontal className="dc-tab-body">
-                <Plain term="On the object" value={rights.entry.join(', ') || 'none'} />
-                <Plain term="On all attributes" value={rights.allAttributes.join(', ') || 'none'} />
-              </DescriptionList>
-            )
-            : <Spinner size="md" aria-label="Loading rights" />}
-        </Tab>
       </Tabs>
 
       {dialog?.kind === 'attr' && <AttributeModal obj={obj} etag={etag} allowed={allowed} initial={dialog.attribute} onClose={() => setDialog(null)} onDone={done} />}
       {dialog?.kind === 'rename' && <RenameModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDone={done} />}
       {dialog?.kind === 'move' && <MoveModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDone={done} />}
+      {dialog?.kind === 'password' && <PasswordModal obj={obj} onClose={() => setDialog(null)} onDone={() => { setDialog(null); setNotice('Password set.'); refreshed(); }} />}
+      {dialog?.kind === 'aux' && <AuxClassModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDone={done} />}
       {dialog?.kind === 'delete' && (
         <DeleteModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDeleted={() => { setDialog(null); onChanged?.(null); }} />
       )}
-    </>
+    </HeadingLevel.Provider>
   );
 }
 
