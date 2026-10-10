@@ -4,11 +4,16 @@ An eDirectory and Identity Manager console built on the
 [DirXMLDev](https://github.com/PointBlueTechnology/DirXMLDev) core. The design is
 `../DESIGN-directory-console.md`; the Phase 1 spike results are `../SPIKES-phase1.md`.
 
-Status: Phase 2, directory objects, on top of Phase 1's service skeleton (bootstrap mode, the
+Status: Phases 2, 2b and 4 (directory objects, object tasks, Identity Manager) on top of Phase 1's service skeleton (bootstrap mode, the
 console's own TLS, the trust store with probe and import, sealed versioned configuration, the
 hash-chained audit log, direct and contextless sign-in with roles, and the container). The web UI
-covers sign-in, browsing, object details and editing, search and the schema; setup and the
-administration pages still use the API.
+covers sign-in, browsing, object details and editing, account and membership tasks, search, the
+schema, and Identity Manager (driver sets, drivers, jobs, associations, cache, log level, passwords);
+setup and the administration pages still use the API.
+
+Identity Manager needs the engine's jars (`dirxml_misc.jar`, `dirxml.jar`, `ldap.jar` from an IDM
+install), which are not redistributable: mount them at `/engine` (see `compose.yaml`). Without them
+the console runs and the Identity Manager page says why.
 
 | Module | What |
 |---|---|

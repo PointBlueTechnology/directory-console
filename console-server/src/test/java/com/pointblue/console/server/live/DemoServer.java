@@ -4,6 +4,7 @@ import com.pointblue.console.server.data.DataDir;
 import com.pointblue.console.server.http.DemoAccess;
 import com.pointblue.console.server.http.Server;
 import com.pointblue.console.server.http.ServerClient;
+import com.pointblue.console.server.idm.FakeEngine;
 import com.pointblue.console.server.ldap.FakeEdir;
 import com.pointblue.console.server.tls.Certs;
 import com.pointblue.dirxml.dev.json.Json;
@@ -40,6 +41,9 @@ public final class DemoServer {
             "dn: ou=Engineering,ou=Users,o=acme\nobjectClass: organizationalUnit\nou: Engineering",
             "dn: ou=Groups,o=acme\nobjectClass: organizationalUnit\nou: Groups",
             "dn: cn=Driver Set,o=system\nobjectClass: DirXML-DriverSet\ncn: Driver Set",
+            "dn: cn=Active Directory,cn=Driver Set,o=system\nobjectClass: DirXML-Driver\ncn: Active Directory\nDirXML-TraceLevel: 3",
+            "dn: cn=LDAP\\, primary,cn=Driver Set,o=system\nobjectClass: DirXML-Driver\ncn: LDAP, primary",
+            "dn: cn=Delimited Text,cn=Driver Set,o=system\nobjectClass: DirXML-Driver\ncn: Delimited Text",
             "dn: cn=Viewers,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Viewers\nmember: cn=viewer,ou=Users,o=acme",
             "dn: cn=viewer,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: viewer\nsn: Viewer\nuserPassword: viewer-pw\ngroupMembership: cn=Viewers,ou=Groups,o=acme",
             "dn: cn=Smith\\, John,ou=Sales,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: Smith, John\nsn: Smith\ngivenName: John\nmail: jsmith@acme.example\ntitle: Account manager\ngroupMembership: cn=Viewers,ou=Groups,o=acme",
@@ -56,6 +60,17 @@ public final class DemoServer {
         FakeEdir edir = new FakeEdir(ldif.toArray(new String[0]));
         Path data = Files.createTempDirectory("dc-demo-");
         Server server = new Server(new DataDir(data), port, "https://localhost:" + port, new PrintStream(System.out));
+        // Identity Manager needs the engine's jars on the class path (DirXMLDev's lib); without them the IDM page says why
+        try {
+            Class.forName("com.novell.nds.dirxml.ldap.GetDriverStateRequest");
+            FakeEngine engine = new FakeEngine(edir);
+            engine.states.put("cn=activedirectory,cn=driverset,o=system", com.pointblue.dirxml.dev.deploy.Vault.STATE_RUNNING);
+            engine.startOptions.put("cn=activedirectory,cn=driverset,o=system", com.pointblue.dirxml.dev.deploy.Vault.START_AUTO);
+            engine.startOptions.put("cn=delimitedtext,cn=driverset,o=system", com.pointblue.dirxml.dev.deploy.Vault.START_DISABLED);
+            DemoAccess.engines(server, engine.engines());
+        } catch (ClassNotFoundException e) {
+            DemoAccess.engines(server, com.pointblue.console.server.idm.Engines.none("the Identity Manager engine jars are not on the demo's class path"));
+        }
         server.start();
         HttpClient http = ServerClient.trusting(server);
         String base = "https://localhost:" + port;

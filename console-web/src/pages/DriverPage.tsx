@@ -1,0 +1,299 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Alert, Breadcrumb, BreadcrumbItem, Button, Card, CardBody, DescriptionList, DescriptionListDescription, DescriptionListGroup,
+  DescriptionListTerm, Flex, FlexItem, Form, FormGroup, FormSelect, FormSelectOption, PageSection, Spinner, Tab, Tabs, TabTitleText,
+  TextInput, Title, ToggleGroup, ToggleGroupItem,
+} from '@patternfly/react-core';
+import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
+import { type Job, idm } from '../api';
+import { useSession } from '../session';
+import { useHeading } from '../heading';
+import { linkProps } from '../router';
+import { ProblemAlert } from '../components/Problem';
+import { useAreYouSure, useConfirmed } from '../components/Confirm';
+import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../components/IdmParts';
+
+type Idm = ReturnType<typeof idm>;
+type Status = Record<string, unknown> & { dn: string; name: string; state?: string; startOption?: string; driverSetDn?: string; ancestors?: { dn: string; name: string }[] };
+
+const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+
+/** One driver: state and lifecycle, and the operations an IDM administrator runs on it day to day. */
+export function DriverPage({ guid }: { guid: string }) {
+  const { me } = useSession();
+  const api = useMemo(() => idm(me.directory), [me.directory]);
+  const [status, setStatus] = useState<Status | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [tab, setTab] = useState<string | number>('overview');
+  const load = useCallback(() => { setError(null); api.driver(guid).then((s) => setStatus(s as Status)).catch(setError); }, [api, guid]);
+  useEffect(load, [load]);
+
+  if (!status) {
+    return <PageSection>{error ? <ProblemAlert error={error} onRetry={load} /> : <Spinner aria-label="Loading the driver" />}</PageSection>;
+  }
+  return (
+    <PageSection isFilled>
+      <Breadcrumb>
+        <BreadcrumbItem><a {...linkProps('/idm')}>Identity Manager</a></BreadcrumbItem>
+        <BreadcrumbItem isActive>{status.name}</BreadcrumbItem>
+      </Breadcrumb>
+      <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsMd' }} className="dc-tab-body">
+        <FlexItem><Title headingLevel="h1">{status.name}</Title></FlexItem>
+        {status.state && <FlexItem><StateLabel state={status.state} /></FlexItem>}
+      </Flex>
+      <div className="dc-subtle dc-mono">{status.dn}</div>
+      <Card className="dc-tab-body">
+        <CardBody>
+          <Tabs activeKey={tab} onSelect={(_e, k) => setTab(k)} aria-label="Driver" mountOnEnter unmountOnExit>
+            <Tab eventKey="overview" title={<TabTitleText>Overview</TabTitleText>}><Overview api={api} guid={guid} status={status} onChanged={load} /></Tab>
+            <Tab eventKey="jobs" title={<TabTitleText>Jobs</TabTitleText>}>
+              <JobsTable api={api} load={() => api.driverPart<{ jobs: Job[] }>(guid, 'jobs')} />
+            </Tab>
+            <Tab eventKey="associations" title={<TabTitleText>Associations</TabTitleText>}><Associations api={api} guid={guid} /></Tab>
+            <Tab eventKey="cache" title={<TabTitleText>Cache</TabTitleText>}><Cache api={api} guid={guid} onChanged={load} /></Tab>
+            <Tab eventKey="health" title={<TabTitleText>Health</TabTitleText>}><Health api={api} guid={guid} /></Tab>
+            <Tab eventKey="log" title={<TabTitleText>Log level</TabTitleText>}>
+              <LogLevelSave api={api} guid={guid} />
+            </Tab>
+            <Tab eventKey="passwords" title={<TabTitleText>Passwords</TabTitleText>}><PasswordsPanel api={api} kind="drivers" guid={guid} /></Tab>
+            <Tab eventKey="password-sync" title={<TabTitleText>Password sync</TabTitleText>}><PasswordSync api={api} guid={guid} /></Tab>
+          </Tabs>
+        </CardBody>
+      </Card>
+    </PageSection>
+  );
+}
+
+function Overview({ api, guid, status, onChanged }: { api: Idm; guid: string; status: Status; onChanged: () => void }) {
+  const level = useHeading();
+  const { can } = useSession();
+  const { run, dialog } = useConfirmed();
+  const sure = useAreYouSure();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const running = (status.state ?? '').toLowerCase() === 'running';
+  const option = (status.startOption ?? '').toLowerCase();
+  const current = option.includes('auto') ? 'auto' : option.includes('manual') ? 'manual' : option.includes('disabled') ? 'disabled' : '';
+
+  const act = async (what: string, op: (c?: string) => Promise<{ before: string; after: string; error?: string }>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await run(op);
+      setNotice(`${what}: ${r.before} → ${r.after}${r.error ? ` (${r.error})` : ''}`);
+      onChanged();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rows: [string, unknown][] = [
+    ['Starts', status.startOption], ['Cache', status.cacheSize], ['Unprocessed', status.unprocessedSize],
+    ['Trace level', status.traceLevel], ['Trace file', status.traceFile],
+  ];
+  return (
+    <div className="dc-tab-body">
+      {can('operator') && (
+        <Flex spaceItems={{ default: 'spaceItemsSm' }} alignItems={{ default: 'alignItemsCenter' }}>
+          {running ? (
+            <>
+              <FlexItem><Button variant="secondary" isDisabled={busy} onClick={() => act('Restart', (c) => api.lifecycle(guid, 'restart', c))}>Restart</Button></FlexItem>
+              <FlexItem><Button variant="danger" isDisabled={busy} onClick={() => sure.ask(`Stop ${status.name}?`, 'Events for this driver queue in its cache until it starts again.', 'Stop',
+                () => act('Stop', (c) => api.lifecycle(guid, 'stop', c)))}>Stop</Button></FlexItem>
+            </>
+          ) : <FlexItem><Button variant="primary" isDisabled={busy} onClick={() => act('Start', (c) => api.lifecycle(guid, 'start', c))}>Start</Button></FlexItem>}
+          <FlexItem>
+            <ToggleGroup aria-label="Start option">
+              {(['auto', 'manual', 'disabled'] as const).map((o) => (
+                <ToggleGroupItem key={o} text={o === 'auto' ? 'Automatic' : o === 'manual' ? 'Manual' : 'Disabled'} isSelected={current === o} isDisabled={busy}
+                  onChange={() => current !== o && act('Start option', (c) => api.startOption(guid, o, c))} />
+              ))}
+            </ToggleGroup>
+          </FlexItem>
+          {busy && <FlexItem><Spinner size="md" aria-label="Working" /></FlexItem>}
+        </Flex>
+      )}
+      {notice && <Alert component={level} variant="success" isInline isPlain title={notice} />}
+      <ProblemAlert error={error} />
+      <DescriptionList isHorizontal isCompact className="dc-tab-body">
+        {rows.map(([k, v]) => (
+          <DescriptionListGroup key={k}><DescriptionListTerm>{k}</DescriptionListTerm><DescriptionListDescription>{show(v)}</DescriptionListDescription></DescriptionListGroup>
+        ))}
+        <DescriptionListGroup>
+          <DescriptionListTerm>Driver set</DescriptionListTerm>
+          <DescriptionListDescription className="dc-mono">{show(status.driverSetDn)}</DescriptionListDescription>
+        </DescriptionListGroup>
+      </DescriptionList>
+      {can('operator') && <Resync api={api} guid={guid} />}
+      {dialog}
+      {sure.dialog}
+    </div>
+  );
+}
+
+function Resync({ api, guid }: { api: Idm; guid: string }) {
+  const level = useHeading();
+  const { run, dialog } = useConfirmed();
+  const [since, setSince] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  return (
+    <Form className="dc-tab-body" onSubmit={async (e) => {
+      e.preventDefault();
+      setError(null);
+      try {
+        await run((c) => api.resync(guid, since ? new Date(since).toISOString() : null, c));
+        setNotice('Resynchronisation requested.');
+      } catch (x) {
+        setError(x);
+      }
+    }}>
+      <Title headingLevel="h2" size="md">Resynchronise</Title>
+      <FormGroup label="Only objects changed since (optional)" fieldId="resync-since">
+        <TextInput id="resync-since" type="datetime-local" value={since} onChange={(_e, v) => setSince(v)} />
+      </FormGroup>
+      {notice && <Alert component={level} variant="success" isInline isPlain title={notice} />}
+      <ProblemAlert error={error} />
+      <div><Button type="submit" variant="secondary">Resynchronise</Button></div>
+      {dialog}
+    </Form>
+  );
+}
+
+type Assoc = { counts?: Record<string, number>; total?: number; listed?: number; objects?: { dn: string; state: string; value: string }[] };
+
+function Associations({ api, guid }: { api: Idm; guid: string }) {
+  const [state, setState] = useState('');
+  const [data, setData] = useState<Assoc | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  useEffect(() => {
+    setData(null);
+    api.driverPart<Assoc>(guid, `associations?limit=200${state ? `&state=${state}` : ''}`).then(setData).catch(setError);
+  }, [api, guid, state]);
+  return (
+    <div className="dc-tab-body">
+      <ProblemAlert error={error} />
+      <FormGroup label="State" fieldId="assoc-state">
+        <FormSelect id="assoc-state" value={state} onChange={(_e, v) => setState(v)}>
+          <FormSelectOption value="" label="All" />
+          {['processed', 'pending', 'disabled', 'manual', 'migrate'].map((s) => (
+            <FormSelectOption key={s} value={s} label={`${s[0].toUpperCase()}${s.slice(1)}${data?.counts?.[s] !== undefined ? ` (${data.counts[s]})` : ''}`} />
+          ))}
+        </FormSelect>
+      </FormGroup>
+      {!data ? <Spinner size="md" aria-label="Loading" /> : (
+        <>
+          <p className="dc-subtle">{data.listed ?? 0} shown of {data.total ?? 0}.</p>
+          {(data.objects ?? []).length > 0 && <Table aria-label="Associations" variant="compact">
+            <Thead><Tr><Th>Object</Th><Th>State</Th><Th>Association</Th></Tr></Thead>
+            <Tbody>
+              {(data.objects ?? []).map((o) => (
+                <Tr key={o.dn + o.value}><Td dataLabel="Object" className="dc-mono">{o.dn}</Td><Td dataLabel="State">{o.state}</Td><Td dataLabel="Association" className="dc-mono">{o.value}</Td></Tr>
+              ))}
+            </Tbody>
+          </Table>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Cache({ api, guid, onChanged }: { api: Idm; guid: string; onChanged: () => void }) {
+  const level = useHeading();
+  const { can } = useSession();
+  const { run, dialog } = useConfirmed();
+  const sure = useAreYouSure();
+  const [page, setPage] = useState<{ empty: boolean; xds: string } | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const load = useCallback(() => { setError(null); api.driverPart<{ empty: boolean; xds: string }>(guid, 'cache?count=20').then(setPage).catch(setError); }, [api, guid]);
+  useEffect(load, [load]);
+  return (
+    <div className="dc-tab-body">
+      {can('operator') && (
+        <div><Button variant="danger" onClick={() => sure.ask('Clear the cache?', 'Every event waiting in this driver\'s cache is discarded; the connected system will not receive them.', 'Clear', async () => {
+          setError(null);
+          try {
+            await run((c) => api.clearCache(guid, c));
+            setNotice('Cache cleared.');
+            onChanged();
+            load();
+          } catch (x) {
+            setError(x);
+          }
+        })}>Clear the cache</Button></div>
+      )}
+      {notice && <Alert component={level} variant="success" isInline isPlain title={notice} />}
+      <ProblemAlert error={error} />
+      {page && (page.empty ? <p>The cache is empty.</p> : (
+        <>
+          <p className="dc-subtle">The first 20 events, as XDS.</p>
+          <pre className="dc-mono dc-pre">{page.xds}</pre>
+        </>
+      ))}
+      {!page && !error && <Spinner size="md" aria-label="Loading" />}
+      {dialog}
+      {sure.dialog}
+    </div>
+  );
+}
+
+type HealthData = { states?: unknown[]; configured?: { state: string; conditionGroups: unknown; actions: unknown }[]; jobs?: unknown[] };
+
+function Health({ api, guid }: { api: Idm; guid: string }) {
+  const [h, setH] = useState<HealthData | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  useEffect(() => { api.driverPart<HealthData>(guid, 'health').then(setH).catch(setError); }, [api, guid]);
+  if (!h) {
+    return error ? <ProblemAlert error={error} /> : <Spinner size="md" aria-label="Loading" />;
+  }
+  return (
+    <div className="dc-tab-body">
+      <DescriptionList isHorizontal isCompact>
+        <DescriptionListGroup><DescriptionListTerm>Recent states</DescriptionListTerm><DescriptionListDescription>{(h.states ?? []).length ? (h.states ?? []).map((s, i) => <div key={i}>{show(s)}</div>) : 'None recorded'}</DescriptionListDescription></DescriptionListGroup>
+        <DescriptionListGroup><DescriptionListTerm>Health jobs</DescriptionListTerm><DescriptionListDescription>{(h.jobs ?? []).length ? (h.jobs ?? []).map((s, i) => <div key={i}>{show(s)}</div>) : 'None'}</DescriptionListDescription></DescriptionListGroup>
+      </DescriptionList>
+      {(h.configured ?? []).length > 0 && (
+        <Table aria-label="Configured health states" variant="compact">
+          <Thead><Tr><Th>State</Th><Th>Conditions</Th><Th>Actions</Th></Tr></Thead>
+          <Tbody>
+            {(h.configured ?? []).map((c) => (
+              <Tr key={c.state}><Td dataLabel="State">{c.state}</Td><Td dataLabel="Conditions">{show(c.conditionGroups)}</Td><Td dataLabel="Actions">{show(c.actions)}</Td></Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+function LogLevelSave({ api, guid }: { api: Idm; guid: string }) {
+  const { run, dialog } = useConfirmed();
+  return (
+    <>
+      <LogLevelPanel load={() => api.driverPart(guid, 'log-level')} save={(level) => run((c) => api.logLevel(guid, level, null, c))} />
+      {dialog}
+    </>
+  );
+}
+
+function PasswordSync({ api, guid }: { api: Idm; guid: string }) {
+  const [p, setP] = useState<{ driverSetTimeout?: unknown; settings?: { name?: string; value?: unknown }[] } | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  useEffect(() => { api.driverPart<typeof p>(guid, 'password-sync').then(setP).catch(setError); }, [api, guid]);
+  if (!p) {
+    return error ? <ProblemAlert error={error} /> : <Spinner size="md" aria-label="Loading" />;
+  }
+  return (
+    <DescriptionList isHorizontal isCompact className="dc-tab-body">
+      <DescriptionListGroup><DescriptionListTerm>Driver set timeout</DescriptionListTerm><DescriptionListDescription>{show(p.driverSetTimeout)}</DescriptionListDescription></DescriptionListGroup>
+      {(p.settings ?? []).length === 0 && <DescriptionListGroup><DescriptionListTerm>Settings</DescriptionListTerm><DescriptionListDescription>None reported</DescriptionListDescription></DescriptionListGroup>}
+      {(p.settings ?? []).map((s, i) => (
+        <DescriptionListGroup key={i}><DescriptionListTerm>{s.name ?? `Setting ${i + 1}`}</DescriptionListTerm><DescriptionListDescription>{show(s.value ?? s)}</DescriptionListDescription></DescriptionListGroup>
+      ))}
+    </DescriptionList>
+  );
+}

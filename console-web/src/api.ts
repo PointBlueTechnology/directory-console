@@ -322,3 +322,76 @@ export function isUser(o: Pick<Row, 'objectClasses'>): boolean {
 export function isGroup(o: Pick<Row, 'objectClasses'>): boolean {
   return o.objectClasses.some((c) => GROUP_CLASSES.includes(c.toLowerCase()) || c.toLowerCase() === 'dynamicgroupaux');
 }
+
+// ---- Identity Manager (Phase 4) ----------------------------------------------------------------
+
+export interface IdmStatus {
+  available: boolean;
+  problem?: string;
+  engineVersion?: string | null;
+}
+
+export interface DriverRow {
+  guid: string | null;
+  name: string;
+  dn: string;
+  state: string;
+  startOption: string;
+  cacheSize: string;
+  unprocessedSize: string;
+  traceLevel: string | null;
+}
+
+export interface DriverSet extends Identity {
+  drivers: DriverRow[];
+}
+
+export interface Job {
+  name: string;
+  dn: string;
+  owner: string;
+  driver: string | null;
+  javaClass: string;
+  disabled: boolean;
+  servers: number;
+  running: string;
+  config: string;
+  scheduled: string;
+  nextRun: string;
+}
+
+export type PasswordKind = 'named' | 'remote-loader' | 'key' | 'keystore';
+
+/** Identity Manager for one directory. {@code confirm}: the directory's name, typed for a production directory. */
+export function idm(id: string) {
+  const base = `/api/v2/trees/${encodeURIComponent(id)}/idm`;
+  const h = (confirm?: string): Record<string, string> => (confirm ? { 'X-Confirm-Directory': confirm } : {});
+  const get = <T>(p: string) => request<T>('GET', base + p).then((r) => r.data);
+  return {
+    status: () => get<IdmStatus>(''),
+    driverSets: () => get<{ items: Row[] }>('/driversets').then((r) => r.items),
+    driverSet: (guid: string) => get<DriverSet>(`/driversets/${guidPath(guid)}`),
+    setPart: <T>(guid: string, part: 'activation' | 'servers' | 'jobs' | 'log-level' | 'passwords') => get<T>(`/driversets/${guidPath(guid)}/${part}`),
+    driver: (guid: string) => get<Record<string, unknown> & Identity>(`/drivers/${guidPath(guid)}`),
+    driverPart: <T>(guid: string, part: string) => get<T>(`/drivers/${guidPath(guid)}/${part}`),
+    lifecycle: (guid: string, action: 'start' | 'stop' | 'restart', confirm?: string) =>
+      request<{ before: string; after: string; seen: string; error?: string }>('POST', `${base}/drivers/${guidPath(guid)}/${action}`, {}, h(confirm)).then((r) => r.data),
+    startOption: (guid: string, option: 'auto' | 'manual' | 'disabled', confirm?: string) =>
+      request<{ before: string; after: string }>('PUT', `${base}/drivers/${guidPath(guid)}/start-option`, { option }, h(confirm)).then((r) => r.data),
+    logLevel: (guid: string, level: number | null, events: number[] | null, confirm?: string) =>
+      request<unknown>('PUT', `${base}/drivers/${guidPath(guid)}/log-level`, { level, events }, h(confirm)).then((r) => r.data),
+    clearCache: (guid: string, confirm?: string) => request<unknown>('POST', `${base}/drivers/${guidPath(guid)}/cache/clear`, {}, h(confirm)).then((r) => r.data),
+    resync: (guid: string, since: string | null, confirm?: string) =>
+      request<unknown>('POST', `${base}/drivers/${guidPath(guid)}/resync`, since ? { since } : {}, h(confirm)).then((r) => r.data),
+    job: (guid: string, action: 'start' | 'abort', confirm?: string) =>
+      request<unknown>('POST', `${base}/jobs/${guidPath(guid)}/${action}`, {}, h(confirm)).then((r) => r.data),
+    passwords: (kind: 'drivers' | 'driversets', guid: string) => get<{ named: string[] }>(`/${kind}/${guidPath(guid)}/passwords`),
+    setPassword: (kind: 'drivers' | 'driversets', guid: string, body: { kind: PasswordKind; name?: string; displayName?: string; value: string }, confirm?: string) =>
+      request<void>('POST', `${base}/${kind}/${guidPath(guid)}/passwords`, body, h(confirm)),
+    removePassword: (kind: 'drivers' | 'driversets', guid: string, body: { kind: PasswordKind; name?: string }, confirm?: string) =>
+      request<void>('DELETE', `${base}/${kind}/${guidPath(guid)}/passwords`, body, h(confirm)),
+    objectAssociations: (guid: string) => get<Record<string, unknown>>(`/objects/${guidPath(guid)}/associations`),
+  };
+}
+
+export type Idm = ReturnType<typeof idm>;

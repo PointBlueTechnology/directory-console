@@ -163,7 +163,7 @@ public final class FakeEngine implements Operate.Engine {
 
     @Override
     public int engineVersion() {
-        return 0;
+        return 0x48070003; // 4.8.7.0 build 3, as ig4 reports
     }
 
     @Override

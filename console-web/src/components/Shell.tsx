@@ -12,12 +12,15 @@ import { Search } from '../pages/Search';
 import { SchemaPage } from '../pages/SchemaPage';
 import { ObjectPage } from '../pages/ObjectPage';
 import { NotFound } from '../pages/NotFound';
+import { IdmPage } from '../pages/IdmPage';
+import { DriverPage } from '../pages/DriverPage';
 import { ErrorBoundary } from './ErrorBoundary';
 
 const NAV = [
   { to: '/browse', label: 'Browse' },
   { to: '/search', label: 'Search' },
   { to: '/schema', label: 'Schema' },
+  { to: '/idm', label: 'Identity Manager' },
 ];
 
 export function Shell() {
@@ -117,6 +120,17 @@ function route(path: string) {
   m = match('/schema/:kind/:name', path);
   if (m && (m.kind === 'classes' || m.kind === 'attributes')) {
     return <SchemaPage kind={m.kind} name={m.name} />;
+  }
+  if (path === '/idm') {
+    return <IdmPage />;
+  }
+  m = match('/idm/driversets/:guid', path);
+  if (m) {
+    return <IdmPage driverSet={m.guid} />;
+  }
+  m = match('/idm/drivers/:guid', path);
+  if (m) {
+    return <DriverPage guid={m.guid} />;
   }
   return <NotFound />;
 }

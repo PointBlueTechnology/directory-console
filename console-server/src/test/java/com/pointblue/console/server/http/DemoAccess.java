@@ -16,4 +16,8 @@ public final class DemoAccess {
             dirs.keySet().forEach(id -> Json.asMap(dirs.get(id)).put("roles", List.of(Map.of("group", "cn=Viewers,ou=Groups,o=acme", "role", "viewer"))));
         });
     }
+
+    public static void engines(Server server, com.pointblue.console.server.idm.Engines engines) {
+        server.login.engines(engines);
+    }
 }

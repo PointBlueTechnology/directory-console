@@ -118,3 +118,15 @@
 .dc-narrow {
   max-width: 10rem;
 }
+
+.dc-gap-right {
+  margin-inline-end: var(--pf-t--global--spacer--md);
+}
+
+.dc-pre {
+  white-space: pre-wrap;
+  max-height: 24rem;
+  overflow: auto;
+  background: var(--pf-t--global--background--color--secondary--default);
+  padding: var(--pf-t--global--spacer--sm);
+}
