@@ -4,12 +4,20 @@ An eDirectory and Identity Manager console built on the
 [DirXMLDev](https://github.com/PointBlueTechnology/DirXMLDev) core. The design is
 `../DESIGN-directory-console.md`; the Phase 1 spike results are `../SPIKES-phase1.md`.
 
-Status: Phases 2, 2b and 4 (directory objects, object tasks, Identity Manager) on top of Phase 1's service skeleton (bootstrap mode, the
+Status: Phases 2, 2b, 3 and 4 (directory objects, object tasks, single sign-on with scoped roles
+and task presets, Identity Manager) on top of Phase 1's service skeleton (bootstrap mode, the
 console's own TLS, the trust store with probe and import, sealed versioned configuration, the
 hash-chained audit log, direct and contextless sign-in with roles, and the container). The web UI
 covers sign-in, browsing, object details and editing, account and membership tasks, search, the
-schema, and Identity Manager (driver sets, drivers, jobs, associations, cache, log level, passwords);
-setup and the administration pages still use the API.
+schema, Identity Manager (driver sets, drivers, jobs, associations, cache, log level, passwords), and
+for admins a Settings page (role mappings with container scopes, task presets, single sign-on);
+setup and the remaining administration (trust, configuration history, audit export) still use the API.
+
+Single sign-on is OpenID Connect (code + PKCE) per directory. The console finds the person's
+eDirectory object as the directory's service account and then acts as them with the RFC 4370
+proxied-authorization control, so eDirectory applies their own rights; the service account needs
+Supervisor over exactly those people (DESIGN section 7.3). Identity Manager operations still need a
+direct sign-in.
 
 Identity Manager needs the engine's jars (`dirxml_misc.jar`, `dirxml.jar`, `ldap.jar` from an IDM
 install), which are not redistributable: mount them at `/engine` (see `compose.yaml`). Without them

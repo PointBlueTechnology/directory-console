@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, AlertActionCloseButton, Bullseye, Button, ClipboardCopy, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm,
-  Dropdown, DropdownItem, DropdownList, Flex, FlexItem, Label, LabelGroup, MenuToggle, Spinner, Tab, Tabs, TabTitleText, Title,
+  Divider, Dropdown, DropdownGroup, DropdownItem, DropdownList, Flex, FlexItem, Label, LabelGroup, MenuToggle, Spinner, Tab, Tabs, TabTitleText, Title,
 } from '@patternfly/react-core';
 import { EllipsisVIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { ApiError, type DirObject, isGroup, isUser } from '../api';
+import { ApiError, type DirObject, type Preset, isGroup, isUser, presets } from '../api';
+import { PresetModal } from './PresetModal';
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
 import { ValueView } from './ValueView';
@@ -16,7 +17,7 @@ import { RightsTab } from './RightsTab';
 import { HeadingLevel } from '../heading';
 
 type Dialog = null | { kind: 'attr'; attribute?: string } | { kind: 'rename' } | { kind: 'move' } | { kind: 'delete' }
-  | { kind: 'password' } | { kind: 'aux' };
+  | { kind: 'password' } | { kind: 'aux' } | { kind: 'preset'; preset: Preset };
 
 interface Props {
   guid: string;
@@ -27,7 +28,8 @@ interface Props {
 
 /** One object: its attributes, identity and the signed-in person's rights, with the editing actions. */
 export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
-  const { tree, can } = useSession();
+  const { tree, canAt, me } = useSession();
+  const [tasks, setTasks] = useState<Preset[]>([]);
   const [obj, setObj] = useState<DirObject | null>(null);
   const [etag, setEtag] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
@@ -50,6 +52,14 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
   }, [tree, guid]);
 
   useEffect(load, [load]);
+  const presetIds = (obj?.allowed?.presets ?? []).join(',');
+  useEffect(() => {
+    if (!presetIds) {
+      setTasks([]);
+      return;
+    }
+    presets(me.directory).list().then((all) => setTasks(all.filter((p) => presetIds.split(',').includes(p.id)))).catch(() => setTasks([]));
+  }, [me.directory, presetIds]);
 
   if (error) {
     return <ProblemAlert error={error} onRetry={load} title={error instanceof ApiError && error.status === 404 ? 'Object not found' : undefined} />;
@@ -85,7 +95,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
       setError(x);
     }
   };
-  const editor = can('editor');
+  const editor = obj.allowed ? obj.allowed.edit : canAt('editor', obj.dn);
   const attrs = Object.entries(obj.attributes).sort(([a], [b]) => a.localeCompare(b));
   const op = Object.fromEntries(Object.entries(obj.operational).map(([k, v]) => [k, scalar(v)]));
 
@@ -99,11 +109,21 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
             {obj.container && <Label>container</Label>}
           </LabelGroup>
         </FlexItem>
-        {editor && (
+        {(editor || tasks.length > 0) && (
           <FlexItem>
-            <Dropdown isOpen={menu} onOpenChange={setMenu} popperProps={{ position: 'right' }}
+            <Dropdown isOpen={menu} onOpenChange={setMenu} popperProps={{ position: 'right', appendTo: 'inline' }}
               toggle={(ref) => <MenuToggle ref={ref} variant="plain" aria-label="Actions" isExpanded={menu} onClick={() => setMenu(!menu)} icon={<EllipsisVIcon />} />}>
-              <DropdownList>
+              {tasks.length > 0 && (
+                <DropdownGroup label="Tasks" labelHeadingLevel={headingLevel === 'h1' ? 'h2' : 'h3'}>
+                  <DropdownList>
+                    {tasks.map((p) => (
+                      <DropdownItem key={p.id} description={p.description} onClick={() => { setMenu(false); setDialog({ kind: 'preset', preset: p }); }}>{p.name}</DropdownItem>
+                    ))}
+                  </DropdownList>
+                </DropdownGroup>
+              )}
+              {tasks.length > 0 && editor && <Divider component="li" />}
+              {editor && <DropdownList>
                 {user && <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'password' }); }}>Set password</DropdownItem>}
                 {user && <DropdownItem onClick={toggleDisabled}>Enable or disable</DropdownItem>}
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'attr' }); }}>Edit an attribute</DropdownItem>
@@ -111,7 +131,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'rename' }); }}>Rename</DropdownItem>
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'move' }); }}>Move</DropdownItem>
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'delete' }); }} isDanger>Delete</DropdownItem>
-              </DropdownList>
+              </DropdownList>}
             </Dropdown>
           </FlexItem>
         )}
@@ -183,6 +203,10 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
       {dialog?.kind === 'rename' && <RenameModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDone={done} />}
       {dialog?.kind === 'move' && <MoveModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDone={done} />}
       {dialog?.kind === 'password' && <PasswordModal obj={obj} onClose={() => setDialog(null)} onDone={() => { setDialog(null); setNotice('Password set.'); refreshed(); }} />}
+      {dialog?.kind === 'preset' && (
+        <PresetModal obj={obj} preset={dialog.preset} onClose={() => setDialog(null)}
+          onDone={(changed) => { setDialog(null); setNotice(changed.length ? `${dialog.preset.name}: done.` : `${dialog.preset.name}: nothing to change.`); refreshed(); }} />
+      )}
       {dialog?.kind === 'aux' && <AuxClassModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDone={done} />}
       {dialog?.kind === 'delete' && (
         <DeleteModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDeleted={() => { setDialog(null); onChanged?.(null); }} />

@@ -17,7 +17,7 @@ type Kind = 'all' | 'containers' | 'leaves';
 
 /** The tree on the left, the open container's contents on the right, an object's details in a drawer. */
 export function Browser({ container }: { container?: string }) {
-  const { tree, can } = useSession();
+  const { tree, canAt } = useSession();
   const { query } = useLocation();
   const selected = query.get('object');
   const [here, setHere] = useState<DirObject | null>(null);
@@ -124,7 +124,7 @@ export function Browser({ container }: { container?: string }) {
                       <SearchInput placeholder="Go to a name" aria-label="Go to the first name at or after" value={goTo}
                         onChange={(_e, v) => setGoTo(v)} onSearch={(_e, v) => jump(v)} onClear={() => { setGoTo(''); setHighlight(null); }} />
                     </ToolbarItem>
-                    {can('editor') && here && (
+                    {here && canAt('editor', here.dn) && (
                       <ToolbarItem>
                         <Button variant="secondary" icon={<PlusIcon />} onClick={() => setCreating(true)}>New object</Button>
                       </ToolbarItem>

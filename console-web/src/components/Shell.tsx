@@ -14,17 +14,21 @@ import { ObjectPage } from '../pages/ObjectPage';
 import { NotFound } from '../pages/NotFound';
 import { IdmPage } from '../pages/IdmPage';
 import { DriverPage } from '../pages/DriverPage';
+import { SettingsPage } from '../pages/SettingsPage';
 import { ErrorBoundary } from './ErrorBoundary';
 
-const NAV = [
+const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>) => boolean }[] = [
   { to: '/browse', label: 'Browse' },
   { to: '/search', label: 'Search' },
   { to: '/schema', label: 'Schema' },
-  { to: '/idm', label: 'Identity Manager' },
+  // a person with task presets only has no role: Identity Manager is not for them
+  { to: '/idm', label: 'Identity Manager', show: (s) => s.me.roles.length > 0 },
+  { to: '/settings', label: 'Settings', show: (s) => s.can('admin') },
 ];
 
 export function Shell() {
-  const { me, signOut } = useSession();
+  const sessionState = useSession();
+  const { me, signOut } = sessionState;
   const { path } = useLocation();
   const [userOpen, setUserOpen] = useState(false);
   const [dark, setDark] = useDarkTheme();
@@ -58,7 +62,7 @@ export function Shell() {
                 </ToggleGroup>
               </ToolbarItem>
               <ToolbarItem>
-                <Dropdown isOpen={userOpen} onOpenChange={setUserOpen} popperProps={{ position: 'right' }}
+                <Dropdown isOpen={userOpen} onOpenChange={setUserOpen} popperProps={{ position: 'right', appendTo: 'inline' }}
                   toggle={(ref) => (
                     <MenuToggle ref={ref} variant="plainText" icon={<UserIcon />} isExpanded={userOpen} onClick={() => setUserOpen(!userOpen)}>
                       {me.name}
@@ -82,7 +86,7 @@ export function Shell() {
       <PageSidebarBody>
         <Nav aria-label="Main">
           <NavList>
-            {NAV.map((n) => (
+            {NAV.filter((n) => !n.show || n.show(sessionState)).map((n) => (
               <NavItem key={n.to} to={n.to} isActive={path === n.to || path.startsWith(n.to + '/')}
                 onClick={(e) => { e.preventDefault(); navigate(n.to); }}>{n.label}</NavItem>
             ))}
@@ -120,6 +124,9 @@ function route(path: string) {
   m = match('/schema/:kind/:name', path);
   if (m && (m.kind === 'classes' || m.kind === 'attributes')) {
     return <SchemaPage kind={m.kind} name={m.name} />;
+  }
+  if (path === '/settings') {
+    return <SettingsPage />;
   }
   if (path === '/idm') {
     return <IdmPage />;

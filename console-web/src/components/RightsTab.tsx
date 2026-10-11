@@ -25,14 +25,14 @@ function trusteeOf(a: Acl) {
 
 /** Trustees of this object, its Inherited Rights Filter, and the effective rights of anyone on it. */
 export function RightsTab({ obj, etag, onChanged }: { obj: DirObject; etag: string; onChanged: () => void }) {
-  const { can } = useSession();
+  const { canAt } = useSession();
   const acls = (obj.attributes.ACL ?? []).filter(isAcl);
   const trustees = acls.filter((a) => trusteeOf(a) !== MASK);
   const masks = acls.filter((a) => trusteeOf(a) === MASK);
   const [dialog, setDialog] = useState<null | { mode: 'trustee' | 'irf'; initial?: Acl }>(null);
   const [error, setError] = useState<unknown>(null);
   const { tree } = useSession();
-  const editor = can('editor');
+  const editor = obj.allowed ? obj.allowed.edit : canAt('editor', obj.dn);
   const level = useHeading();
 
   const remove = async (a: Acl) => {

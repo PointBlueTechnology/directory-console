@@ -242,6 +242,7 @@ public final class Server {
             case "GET /api/v2/oidc/callback" -> oidcCallback(ex);
             case "GET /api/v2/session" -> Http.json(ex, 200, me(session(ex, null)));
             case "DELETE /api/v2/session" -> signOut(ex);
+            case "POST /api/v2/session/step-up" -> stepUpSignIn(ex);
             case "GET /api/v2/trust/certificates" -> trustList(ex);
             case "POST /api/v2/trust/probe" -> trustProbe(ex);
             case "POST /api/v2/trust/certificates" -> trustAdd(ex);
@@ -390,6 +391,34 @@ public final class Server {
                     : Map.of("reason", r.untrusted().reason.name().toLowerCase(Locale.ROOT), "hint", "an administrator can probe the directory and trust its certificate");
                 throw new Http.Problem(status, r.code(), r.message(), extra);
             }
+        }
+    }
+
+    /** Sign in again on the same session (direct sign-in): a bind with the password, which is not kept. */
+    private void stepUpSignIn(HttpExchange ex) throws IOException {
+        Sessions.Session s = session(ex, null);
+        String client = Http.client(ex);
+        if (!failedByClient.allowed(client)) {
+            throw new Http.Problem(429, "too-many-attempts", "too many failed sign-ins; wait a few minutes");
+        }
+        if ("oidc".equals(s.principal.via())) {
+            throw new Http.Problem(409, "sign-in-again", "sign out and sign in again through single sign-on");
+        }
+        DirectoryConfig d = DirectoryConfig.find(config.read(), s.principal.directoryId());
+        char[] pw = Http.string(Http.body(ex), "password", true).toCharArray();
+        try (com.pointblue.console.server.ldap.Ldap ignored = com.pointblue.console.server.ldap.Ldap.connect(trust, d.target(), null, s.principal.dn(), pw, T)) {
+            sessions.reauthenticated(s);
+            failedByClient.clear(client);
+            audit.log(who(s), "sign-in.step-up", d.id(), Map.of("client", client), "ok");
+            Http.json(ex, 204, Map.of());
+        } catch (com.pointblue.console.server.ldap.Ldap.BadCredentials e) {
+            failedByClient.record(client);
+            audit.log(who(s), "sign-in.step-up", d.id(), Map.of("client", client), "refused");
+            throw new Http.Problem(401, "bad-credentials", "the password is incorrect");
+        } catch (com.pointblue.console.server.ldap.Ldap.Untrusted | javax.naming.NamingException e) {
+            throw new Http.Problem(503, "unavailable", "the directory did not answer: " + e.getMessage());
+        } finally {
+            java.util.Arrays.fill(pw, '\0');
         }
     }
 

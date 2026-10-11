@@ -173,6 +173,10 @@ final class Presets {
             l.modify(e.dn(), mods);
         } catch (NamingException x) {
             objects.audit(s, "preset.run", guid, detail, Ldap.Failure.of(x));
+            Exception why = objects.explainRefusal(s, l, e.dn(), mods.stream().map(mi -> mi.getAttribute().getID()).distinct().toList(), x);
+            if (why instanceof Http.Problem p2) {
+                throw p2;
+            }
             throw x;
         }
         objects.audit(s, "preset.run", guid, detail, null);

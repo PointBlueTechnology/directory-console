@@ -25,7 +25,9 @@ import java.util.regex.Pattern;
  * A console for UI work: the in-memory fake directory with a sample tree, set up through the real
  * setup API, listening on 8443 until stopped. Not a JUnit test; nothing here touches a real directory.
  * Sign in as {@code cn=admin,o=system} (password {@code admin-pw}, a test fixture value), or as
- * {@code viewer} (contextless, {@code viewer-pw}) to see the read-only role.
+ * {@code viewer} (contextless, {@code viewer-pw}) to see the read-only role, {@code pat} ({@code pat-pw}, an
+ * editor limited to ou=Sales) or {@code help} ({@code help-pw}, task presets only). "Sign in with Acme
+ * SSO" goes to a demo identity provider on port 9443 that lists who to sign in as.
  *
  *   java -cp … DemoServer [port]
  */
@@ -45,8 +47,12 @@ public final class DemoServer {
             "dn: cn=LDAP\\, primary,cn=Driver Set,o=system\nobjectClass: DirXML-Driver\ncn: LDAP, primary",
             "dn: cn=Delimited Text,cn=Driver Set,o=system\nobjectClass: DirXML-Driver\ncn: Delimited Text",
             "dn: cn=Viewers,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Viewers\nmember: cn=viewer,ou=Users,o=acme",
+            "dn: cn=Sales Editors,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Sales Editors\nmember: cn=pat,ou=Sales,ou=Users,o=acme",
+            "dn: cn=Help Desk,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Help Desk\nmember: cn=help,ou=Users,o=acme",
+            "dn: cn=pat,ou=Sales,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: pat\nsn: Lee\ngivenName: Pat\nfullName: Pat Lee\nuid: pat\nuserPassword: pat-pw\ngroupMembership: cn=Sales Editors,ou=Groups,o=acme",
+            "dn: cn=help,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: help\nsn: Desk\nfullName: Help Desk\nuid: help\nuserPassword: help-pw\ngroupMembership: cn=Help Desk,ou=Groups,o=acme",
             "dn: cn=viewer,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: viewer\nsn: Viewer\nuserPassword: viewer-pw\ngroupMembership: cn=Viewers,ou=Groups,o=acme",
-            "dn: cn=Smith\\, John,ou=Sales,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: Smith, John\nsn: Smith\ngivenName: John\nmail: jsmith@acme.example\ntitle: Account manager\ngroupMembership: cn=Viewers,ou=Groups,o=acme",
+            "dn: cn=Smith\\, John,ou=Sales,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: Smith, John\nsn: Smith\ngivenName: John\nuid: jsmith\nmail: jsmith@acme.example\ntitle: Account manager\ngroupMembership: cn=Viewers,ou=Groups,o=acme",
             "dn: cn=Smith (Admin),ou=Engineering,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: Smith (Admin)\nsn: Smith\nloginDisabled: TRUE\nlockedByIntruder: TRUE\nloginIntruderAttempts: 5\nloginIntruderResetTime: 20301231120000Z",
             "dn: cn=Everyone in Sales,ou=Groups,o=acme\nobjectClass: dynamicGroup\ncn: Everyone in Sales\nmemberQueryURL: ldap:///ou=Sales,ou=Users,o=acme??sub?(objectClass=inetOrgPerson)\nmember: cn=Smith\\, John,ou=Sales,ou=Users,o=acme",
             "dn: cn=Team #1,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Team #1\ndescription: A name with a hash\nmember: cn=Smith\\, John,ou=Sales,ou=Users,o=acme\n"
@@ -59,7 +65,9 @@ public final class DemoServer {
         }
         FakeEdir edir = new FakeEdir(ldif.toArray(new String[0]));
         Path data = Files.createTempDirectory("dc-demo-");
-        Server server = new Server(new DataDir(data), port, "https://localhost:" + port, new PrintStream(System.out));
+        // the address browsers use: the Vite dev server, which proxies /api here (so single sign-on comes back there)
+        String publicUrl = System.getProperty("demo.publicUrl", "http://localhost:5173");
+        Server server = new Server(new DataDir(data), port, publicUrl, new PrintStream(System.out));
         // Identity Manager needs the engine's jars on the class path (DirXMLDev's lib); without them the IDM page says why
         try {
             Class.forName("com.novell.nds.dirxml.ldap.GetDriverStateRequest");
@@ -85,6 +93,13 @@ public final class DemoServer {
         call(http, base, "PUT", "/api/v2/setup/login", Map.of("duplicates", "choose", "searchBases", List.of("o=acme")), t);
         call(http, base, "POST", "/api/v2/setup/finish", Map.of(), t);
         DemoAccess.mapViewers(server);
+        // single sign-on through a demo identity provider on loopback (it lists the people to sign in as)
+        com.pointblue.console.server.auth.FakeIdp idp = new com.pointblue.console.server.auth.FakeIdp(9443)
+            .person("pat", Map.of("name", "Pat Lee", "preferred_username", "pat", "groups", List.of("sales-editors")))
+            .person("help", Map.of("name", "Help Desk", "preferred_username", "help", "groups", List.of("help-desk")))
+            .person("john", Map.of("name", "John Smith (no console role)", "preferred_username", "jsmith", "groups", List.of("staff")))
+            .person("admin", Map.of("name", "Tree admin (never through SSO)", "preferred_username", "admin", "groups", List.of("console-admins")));
+        DemoAccess.phase3(server, idp.issuer);
         System.out.println("\nDemo console ready at " + base + " (data " + data + "). Ctrl-C to stop.");
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();

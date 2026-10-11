@@ -256,6 +256,37 @@ final class Objects {
     // ---- reads ----------------------------------------------------------------------------------
 
     /** The entry with this GUID, with {@code attrs}; 404 when there is none (or the person cannot see it). */
+    /**
+     * Under the proxied-authorization control (single sign-on), eDirectory can answer a write the
+     * person has no right to with 16 ("no such attribute", -602) instead of 50, because it hides what
+     * they cannot write (measured on ig4). Then the person's effective rights on each attribute decide:
+     * without write (or supervisor), the refusal is reported as what it is.
+     */
+    Exception explainRefusal(Sessions.Session s, Ldap l, String dn, List<String> attributes, NamingException x) {
+        Ldap.Failure f = Ldap.Failure.of(x);
+        if (f.code != 16 || !"oidc".equals(s.principal.via())) {
+            return x;
+        }
+        List<String> denied = new ArrayList<>();
+        try {
+            for (String a : attributes) {
+                if ((l.effectivePrivileges(dn, s.principal.dn(), a) & (ATTR_WRITE | ATTR_SUPERVISOR)) == 0) {
+                    denied.add(a);
+                }
+            }
+        } catch (NamingException e) {
+            return x;
+        }
+        if (denied.isEmpty()) {
+            return x;
+        }
+        return new Http.Problem(403, "insufficient-rights", "you have no right to change " + String.join(", ", denied) + " on " + dn,
+            Map.of("ldapResultCode", f.code, "attributes", denied));
+    }
+
+    private static final int ATTR_WRITE = 0x4;
+    private static final int ATTR_SUPERVISOR = 0x20;
+
     /** Refuse unless one of the person's editor grants reaches {@code dn} (section 7.4, scoped roles). */
     static void guard(Sessions.Session s, String dn) {
         if (!s.principal.may(Role.EDITOR, dn)) {
@@ -609,6 +640,9 @@ final class Objects {
             l.modify(e.dn(), mods);
         } catch (NamingException x) {
             audit(s, "object.modify", guid, Map.of("dn", e.dn(), "changes", summary), Ldap.Failure.of(x));
+            if (explainRefusal(s, l, e.dn(), mods.stream().map(mi -> mi.getAttribute().getID()).distinct().toList(), x) instanceof Http.Problem p) {
+                throw p;
+            }
             throw x;
         }
         audit(s, "object.modify", guid, Map.of("dn", e.dn(), "changes", summary), null);

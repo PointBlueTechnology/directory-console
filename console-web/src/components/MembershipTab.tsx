@@ -35,7 +35,7 @@ function Results({ results }: { results: MembershipResult[] | null }) {
 
 /** A user's groups: membership is written on the group and the user (member, equivalentToMe, groupMembership, securityEquals). */
 export function UserGroupsTab({ obj, onChanged }: { obj: DirObject; onChanged: () => void }) {
-  const { tree, can } = useSession();
+  const { tree, canAt } = useSession();
   const [groups, setGroups] = useState<(Reference & { securityEquivalent: boolean })[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [results, setResults] = useState<MembershipResult[] | null>(null);
@@ -58,7 +58,7 @@ export function UserGroupsTab({ obj, onChanged }: { obj: DirObject; onChanged: (
 
   return (
     <div className="dc-tab-body">
-      {can('editor') && (
+      {canAt('editor', obj.dn) && (
         <Toolbar>
           <ToolbarContent>
             <ToolbarItem><Button variant="secondary" icon={<PlusIcon />} onClick={() => setAdding(true)}>Add to a group</Button></ToolbarItem>
@@ -71,13 +71,13 @@ export function UserGroupsTab({ obj, onChanged }: { obj: DirObject; onChanged: (
       {groups && groups.length === 0 && <p className="dc-subtle">Not a member of any group.</p>}
       {groups && groups.length > 0 && (
         <Table aria-label="Groups" variant="compact">
-          <Thead><Tr><Th>Group</Th><Th>Security equivalence</Th>{can('editor') && <Th screenReaderText="Remove" />}</Tr></Thead>
+          <Thead><Tr><Th>Group</Th><Th>Security equivalence</Th>{canAt('editor', obj.dn) && <Th screenReaderText="Remove" />}</Tr></Thead>
           <Tbody>
             {groups.map((g) => (
               <Tr key={g.dn}>
                 <Td dataLabel="Group"><ReferenceLink dn={g.dn} name={g.name} /></Td>
                 <Td dataLabel="Security equivalence">{g.securityEquivalent ? 'yes' : <Label color="orange" isCompact>missing</Label>}</Td>
-                {can('editor') && <Td isActionCell><Button variant="link" isInline isDanger onClick={() => change([], [{ dn: g.dn }])}>Remove</Button></Td>}
+                {canAt('editor', obj.dn) && <Td isActionCell><Button variant="link" isInline isDanger onClick={() => change([], [{ dn: g.dn }])}>Remove</Button></Td>}
               </Tr>
             ))}
           </Tbody>
@@ -93,7 +93,7 @@ export function UserGroupsTab({ obj, onChanged }: { obj: DirObject; onChanged: (
 
 /** A group's members (computed for a dynamic group, whose query is shown and edited instead). */
 export function GroupMembersTab({ obj, etag, onChanged }: { obj: DirObject; etag: string; onChanged: () => void }) {
-  const { tree, can } = useSession();
+  const { tree, canAt } = useSession();
   const level = useHeading();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
@@ -117,7 +117,7 @@ export function GroupMembersTab({ obj, etag, onChanged }: { obj: DirObject; etag
       setError(e);
     }
   };
-  const editor = can('editor');
+  const editor = obj.allowed ? obj.allowed.edit : canAt('editor', obj.dn);
 
   return (
     <div className="dc-tab-body">

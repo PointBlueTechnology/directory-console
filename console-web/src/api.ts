@@ -19,18 +19,31 @@ export class ApiError extends Error {
   }
 }
 
+export type RoleId = 'viewer' | 'editor' | 'operator' | 'admin';
+
+/** A role mapping's grant: a role and/or task presets, limited to containers when scopes are given. */
+export interface Grant {
+  role: RoleId | null;
+  scopes: string[];
+  presets: string[];
+}
+
 export interface Me {
   name: string;
   dn: string;
   directory: string;
-  roles: string[];
-  via: string;
+  roles: RoleId[];
+  grants: Grant[];
+  via: 'direct' | 'break-glass' | 'oidc';
   csrf: string;
 }
 
 export interface Directory {
   id: string;
   name: string;
+  direct: boolean;
+  /** The single sign-on button's label, when the directory has single sign-on. */
+  sso?: string;
 }
 
 export interface Candidate {
@@ -79,6 +92,8 @@ export type Value = string | Reference | Binary | Acl;
 export interface DirObject extends Row {
   attributes: Record<string, Value[]>;
   operational: Record<string, unknown>;
+  /** What the console offers the caller on this object (eDirectory may still refuse). */
+  allowed?: { edit: boolean; presets: string[] };
 }
 
 export interface Page<T> {
@@ -221,7 +236,7 @@ export async function request<T>(method: string, path: string, body?: unknown, h
     const problem: Problem = typeof parsed === 'object' && parsed !== null
       ? (parsed as Problem)
       : { type: 'about:blank', title: 'error', status: r.status, detail: `HTTP ${r.status}` };
-    if (r.status === 401 && path !== '/api/v2/session') {
+    if (r.status === 401 && !path.startsWith('/api/v2/session')) {
       onSignedOut();
     }
     throw new ApiError(r.status, problem);
@@ -298,6 +313,9 @@ export const session = {
   signIn: (directory: string, name: string | undefined, password: string, choice?: string) =>
     request<Me>('POST', '/api/v2/session', { directory, name, password, choice }).then((r) => r.data),
   signOut: () => request<void>('DELETE', '/api/v2/session'),
+  stepUp: (password: string) => request<void>('POST', '/api/v2/session/step-up', { password }),
+  /** Single sign-on starts with a full-page navigation (the provider's page), not a request. */
+  ssoUrl: (directory: string, next = '/') => `/api/v2/oidc/start?directory=${encodeURIComponent(directory)}&next=${encodeURIComponent(next)}`,
 };
 
 export function isReference(v: Value): v is Reference {
@@ -395,3 +413,95 @@ export function idm(id: string) {
 }
 
 export type Idm = ReturnType<typeof idm>;
+
+// ---- Task presets and settings (Phase 3) -------------------------------------------------------
+
+export type PresetAction = 'password' | 'unlock' | 'enable' | 'disable' | 'attributes';
+
+export interface PresetField {
+  name: string;
+  label: string;
+  required: boolean;
+  readOnly: boolean;
+  pattern?: string;
+  value?: string;
+}
+
+export interface Preset {
+  id: string;
+  name: string;
+  description?: string;
+  objectClass: string;
+  actions: PresetAction[];
+  attributes: PresetField[];
+  /** Where the caller may run it; empty means anywhere. */
+  scopes?: string[];
+}
+
+export interface PresetRun {
+  password?: string;
+  mustChange?: boolean;
+  unlock?: boolean;
+  enabled?: boolean;
+  attributes?: Record<string, string | null>;
+}
+
+export function presets(id: string) {
+  const base = `/api/v2/trees/${encodeURIComponent(id)}`;
+  return {
+    list: () => request<Preset[]>('GET', `${base}/presets`).then((r) => r.data),
+    run: (guid: string, preset: string, body: PresetRun) =>
+      request<{ changed: string[] }>('POST', `${base}/objects/${guidPath(guid)}/presets/${encodeURIComponent(preset)}`, body).then((r) => r.data),
+  };
+}
+
+export interface RoleMappingJson {
+  group: string;
+  role?: RoleId;
+  scopes: string[];
+  presets: string[];
+}
+
+export interface OidcSettings {
+  issuer: string;
+  clientId: string;
+  clientSecret?: string | false;
+  clientSecretSet?: boolean;
+  scopes?: string;
+  groupsClaim?: string;
+  label?: string;
+  claim?: string;
+  attribute?: string;
+  searchBases?: string[];
+  objectClasses?: string[];
+  roles?: RoleMappingJson[];
+  neverProxy?: string[];
+}
+
+export interface DirectorySettings {
+  id: string;
+  name: string;
+  tier: string;
+  directLogin: boolean;
+  serviceAccount: string | null;
+  breakGlass: string[];
+  roles: RoleMappingJson[];
+  presets: Preset[];
+  oidc: OidcSettings | null;
+  redirectUri: string;
+}
+
+/** A directory's sign-in and authorization settings (admins; changes need a recent sign-in). */
+export function settings(id: string) {
+  const base = `/api/v2/directories/${encodeURIComponent(id)}`;
+  const put = (part: string, body: unknown, etag?: string) =>
+    request<DirectorySettings>('PUT', `${base}/${part}`, body, etag ? { 'If-Match': etag } : {});
+  return {
+    get: () => request<DirectorySettings>('GET', `${base}/settings`),
+    roles: (roles: RoleMappingJson[], etag?: string) => put('roles', roles, etag),
+    presets: (all: Record<string, unknown>, etag?: string) => put('presets', all, etag),
+    exportPresets: () => request<Record<string, unknown>>('GET', `${base}/presets`).then((r) => r.data),
+    oidc: (o: OidcSettings | null, etag?: string) => put('oidc', o, etag),
+    testMapping: (value: string) => request<{ matches: string[]; neverProxy: boolean }>('POST', `${base}/oidc/test`, { value }).then((r) => r.data),
+  };
+}

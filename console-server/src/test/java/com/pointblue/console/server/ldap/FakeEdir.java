@@ -185,6 +185,7 @@ public final class FakeEdir implements AutoCloseable {
         "attributeTypes: ( 0.9.2342.19200300.100.1.60 NAME 'jpegPhoto' SYNTAX 1.3.6.1.4.1.1466.115.121.1.40{32768} X-NDS_NAME 'jpegPhoto' )",
         "attributeTypes: ( 0.9.2342.19200300.100.1.3 NAME 'mail' SYNTAX 1.3.6.1.4.1.1466.115.121.1.26{256} X-NDS_NAME 'Internet EMail Address' )",
         "attributeTypes: ( 2.5.4.12 NAME 'title' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{64} X-NDS_NAME 'Title' )",
+        "attributeTypes: ( 2.5.4.20 NAME 'telephoneNumber' SYNTAX 1.3.6.1.4.1.1466.115.121.1.50{32} X-NDS_NAME 'Telephone Number' )",
         "attributeTypes: ( 2.16.840.1.113719.1.1.4.1.46 NAME 'loginDisabled' SYNTAX 1.3.6.1.4.1.1466.115.121.1.7 SINGLE-VALUE X-NDS_NAME 'Login Disabled' )",
     };
 

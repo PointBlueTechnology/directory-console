@@ -1,10 +1,14 @@
 import { createContext, useContext } from 'react';
-import { type Me, type Tree, tree } from './api';
+import { type Me, type RoleId, type Tree, tree } from './api';
+import { within } from './dn';
 
 export interface SessionState {
   me: Me;
   tree: Tree;
-  can: (role: 'viewer' | 'editor' | 'operator' | 'admin') => boolean;
+  /** Whether some grant gives {@code role} anywhere (what menus to show at all). */
+  can: (role: RoleId) => boolean;
+  /** Whether a grant of {@code role} reaches {@code dn}, as the server decides (Sessions.Principal.may). */
+  canAt: (role: RoleId, dn: string) => boolean;
   signOut: () => void;
 }
 
@@ -24,6 +28,8 @@ export function sessionState(me: Me, signOut: () => void): SessionState {
     tree: tree(me.directory),
     // admin implies every role, as on the server (Sessions.Principal.has)
     can: (role) => me.roles.includes(role) || me.roles.includes('admin'),
+    canAt: (role, dn) => (me.grants ?? []).some((g) => (g.role === role || g.role === 'admin')
+      && (g.role === 'admin' || g.scopes.length === 0 || g.scopes.some((s) => within(dn, s)))),
     signOut,
   };
 }

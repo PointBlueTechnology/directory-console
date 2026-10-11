@@ -95,6 +95,16 @@ final class Settings {
             o = new LinkedHashMap<>(Json.asMap(raw));
             o.remove("clientSecret");
             o.put("clientSecretSet", server.config.secret(d.oidcSecretPath()) != null);
+            if (d.oidc() != null) {
+                // as parsed: every mapping with its scopes and presets, every list present
+                o.put("roles", d.oidc().roles().stream().map(DirectoryConfig.RoleMapping::json).toList());
+                o.put("searchBases", d.oidc().searchBases());
+                o.put("objectClasses", d.oidc().objectClasses());
+                o.put("neverProxy", d.oidc().neverProxy());
+                o.put("claim", d.oidc().claim());
+                o.put("attribute", d.oidc().attribute());
+                o.put("label", d.oidc().label());
+            }
         }
         m.put("oidc", o);
         m.put("redirectUri", server.oidc.redirectUri());

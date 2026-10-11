@@ -333,6 +333,11 @@ public class Phase3Test {
 
         Map<String, String> ed = withCsrf(signIn("cn=ed,ou=Sales,o=acme", "ed-pw"));
         assertEquals(403, call("GET", "/api/v2/directories/acme/settings", null, ed).status());
+
+        // step-up: a wrong password is refused without ending the session; the right one refreshes it
+        assertEquals(401, call("POST", "/api/v2/session/step-up", Map.of("password", "wrong"), h).status());
+        assertEquals(200, call("GET", "/api/v2/session", null, h).status());
+        assertEquals(204, call("POST", "/api/v2/session/step-up", Map.of("password", "admin-pw"), h).status());
         assertTrue(audit().contains("settings.oidc"));
     }
 }

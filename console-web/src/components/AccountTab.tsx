@@ -14,14 +14,14 @@ type Draft = Partial<Account>;
 
 /** A user's account: status, intruder lockout, login and password restrictions, allowed login times. */
 export function AccountTab({ obj, onChanged }: { obj: DirObject; onChanged: () => void }) {
-  const { tree, can } = useSession();
+  const { tree, canAt } = useSession();
   const [account, setAccount] = useState<Account | null>(null);
   const [etag, setEtag] = useState('*');
   const [draft, setDraft] = useState<Draft>({});
   const [error, setError] = useState<unknown>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
-  const editor = can('editor');
+  const editor = obj.allowed ? obj.allowed.edit : canAt('editor', obj.dn);
   const level = useHeading();
 
   const load = useCallback(() => {
