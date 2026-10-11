@@ -88,6 +88,13 @@ final class Idm {
         String confirm = ex.getRequestHeaders().getFirst("X-Confirm-Directory");
         synchronized (l) {   // the person's JNDI context is shared with the engine's reads
             try {
+                if (write && guid != null) {
+                    // a scoped operator grant reaches only drivers, driver sets and jobs under its containers
+                    String dn = server.objects.dnOf(l, guid);
+                    if (!s.principal.may(Role.OPERATOR, dn)) {
+                        throw new Http.Problem(403, "out-of-scope", "your operator role does not reach " + dn);
+                    }
+                }
                 switch (route) {
                     case "GET driversets" -> driverSets(ex, l);
                     case "GET driversets/{guid}" -> {

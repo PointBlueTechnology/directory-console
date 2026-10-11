@@ -1,5 +1,6 @@
 package com.pointblue.console.server.http;
 
+import com.pointblue.console.server.auth.Role;
 import com.pointblue.console.server.auth.Sessions;
 import com.pointblue.console.server.ldap.Ldap;
 import com.pointblue.console.server.ldap.Names;
@@ -292,6 +293,12 @@ final class Tasks {
         result.put("member", reference(memberDn));
         String action = add ? "membership.add" : "membership.remove";
         Map<String, Object> detail = Map.of("group", groupDn, "member", memberDn);
+        if (!s.principal.may(Role.EDITOR, groupDn) || !s.principal.may(Role.EDITOR, memberDn)) {
+            // both sides are written, so both must be within the person's editor scope
+            result.put("status", "refused");
+            result.put("detail", "outside your editor scope: " + (s.principal.may(Role.EDITOR, groupDn) ? memberDn : groupDn));
+            return result;
+        }
         Ldap.Entry g = l.read(groupDn, "member", "equivalentToMe");
         Ldap.Entry m = l.read(memberDn, "groupMembership", "securityEquals");
         if (g == null || m == null) {

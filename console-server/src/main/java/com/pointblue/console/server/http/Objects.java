@@ -1,6 +1,7 @@
 package com.pointblue.console.server.http;
 
 import com.pointblue.console.server.audit.AuditLog;
+import com.pointblue.console.server.auth.DirectoryConfig;
 import com.pointblue.console.server.auth.Role;
 import com.pointblue.console.server.auth.Sessions;
 import com.pointblue.console.server.ldap.Filters;
@@ -76,17 +77,18 @@ final class Objects {
     private final Server server;
     private final Map<String, CachedSchema> schemas = new ConcurrentHashMap<>();
     private final Tasks tasks = new Tasks(this);
+    private final Presets presets;
     private final Set<Ldap> prepared = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     Objects(Server server) {
         this.server = server;
+        this.presets = new Presets(server, this);
     }
 
     void handle(HttpExchange ex, String path, String method) throws IOException {
         String[] p = path.substring("/api/v2/trees/".length()).split("/", -1);
-        boolean write = !method.equals("GET");
-        Sessions.Session s = server.session(ex, write ? Role.EDITOR : null);
-        if (s.principal.roles().isEmpty()) {
+        Sessions.Session s = server.session(ex, null);
+        if (s.principal.roles().isEmpty() && !s.principal.hasPresets()) {
             throw new Http.Problem(403, "forbidden", "you have no Directory Console role");
         }
         if (!p[0].equals(s.principal.directoryId())) {
@@ -100,11 +102,26 @@ final class Objects {
             Schema schema = schema(s.principal.directoryId(), l);
             String route = method + " " + String.join("/", java.util.Arrays.copyOfRange(p, 1, p.length)).replaceAll("^objects/[0-9a-f]{32}", "objects/{guid}")
                 .replaceAll("^schema/(classes|attributes)/.+", "schema/$1/{name}");
+            if (route.matches("POST objects/\\{guid}/presets/[a-z0-9-]+")) {
+                presets.run(ex, l, schema, s, p[2], p[4]);
+                return;
+            }
             String guid = p.length > 2 && p[1].equals("objects") ? p[2] : null;
+            boolean write = !method.equals("GET") && !route.equals("POST search") && !route.matches("POST objects/\\{guid}/presets/.+");
+            if (write) {
+                // the editor role, and (for a scoped grant) the object under one of its containers
+                if (!s.principal.has(Role.EDITOR)) {
+                    throw new Http.Problem(403, "forbidden", "this needs the editor role");
+                }
+                if (guid != null) {
+                    guard(s, dnOf(l, guid));
+                }
+            }
             switch (route) {
+                case "GET presets" -> presets.list(ex, s);
                 case "GET roots" -> roots(ex, l, schema);
-                case "GET objects" -> resolve(ex, l, schema);
-                case "GET objects/{guid}" -> read(ex, l, schema, guid);
+                case "GET objects" -> resolve(ex, l, schema, s);
+                case "GET objects/{guid}" -> read(ex, l, schema, s, guid);
                 case "GET objects/{guid}/children" -> children(ex, l, schema, guid);
                 case "GET objects/{guid}/rights" -> rights(ex, l, s, guid);
                 case "POST objects/{guid}/password" -> tasks.password(ex, l, s, guid);
@@ -239,6 +256,13 @@ final class Objects {
     // ---- reads ----------------------------------------------------------------------------------
 
     /** The entry with this GUID, with {@code attrs}; 404 when there is none (or the person cannot see it). */
+    /** Refuse unless one of the person's editor grants reaches {@code dn} (section 7.4, scoped roles). */
+    static void guard(Sessions.Session s, String dn) {
+        if (!s.principal.may(Role.EDITOR, dn)) {
+            throw new Http.Problem(403, "out-of-scope", "your editor role does not reach " + dn);
+        }
+    }
+
     Ldap.Entry byGuid(Ldap l, String guid, String... attrs) throws NamingException {
         List<Ldap.Entry> r = l.search("", "(GUID={0})", new Object[] {Names.guidBytes(guid)}, SearchControls.SUBTREE_SCOPE, attrs, 2);
         if (r.isEmpty()) {
@@ -318,13 +342,32 @@ final class Objects {
         return m;
     }
 
-    void read(HttpExchange ex, Ldap l, Schema schema, String guid) throws IOException, NamingException {
+    void read(HttpExchange ex, Ldap l, Schema schema, Sessions.Session s, String guid) throws IOException, NamingException {
         Ldap.Entry e = byGuid(l, guid, fullRead());
         ex.getResponseHeaders().set("ETag", etag(e));
-        Http.json(ex, 200, objectJson(e, schema));
+        Http.json(ex, 200, withAllowed(objectJson(e, schema), e, s));
     }
 
-    private void resolve(HttpExchange ex, Ldap l, Schema schema) throws IOException, NamingException {
+    /**
+     * What the console offers the caller on this object: {@code edit} (an editor grant reaches it) and
+     * the task presets that reach it and fit its class. eDirectory may still refuse.
+     */
+    private Map<String, Object> withAllowed(Map<String, Object> m, Ldap.Entry e, Sessions.Session s) {
+        DirectoryConfig d = DirectoryConfig.find(server.config.read(), s.principal.directoryId());
+        List<Object> classes = e.attributes().getOrDefault("objectclass", List.of());
+        List<String> ids = new ArrayList<>();
+        for (String id : s.principal.presetsAt(e.dn())) {
+            com.pointblue.console.server.auth.TaskPreset p = d == null ? null : d.presets().get(id);
+            if (p != null && classes.stream().anyMatch(c -> String.valueOf(c).equalsIgnoreCase(p.objectClass()))) {
+                ids.add(id);
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>(m);
+        out.put("allowed", Map.of("edit", s.principal.may(Role.EDITOR, e.dn()), "presets", ids));
+        return out;
+    }
+
+    private void resolve(HttpExchange ex, Ldap l, Schema schema, Sessions.Session s) throws IOException, NamingException {
         Map<String, String> q = Http.query(ex);
         String dn = q.get("dn");
         if (dn == null || dn.isBlank()) {
@@ -335,7 +378,7 @@ final class Objects {
             throw new Http.Problem(404, "no-such-object", "no object " + dn);
         }
         ex.getResponseHeaders().set("ETag", etag(e));
-        Http.json(ex, 200, objectJson(e, schema));
+        Http.json(ex, 200, withAllowed(objectJson(e, schema), e, s));
     }
 
     private void roots(HttpExchange ex, Ldap l, Schema schema) throws IOException, NamingException {
@@ -569,7 +612,7 @@ final class Objects {
             throw x;
         }
         audit(s, "object.modify", guid, Map.of("dn", e.dn(), "changes", summary), null);
-        read(ex, l, schema, guid);
+        read(ex, l, schema, s, guid);
     }
 
     private void create(HttpExchange ex, Ldap l, Schema schema, Sessions.Session s, String parentGuid) throws IOException, NamingException {
@@ -652,6 +695,7 @@ final class Objects {
         if (move) {
             String target = Http.string(b, "newParent", true);
             String parent = dnOf(l, target);
+            guard(s, parent);
             if (Names.within(parent, e.dn())) {
                 throw new Http.Problem(409, "move-into-itself", "an object cannot move under itself");
             }
@@ -674,7 +718,7 @@ final class Objects {
             ex.getResponseHeaders().set("X-Alias", alias);
         }
         audit(s, action, guid, detail, null);
-        read(ex, l, schema, guid);
+        read(ex, l, schema, s, guid);
     }
 
     private void delete(HttpExchange ex, Ldap l, Schema schema, Sessions.Session s, String guid) throws IOException, NamingException {

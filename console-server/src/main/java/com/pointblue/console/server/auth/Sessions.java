@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,10 +18,42 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class Sessions {
 
-    /** Who is signed in. {@code via} is {@code direct}, {@code break-glass} or {@code oidc}. */
-    public record Principal(String subject, String dn, String name, String directoryId, Set<Role> roles, String via) {
+    /**
+     * Who is signed in. {@code via} is {@code direct}, {@code break-glass} or {@code oidc}. {@code roles}
+     * are every role any grant gives, scoped or not, for what the UI offers; {@link #may} decides for
+     * an object.
+     */
+    public record Principal(String subject, String dn, String name, String directoryId, Set<Role> roles, String via, List<Grant> grants) {
+
+        public Principal {
+            grants = List.copyOf(grants);
+        }
+
+        /** Unscoped grants of {@code roles}. */
+        public Principal(String subject, String dn, String name, String directoryId, Set<Role> roles, String via) {
+            this(subject, dn, name, directoryId, roles, via, roles.stream().map(Grant::everywhere).toList());
+        }
+
+        /** Whether some grant gives {@code r} (or admin), anywhere. */
         public boolean has(Role r) {
             return roles.contains(r) || roles.contains(Role.ADMIN);
+        }
+
+        /** Whether a grant of {@code r} (or admin) reaches {@code dn}. */
+        public boolean may(Role r, String dn) {
+            return grants.stream().anyMatch(g -> g.role() != null && (g.role() == r || g.role() == Role.ADMIN) && g.covers(dn));
+        }
+
+        /** The task presets a grant gives at {@code dn}. */
+        public Set<String> presetsAt(String dn) {
+            Set<String> out = new java.util.TreeSet<>();
+            grants.stream().filter(g -> g.covers(dn)).forEach(g -> out.addAll(g.presets()));
+            return out;
+        }
+
+        /** Whether any grant gives a task preset, anywhere. */
+        public boolean hasPresets() {
+            return grants.stream().anyMatch(g -> !g.presets().isEmpty());
         }
     }
 

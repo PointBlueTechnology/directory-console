@@ -62,7 +62,7 @@ public class DirectLoginTest {
         return new DirectoryConfig("prod", "Production", "127.0.0.1", edir.port(), "production", direct, List.of("o=acme"),
             List.of("inetOrgPerson"), List.of("cn"), true, 10, dup, "title", "cn=console,o=system",
             List.of(new DirectoryConfig.RoleMapping("cn=Console Admins,o=acme", Role.ADMIN), new DirectoryConfig.RoleMapping("cn=Operators,o=acme", Role.OPERATOR)),
-            List.of("cn=admin,o=system"));
+            List.of("cn=admin,o=system"), java.util.Map.of(), null);
     }
 
     private DirectLogin.Outcome as(DirectoryConfig d, String name, String pw) {

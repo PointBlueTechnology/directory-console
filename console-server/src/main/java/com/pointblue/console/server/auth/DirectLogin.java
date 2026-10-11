@@ -156,17 +156,18 @@ public final class DirectLogin {
         }
         try {
             Ldap.Entry me = conn.read(dn, "groupMembership", "cn", "fullName");
-            Set<Role> roles = EnumSet.noneOf(Role.class);
+            List<Grant> grants = new ArrayList<>();
             if (breakGlass) {
-                roles.add(Role.ADMIN);
+                grants.add(Grant.everywhere(Role.ADMIN));
             }
             List<Object> groups = me == null ? List.of() : me.attributes().getOrDefault("groupmembership", List.of());
             for (DirectoryConfig.RoleMapping m : d.roles()) {
                 if (groups.stream().anyMatch(g -> sameDn(String.valueOf(g), m.group()))) {
-                    roles.add(m.role());
+                    grants.add(m.grant());
                 }
             }
-            if (roles.isEmpty()) {
+            Set<Role> roles = roles(grants);
+            if (grants.isEmpty()) {
                 conn.close();
                 return new Refused("no-role", "Your account has no Directory Console role. Ask an administrator to map one of your groups to a role.");
             }
@@ -184,12 +185,19 @@ public final class DirectLogin {
                     engineProblem = "the Identity Manager engine connection could not be opened: " + e.getMessage();
                 }
             }
-            return new SignedIn(new Sessions.Principal(dn, dn, display == null ? dn : display, d.id(), Set.copyOf(roles),
-                breakGlass && roles.size() == 1 ? "break-glass" : "direct"), conn, engine, engineProblem);
+            return new SignedIn(new Sessions.Principal(dn, dn, display == null ? dn : display, d.id(), roles,
+                breakGlass && grants.size() == 1 ? "break-glass" : "direct", grants), conn, engine, engineProblem);
         } catch (NamingException e) {
             conn.close();
             return new Refused("unavailable", "Your account could not be read after sign-in: " + e.getMessage());
         }
+    }
+
+    /** Every role the grants give, scoped or not. */
+    static Set<Role> roles(List<Grant> grants) {
+        Set<Role> roles = EnumSet.noneOf(Role.class);
+        grants.stream().filter(g -> g.role() != null).forEach(g -> roles.add(g.role()));
+        return Set.copyOf(roles);
     }
 
     /** Accounts whose match attributes equal {@code name}, in the configured bases, up to maxCandidates + 1. */

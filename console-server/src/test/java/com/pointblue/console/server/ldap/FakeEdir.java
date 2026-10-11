@@ -46,6 +46,8 @@ public final class FakeEdir implements AutoCloseable {
     /** What GetEffectivePrivileges was asked: target, trustee, attribute. */
     public final List<String[]> privilegeRequests = new ArrayList<>();
     public volatile int privileges = 0x1f;
+    /** The authorization id of the last modify's RFC 4370 control ("dn:…"), or null when it had none. */
+    public volatile String lastProxied;
 
     public FakeEdir(String... ldif) throws Exception {
         pki = new TestPki("ACME_TREE");
@@ -86,9 +88,11 @@ public final class FakeEdir implements AutoCloseable {
             @Override
             public void processModifyRequest(InMemoryInterceptedModifyRequest request) {
                 ReadOnlyModifyRequest r = request.getRequest();
+                com.unboundid.ldap.sdk.Control proxied = r.getControl("2.16.840.1.113730.3.4.18");
+                lastProxied = proxied == null || proxied.getValue() == null ? null : proxied.getValue().stringValue();
                 java.util.List<Modification> mods = new ArrayList<>(r.getModifications());
                 mods.add(new Modification(ModificationType.REPLACE, "revision", String.valueOf(revision.incrementAndGet())));
-                request.setRequest(new ModifyRequest(r.getDN(), mods));
+                request.setRequest(new ModifyRequest(r.getDN(), mods, r.getControls()));
             }
         });
         cfg.setListenerConfigs(InMemoryListenerConfig.createLDAPSConfig("ldaps", InetAddress.getLoopbackAddress(), 0,

@@ -55,6 +55,7 @@ public final class Server {
     final Probe probes = new Probe();
     final Sessions sessions = new Sessions(Duration.ofMinutes(30), Duration.ofHours(12));
     final DirectLogin login;
+    final com.pointblue.console.server.auth.OidcLogin oidc;
     final String publicUrl;
     private final Set<String> hosts;
     private final Throttle failedByClient = new Throttle(10, Duration.ofMinutes(1));
@@ -64,6 +65,7 @@ public final class Server {
     private volatile Setup setup;
     final Objects objects = new Objects(this);
     private final Idm idm = new Idm(this);
+    private final Settings settings = new Settings(this);
     private final StaticFiles ui = new StaticFiles("web");
 
     /** Open the data directory and listen on {@code port}. {@code publicUrl} is how browsers reach this server. */
@@ -82,6 +84,7 @@ public final class Server {
         this.publicUrl = publicUrl.replaceAll("/+$", "");
         this.hosts = Set.copyOf(names.stream().map(h -> h.toLowerCase(Locale.ROOT)).toList());
         this.login = new DirectLogin(trust);
+        this.oidc = new com.pointblue.console.server.auth.OidcLogin(trust, this.publicUrl);
         this.login.engines(com.pointblue.console.server.idm.Engines.detect());
         this.http = HttpsServer.create(new InetSocketAddress(port), 64);
         http.setHttpsConfigurator(new HttpsConfigurator(tls.context()) {
@@ -224,6 +227,10 @@ public final class Server {
             idm.handle(ex, path, method);
             return;
         }
+        if (path.matches("/api/v2/directories/[^/]+/.+")) {
+            settings.handle(ex, path, method);
+            return;
+        }
         if (path.startsWith("/api/v2/trees/")) {
             objects.handle(ex, path, method);
             return;
@@ -231,6 +238,8 @@ public final class Server {
         switch (method + " " + path) {
             case "GET /api/v2/directories" -> directories(ex);
             case "POST /api/v2/session" -> signIn(ex);
+            case "GET /api/v2/oidc/start" -> oidcStart(ex);
+            case "GET /api/v2/oidc/callback" -> oidcCallback(ex);
             case "GET /api/v2/session" -> Http.json(ex, 200, me(session(ex, null)));
             case "DELETE /api/v2/session" -> signOut(ex);
             case "GET /api/v2/trust/certificates" -> trustList(ex);
@@ -276,7 +285,7 @@ public final class Server {
         return s;
     }
 
-    private void stepUp(Sessions.Session s) {
+    void stepUp(Sessions.Session s) {
         if (!sessions.recentlyAuthenticated(s, STEP_UP)) {
             throw new Http.Problem(403, "step-up-required", "sign in again to make this change (it needs a sign-in within the last 10 minutes)");
         }
@@ -293,6 +302,13 @@ public final class Server {
         m.put("dn", s.principal.dn());
         m.put("directory", s.principal.directoryId());
         m.put("roles", s.principal.roles().stream().map(Role::id).sorted().toList());
+        m.put("grants", s.principal.grants().stream().map(g -> {
+            Map<String, Object> gm = new LinkedHashMap<>();
+            gm.put("role", g.role() == null ? null : g.role().id());
+            gm.put("scopes", g.scopes());
+            gm.put("presets", g.presets());
+            return gm;
+        }).toList());
         m.put("via", s.principal.via());
         m.put("csrf", s.csrf);
         return m;
@@ -301,7 +317,14 @@ public final class Server {
     private void directories(HttpExchange ex) throws IOException {
         List<Map<String, Object>> out = new ArrayList<>();
         for (DirectoryConfig d : DirectoryConfig.all(config.read())) {
-            out.add(Map.of("id", d.id(), "name", d.name()));
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", d.id());
+            m.put("name", d.name());
+            m.put("direct", d.directLogin());
+            if (d.oidc() != null) {
+                m.put("sso", d.oidc().label());
+            }
+            out.add(m);
         }
         Http.json(ex, 200, out);
     }
@@ -368,6 +391,78 @@ public final class Server {
                 throw new Http.Problem(status, r.code(), r.message(), extra);
             }
         }
+    }
+
+    static final String OIDC_COOKIE = "__Host-console-oidc";
+
+    /**
+     * Begin single sign-on: redirect to the provider. The state also goes into a short-lived cookie
+     * (SameSite=Lax, so it comes back on the provider's top-level redirect), and the callback must
+     * match it: a sign-in started in another browser cannot be finished in this one.
+     */
+    private void oidcStart(HttpExchange ex) throws IOException {
+        Map<String, String> q = Http.query(ex);
+        DirectoryConfig d = DirectoryConfig.find(config.read(), q.getOrDefault("directory", ""));
+        if (d == null || d.oidc() == null) {
+            throw new Http.Problem(404, "no-sso", "single sign-on is not configured for that directory");
+        }
+        if (!failedByClient.allowed(Http.client(ex))) {
+            throw new Http.Problem(429, "too-many-attempts", "too many failed sign-ins; wait a few minutes");
+        }
+        com.pointblue.console.auth.OidcClient.Start start;
+        try {
+            start = oidc.start(d, config.secret(d.oidcSecretPath()), safeNext(q.get("next")));
+        } catch (IOException e) {
+            audit.log(new AuditLog.Actor("(sso)", null, "oidc"), "sign-in", d.id(), Map.of("client", Http.client(ex), "code", "provider"), "refused");
+            redirect(ex, "/?sso-error=provider");
+            return;
+        }
+        ex.getResponseHeaders().add("Set-Cookie", OIDC_COOKIE + "=" + start.state() + "; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600");
+        redirect(ex, start.url());
+    }
+
+    private void oidcCallback(HttpExchange ex) throws IOException {
+        Map<String, String> q = Http.query(ex);
+        String client = Http.client(ex);
+        ex.getResponseHeaders().add("Set-Cookie", OIDC_COOKIE + "=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0");
+        String state = q.get("state");
+        String cookie = Http.cookie(ex, OIDC_COOKIE);
+        String dirId = oidc.directoryOf(state);
+        AuditLog.Actor anon = new AuditLog.Actor("(sso)", null, "oidc");
+        if (dirId == null || cookie == null || !java.security.MessageDigest.isEqual(cookie.getBytes(StandardCharsets.US_ASCII), state.getBytes(StandardCharsets.US_ASCII))) {
+            failedByClient.record(client);
+            audit.log(anon, "sign-in", dirId, Map.of("client", client, "code", "state"), "refused");
+            redirect(ex, "/?sso-error=state");
+            return;
+        }
+        DirectoryConfig d = DirectoryConfig.find(config.read(), dirId);
+        Object o = d == null ? new com.pointblue.console.server.auth.OidcLogin.Refused("not-configured", "")
+            : oidc.finish(d, config.secret(d.oidcSecretPath()), config.secret(d.serviceAccountPasswordPath()), q);
+        if (o instanceof com.pointblue.console.server.auth.OidcLogin.SignedIn si) {
+            failedByClient.clear(client);
+            Sessions.Session session = sessions.create(si.principal(), si.connection(), null, com.pointblue.console.server.auth.OidcLogin.NO_ENGINE);
+            audit.log(new AuditLog.Actor(si.principal().subject(), si.principal().dn(), "oidc"), "sign-in", dirId,
+                Map.of("roles", si.principal().roles().stream().map(Role::id).sorted().toList(), "client", client), "ok");
+            ex.getResponseHeaders().add("Set-Cookie", COOKIE + "=" + session.id + "; Path=/; Secure; HttpOnly; SameSite=Strict");
+            redirect(ex, safeNext(si.next()));
+            return;
+        }
+        com.pointblue.console.server.auth.OidcLogin.Refused r = (com.pointblue.console.server.auth.OidcLogin.Refused) o;
+        failedByClient.record(client);
+        audit.log(anon, "sign-in", dirId, Map.of("client", client, "code", r.code(), "detail", r.message()), "refused");
+        redirect(ex, "/?sso-error=" + r.code());
+    }
+
+    /** A same-site path to return to after sign-in; anything else becomes "/". */
+    static String safeNext(String next) {
+        return next != null && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") && !next.contains("\r") && !next.contains("\n") ? next : "/";
+    }
+
+    private static void redirect(HttpExchange ex, String location) throws IOException {
+        ex.getResponseHeaders().set("Location", location);
+        ex.getResponseHeaders().set("Cache-Control", "no-store");
+        ex.sendResponseHeaders(302, -1);
+        ex.close();
     }
 
     private void signOut(HttpExchange ex) throws IOException {
