@@ -43,6 +43,13 @@ public final class DemoServer {
             "dn: ou=Engineering,ou=Users,o=acme\nobjectClass: organizationalUnit\nou: Engineering",
             "dn: ou=Groups,o=acme\nobjectClass: organizationalUnit\nou: Groups",
             "dn: cn=Driver Set,o=system\nobjectClass: DirXML-DriverSet\ncn: Driver Set",
+            "dn: ou=servers,o=system\nobjectClass: organizationalUnit\nou: servers",
+            "dn: cn=edir1,ou=servers,o=system\nobjectClass: ncpServer\ncn: edir1\nversion: eDirectory for Linux x86_64 v9.2.8.0000 [DS]\nstatus: 2\nDSRevision: 4020900\n"
+                + "indexDefinition: 0$CN$0$0$1$1$CN\nindexDefinition: 0$CN_SS$0$2$1$1$CN\nindexDefinition: 0$Surname$0$0$1$1$Surname\n"
+                + "indexDefinition: 0$GUID$0$0$2$1$GUID\nindexDefinition: 0$GnSnIndex$0$0$0$1$Given Name$Surname\nindexDefinition: 0$mailIdx$0$0$0$1$Internet EMail Address",
+            "dn: cn=edir2,ou=servers,o=system\nobjectClass: ncpServer\ncn: edir2\nversion: eDirectory for Linux x86_64 v9.3.2.0000 [DS]\nstatus: 2\nDSRevision: 4030300\n"
+                + "indexDefinition: 0$CN$0$0$1$1$CN\nindexDefinition: 0$GUID$0$0$2$1$GUID",
+            "dn: cn=LDAP Server - edir1,ou=servers,o=system\nobjectClass: ldapServer\ncn: LDAP Server - edir1\nldapHostServer: cn=edir1,ou=servers,o=system\nldapInterfaces: ldaps://:636",
             "dn: cn=Active Directory,cn=Driver Set,o=system\nobjectClass: DirXML-Driver\ncn: Active Directory\nDirXML-TraceLevel: 3",
             "dn: cn=LDAP\\, primary,cn=Driver Set,o=system\nobjectClass: DirXML-Driver\ncn: LDAP, primary",
             "dn: cn=Delimited Text,cn=Driver Set,o=system\nobjectClass: DirXML-Driver\ncn: Delimited Text",
@@ -64,6 +71,15 @@ public final class DemoServer {
                 + "\ngivenName: " + given[i % given.length] + "\nmail: " + cn + "@acme.example");
         }
         FakeEdir edir = new FakeEdir(ldif.toArray(new String[0]));
+        // two servers holding three partitions, for the eDirectory pages
+        for (String[] srv : new String[][] {{"cn=edir1,ou=servers,o=system", "7f000001"}, {"cn=edir2,ou=servers,o=system", "7f000002"}}) {
+            // "9#" (TCP), then port 524 and the IPv4 address, as eDirectory sends networkAddress over LDAP
+            byte[] tcp = java.util.HexFormat.of().parseHex("3923" + "020c" + srv[1]);
+            edir.server.modify(srv[0], new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD, "networkAddress", tcp));
+        }
+        edir.partitions.partition("", Map.of("cn=edir1,ou=servers,o=system", 0, "cn=edir2,ou=servers,o=system", 1))
+            .partition("o=acme", Map.of("cn=edir1,ou=servers,o=system", 0, "cn=edir2,ou=servers,o=system", 1))
+            .partition("o=system", Map.of("cn=edir1,ou=servers,o=system", 0, "cn=edir2,ou=servers,o=system", 2));
         Path data = Files.createTempDirectory("dc-demo-");
         // the address browsers use: the Vite dev server, which proxies /api here (so single sign-on comes back there)
         String publicUrl = System.getProperty("demo.publicUrl", "http://localhost:5173");

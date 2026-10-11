@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button, Card, CardBody, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm,
-  Label, LabelGroup, PageSection, SearchInput, Spinner, Title, ToggleGroup, ToggleGroupItem,
+  Flex, FlexItem, Label, LabelGroup, PageSection, SearchInput, Spinner, Title, ToggleGroup, ToggleGroupItem,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Tr } from '@patternfly/react-table';
-import type { SchemaAttribute, SchemaClass } from '../api';
+import { type Edir, type SchemaAttribute, type SchemaClass, edir } from '../api';
+import { AddOptionalModal, NewAttributeModal, NewClassModal } from '../components/SchemaEdit';
+import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { useSession } from '../session';
 import { linkProps, navigate } from '../router';
 import { ProblemAlert } from '../components/Problem';
@@ -22,9 +24,15 @@ const SYNTAXES: Record<string, string> = {
   '2.16.840.1.113719.1.1.5.1.17': 'eDirectory ACL',
 };
 
-/** The directory's classes and attribute types, read-only. */
+/** The directory's classes and attribute types; a whole-tree editor can add, extend and delete them. */
 export function SchemaPage({ kind = 'classes', name }: { kind?: 'classes' | 'attributes'; name?: string }) {
-  const { tree } = useSession();
+  const { tree, me, canAt } = useSession();
+  const api = useMemo(() => edir(me.directory), [me.directory]);
+  const admin = canAt('editor', '');
+  const { run, dialog: confirmDialog } = useConfirmed();
+  const sure = useAreYouSure();
+  const [creating, setCreating] = useState<null | 'attribute' | 'class'>(null);
+  const [version, setVersion] = useState(0);
   const [classes, setClasses] = useState<SchemaClass[] | null>(null);
   const [attributes, setAttributes] = useState<SchemaAttribute[] | null>(null);
   const [filter, setFilter] = useState('');
@@ -33,7 +41,18 @@ export function SchemaPage({ kind = 'classes', name }: { kind?: 'classes' | 'att
   useEffect(() => {
     tree.classes().then((c) => setClasses(c.sort((a, b) => a.name.localeCompare(b.name)))).catch(setError);
     tree.attributes().then((a) => setAttributes(a.sort((x, y) => x.name.localeCompare(y.name)))).catch(setError);
-  }, [tree]);
+  }, [tree, version]);
+  const changed = useCallback((to?: string) => { setVersion((v) => v + 1); if (to) { navigate(to); } }, []);
+  const remove = (what: 'class' | 'attribute', n: string) => sure.ask(`Delete the ${what} ${n}?`,
+    `eDirectory refuses to delete a ${what} that is in use${what === 'class' ? ' by an object' : ' by a class or an object'}.`, 'Delete', async () => {
+      setError(null);
+      try {
+        await run((c) => (what === 'class' ? api.removeClass(n, c) : api.removeAttribute(n, c)));
+        changed(what === 'class' ? '/schema' : '/schema/attributes/cn');
+      } catch (x) {
+        setError(x);
+      }
+    });
 
   const f = filter.toLowerCase();
   const shownClasses = useMemo(() => (classes ?? []).filter((c) => c.names.some((n) => n.toLowerCase().includes(f))), [classes, f]);
@@ -41,7 +60,15 @@ export function SchemaPage({ kind = 'classes', name }: { kind?: 'classes' | 'att
 
   return (
     <PageSection isFilled>
-      <Title headingLevel="h1">Schema</Title>
+      <Flex justifyContent={{ default: 'justifyContentSpaceBetween' }} alignItems={{ default: 'alignItemsCenter' }}>
+        <FlexItem><Title headingLevel="h1">Schema</Title></FlexItem>
+        {admin && (
+          <FlexItem>
+            <Button variant="secondary" onClick={() => setCreating('attribute')}>New attribute</Button>{' '}
+            <Button variant="secondary" onClick={() => setCreating('class')}>New class</Button>
+          </FlexItem>
+        )}
+      </Flex>
       <ProblemAlert error={error} />
       <div className="dc-browser">
         <Card isCompact>
@@ -70,17 +97,25 @@ export function SchemaPage({ kind = 'classes', name }: { kind?: 'classes' | 'att
         <Card isCompact>
           <CardBody>
             {!name && <Title headingLevel="h2">Choose a {kind === 'classes' ? 'class' : 'attribute'}</Title>}
-            {name && kind === 'classes' && <ClassDetails name={name} />}
-            {name && kind === 'attributes' && attributes && <AttributeDetails a={attributes.find((a) => a.names.some((n) => n.toLowerCase() === name.toLowerCase()))} />}
+            {name && kind === 'classes' && <ClassDetails key={`${name}-${version}`} name={name} admin={admin} api={api} run={run} onChanged={() => changed()} onDelete={() => remove('class', name)} />}
+            {name && kind === 'attributes' && attributes && <AttributeDetails a={attributes.find((a) => a.names.some((n) => n.toLowerCase() === name.toLowerCase()))}
+              onDelete={admin ? () => remove('attribute', name) : undefined} />}
           </CardBody>
         </Card>
       </div>
+      {creating === 'attribute' && <NewAttributeModal api={api} run={run} onClose={() => setCreating(null)} onDone={(n) => { setCreating(null); changed(`/schema/attributes/${encodeURIComponent(n)}`); }} />}
+      {creating === 'class' && <NewClassModal api={api} run={run} onClose={() => setCreating(null)} onDone={(n) => { setCreating(null); changed(`/schema/classes/${encodeURIComponent(n)}`); }} />}
+      {confirmDialog}
+      {sure.dialog}
     </PageSection>
   );
 }
 
-function ClassDetails({ name }: { name: string }) {
+function ClassDetails({ name, admin, api, run, onChanged, onDelete }: {
+  name: string; admin: boolean; api: Edir; run: (op: (c?: string) => Promise<unknown>) => Promise<unknown>; onChanged: () => void; onDelete: () => void;
+}) {
   const { tree } = useSession();
+  const [adding, setAdding] = useState(false);
   const [c, setC] = useState<SchemaClass | null>(null);
   const [error, setError] = useState<unknown>(null);
   useEffect(() => {
@@ -109,11 +144,18 @@ function ClassDetails({ name }: { name: string }) {
         <Item term="Required" value={<Links kind="attributes" names={c.allMust ?? c.must} />} />
         <Item term="Optional" value={<Links kind="attributes" names={c.allMay ?? c.may} />} />
       </DescriptionList>
+      {admin && (
+        <div className="dc-tab-body">
+          <Button variant="secondary" onClick={() => setAdding(true)}>Add optional attributes</Button>{' '}
+          <Button variant="link" isDanger onClick={onDelete}>Delete the class</Button>
+        </div>
+      )}
+      {adding && <AddOptionalModal api={api} run={run} cls={c.name} onClose={() => setAdding(false)} onDone={() => { setAdding(false); onChanged(); }} />}
     </>
   );
 }
 
-function AttributeDetails({ a }: { a?: SchemaAttribute }) {
+function AttributeDetails({ a, onDelete }: { a?: SchemaAttribute; onDelete?: () => void }) {
   if (!a) {
     return <Title headingLevel="h2">No such attribute</Title>;
   }
@@ -132,6 +174,7 @@ function AttributeDetails({ a }: { a?: SchemaAttribute }) {
         {a.ndsName && <Item term="eDirectory name" value={a.ndsName} />}
         <Item term="Syntax" value={<>{SYNTAXES[a.syntax] ?? 'Other'} <span className="dc-mono dc-subtle">{a.syntax}</span></>} />
       </DescriptionList>
+      {onDelete && <div className="dc-tab-body"><Button variant="link" isDanger onClick={onDelete}>Delete the attribute</Button></div>}
     </>
   );
 }

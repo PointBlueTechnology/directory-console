@@ -15,6 +15,7 @@ import { NotFound } from '../pages/NotFound';
 import { IdmPage } from '../pages/IdmPage';
 import { DriverPage } from '../pages/DriverPage';
 import { SettingsPage } from '../pages/SettingsPage';
+import { EdirPage, ServerPage } from '../pages/EdirPage';
 import { ErrorBoundary } from './ErrorBoundary';
 
 const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>) => boolean }[] = [
@@ -22,6 +23,7 @@ const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>
   { to: '/search', label: 'Search' },
   { to: '/schema', label: 'Schema' },
   // a person with task presets only has no role: Identity Manager is not for them
+  { to: '/edir', label: 'eDirectory', show: (s) => s.me.roles.length > 0 },
   { to: '/idm', label: 'Identity Manager', show: (s) => s.me.roles.length > 0 },
   { to: '/settings', label: 'Settings', show: (s) => s.can('admin') },
 ];
@@ -124,6 +126,16 @@ function route(path: string) {
   m = match('/schema/:kind/:name', path);
   if (m && (m.kind === 'classes' || m.kind === 'attributes')) {
     return <SchemaPage kind={m.kind} name={m.name} />;
+  }
+  if (path === '/edir') {
+    return <EdirPage />;
+  }
+  if (path === '/edir/servers') {
+    return <EdirPage tab="servers" />;
+  }
+  m = match('/edir/servers/:guid', path);
+  if (m) {
+    return <ServerPage guid={m.guid} />;
   }
   if (path === '/settings') {
     return <SettingsPage />;

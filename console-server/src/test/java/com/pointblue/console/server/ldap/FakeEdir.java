@@ -48,6 +48,8 @@ public final class FakeEdir implements AutoCloseable {
     public volatile int privileges = 0x1f;
     /** The authorization id of the last modify's RFC 4370 control ("dn:…"), or null when it had none. */
     public volatile String lastProxied;
+    /** Partitions and replicas (empty until a test or the demo adds some). */
+    public final FakePartitions partitions = new FakePartitions();
 
     public FakeEdir(String... ldif) throws Exception {
         pki = new TestPki("ACME_TREE");
@@ -65,7 +67,7 @@ public final class FakeEdir implements AutoCloseable {
         // the in-memory server keeps cn=schema for itself; the root DSE names this fake's schema entry instead
         cfg.setRootDSEEntry(new com.unboundid.ldap.sdk.Entry("", new Attribute("objectClass", "top", "ds-root-dse"),
             new Attribute("subschemaSubentry", "cn=subschema,o=system"), new Attribute("namingContexts", "o=acme", "o=system"),
-            new Attribute("vendorName", "FakeEdir")));
+            new Attribute("vendorName", "FakeEdir"), new Attribute("dsaName", "cn=edir1,ou=servers,o=system")));
         SecureRandom random = new SecureRandom();
         AtomicLong revision = new AtomicLong(1);
         cfg.addInMemoryOperationInterceptor(new InMemoryOperationInterceptor() {
@@ -129,6 +131,7 @@ public final class FakeEdir implements AutoCloseable {
                     new ASN1OctetString(new ASN1Integer(privileges).encode()), null);
             }
         });
+        cfg.addExtendedOperationHandler(partitions);
         server = new InMemoryDirectoryServer(cfg);
         this.random = random;
         this.revision = revision;

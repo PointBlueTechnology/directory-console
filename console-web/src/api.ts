@@ -505,3 +505,86 @@ export function settings(id: string) {
     testMapping: (value: string) => request<{ matches: string[]; neverProxy: boolean }>('POST', `${base}/oidc/test`, { value }).then((r) => r.data),
   };
 }
+
+// ---- eDirectory administration (Phase 5) -------------------------------------------------------
+
+export type ReplicaType = 'master' | 'read-write' | 'read-only' | 'subordinate-reference' | 'sparse-write' | 'sparse-read';
+
+export interface EdirServer extends Identity {
+  version: string | null;
+  dsRevision: string | null;
+  status: string | null;
+  connected: boolean;
+  addresses: string[];
+  ldapServer: { dn: string; guid: string } | null;
+}
+
+export interface ReplicaState {
+  type: ReplicaType | string;
+  state: string;
+  transition: string | null;
+  busy: boolean;
+  modified: string | null;
+  error?: string;
+}
+
+export interface EdirIndex {
+  name: string;
+  rule: 'value' | 'presence' | 'substring' | string;
+  type: 'user' | 'attribute-creation' | 'system' | 'operational' | string;
+  state: string;
+  attributes: string[];
+  removable: boolean;
+}
+
+export interface EdirServerDetail extends EdirServer {
+  replicas: (ReplicaState & { partition: { dn: string; name: string; id: string | null } })[];
+  indexes: EdirIndex[];
+}
+
+export interface EdirPartition {
+  dn: string;
+  name: string;
+  /** The root's GUID, or "root" for the tree root. */
+  id: string | null;
+  entries: number | null;
+  busy: boolean;
+  replicas: (ReplicaState & { server: { dn: string; name: string; guid: string } })[];
+}
+
+/** eDirectory administration for one directory. {@code confirm}: the directory's name, typed for a production directory. */
+export function edir(id: string) {
+  const base = `/api/v2/trees/${encodeURIComponent(id)}/edir`;
+  const h = (confirm?: string): Record<string, string> => (confirm ? { 'X-Confirm-Directory': confirm } : {});
+  const part = (p: string) => (p === 'root' ? 'root' : guidPath(p));
+  return {
+    servers: () => request<EdirServer[]>('GET', `${base}/servers`).then((r) => r.data),
+    server: (guid: string) => request<EdirServerDetail>('GET', `${base}/servers/${guidPath(guid)}`).then((r) => r.data),
+    partitions: () => request<EdirPartition[]>('GET', `${base}/partitions`).then((r) => r.data),
+    split: (container: string, confirm?: string) => request<unknown>('POST', `${base}/partitions`, { container }, h(confirm)),
+    merge: (p: string, confirm?: string) => request<unknown>('POST', `${base}/partitions/${part(p)}/merge`, {}, h(confirm)),
+    addReplica: (p: string, server: string, type: string, confirm?: string) =>
+      request<unknown>('POST', `${base}/partitions/${part(p)}/replicas`, { server, type }, h(confirm)),
+    changeReplica: (p: string, server: string, type: string, confirm?: string) =>
+      request<unknown>('PUT', `${base}/partitions/${part(p)}/replicas/${guidPath(server)}`, { type }, h(confirm)),
+    removeReplica: (p: string, server: string, confirm?: string) =>
+      request<unknown>('DELETE', `${base}/partitions/${part(p)}/replicas/${guidPath(server)}`, undefined, h(confirm)),
+    addIndex: (server: string, body: { name: string; attributes: string[]; rule: string }, confirm?: string) =>
+      request<EdirServerDetail>('POST', `${base}/servers/${guidPath(server)}/indexes`, body, h(confirm)).then((r) => r.data),
+    removeIndex: (server: string, name: string, confirm?: string) =>
+      request<EdirServerDetail>('DELETE', `${base}/servers/${guidPath(server)}/indexes/${encodeURIComponent(name)}`, undefined, h(confirm)).then((r) => r.data),
+    background: (server: string, process: 'limber' | 'janitor' | 'skulker', confirm?: string) =>
+      request<void>('POST', `${base}/servers/${guidPath(server)}/background`, { process }, h(confirm)),
+    ldapRefresh: (confirm?: string) => request<void>('POST', `${base}/ldap-refresh`, {}, h(confirm)),
+    addAttribute: (body: { name: string; oid?: string; syntax: string; singleValue: boolean; upperBound?: number; description?: string }, confirm?: string) =>
+      request<unknown>('POST', `${base}/schema/attributes`, body, h(confirm)),
+    addClass: (body: { name: string; oid?: string; kind: string; superior: string[]; must: string[]; may: string[]; container?: boolean; naming?: string[]; containment?: string[] }, confirm?: string) =>
+      request<unknown>('POST', `${base}/schema/classes`, body, h(confirm)),
+    addOptional: (cls: string, attributes: string[], confirm?: string) =>
+      request<unknown>('POST', `${base}/schema/classes/${encodeURIComponent(cls)}/may`, { attributes }, h(confirm)),
+    removeAttribute: (name: string, confirm?: string) => request<unknown>('DELETE', `${base}/schema/attributes/${encodeURIComponent(name)}`, undefined, h(confirm)),
+    removeClass: (name: string, confirm?: string) => request<unknown>('DELETE', `${base}/schema/classes/${encodeURIComponent(name)}`, undefined, h(confirm)),
+  };
+}
+
+export type Edir = ReturnType<typeof edir>;

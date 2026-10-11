@@ -5,7 +5,8 @@ import {
 } from '@patternfly/react-core';
 import { EllipsisVIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { ApiError, type DirObject, type Preset, isGroup, isUser, presets } from '../api';
+import { ApiError, type DirObject, type Preset, edir, isGroup, isUser, presets } from '../api';
+import { useConfirmed } from './Confirm';
 import { PresetModal } from './PresetModal';
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
@@ -29,7 +30,9 @@ interface Props {
 /** One object: its attributes, identity and the signed-in person's rights, with the editing actions. */
 export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
   const { tree, canAt, me } = useSession();
+  const { run: confirmed, dialog: confirmDialog } = useConfirmed();
   const [tasks, setTasks] = useState<Preset[]>([]);
+  const [actionError, setActionError] = useState<unknown>(null);
   const [obj, setObj] = useState<DirObject | null>(null);
   const [etag, setEtag] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
@@ -130,6 +133,18 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'aux' }); }}>Auxiliary classes</DropdownItem>
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'rename' }); }}>Rename</DropdownItem>
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'move' }); }}>Move</DropdownItem>
+                {obj.container && canAt('editor', '') && (
+                  <DropdownItem description="Split it from its parent partition" onClick={async () => {
+                    setMenu(false);
+                    setActionError(null);
+                    try {
+                      await confirmed((c) => edir(me.directory).split(obj.guid, c));
+                      setNotice('Partition started: eDirectory finishes it in the background (see eDirectory → Partitions).');
+                    } catch (x) {
+                      setActionError(x);
+                    }
+                  }}>Make this a partition</DropdownItem>
+                )}
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'delete' }); }} isDanger>Delete</DropdownItem>
               </DropdownList>}
             </Dropdown>
@@ -137,6 +152,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
         )}
       </Flex>
 
+      <ProblemAlert error={actionError} />
       {notice && <Alert variant="success" isInline isPlain title={notice} actionClose={<AlertActionCloseButton onClose={() => setNotice(null)} />} />}
       <Tabs activeKey={tab} onSelect={(_e, k) => setTab(k)} aria-label="Object details" mountOnEnter>
         <Tab eventKey="attributes" title={<TabTitleText>Attributes</TabTitleText>}>
@@ -203,6 +219,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
       {dialog?.kind === 'rename' && <RenameModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDone={done} />}
       {dialog?.kind === 'move' && <MoveModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDone={done} />}
       {dialog?.kind === 'password' && <PasswordModal obj={obj} onClose={() => setDialog(null)} onDone={() => { setDialog(null); setNotice('Password set.'); refreshed(); }} />}
+      {confirmDialog}
       {dialog?.kind === 'preset' && (
         <PresetModal obj={obj} preset={dialog.preset} onClose={() => setDialog(null)}
           onDone={(changed) => { setDialog(null); setNotice(changed.length ? `${dialog.preset.name}: done.` : `${dialog.preset.name}: nothing to change.`); refreshed(); }} />

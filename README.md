@@ -4,8 +4,9 @@ An eDirectory and Identity Manager console built on the
 [DirXMLDev](https://github.com/PointBlueTechnology/DirXMLDev) core. The design is
 `../DESIGN-directory-console.md`; the Phase 1 spike results are `../SPIKES-phase1.md`.
 
-Status: Phases 2, 2b, 3 and 4 (directory objects, object tasks, single sign-on with scoped roles
-and task presets, Identity Manager) on top of Phase 1's service skeleton (bootstrap mode, the
+Status: Phases 2, 2b, 3, 4 and 5a (directory objects, object tasks, single sign-on with scoped
+roles and task presets, Identity Manager, eDirectory administration: partitions and replicas,
+indexes, schema changes) on top of Phase 1's service skeleton (bootstrap mode, the
 console's own TLS, the trust store with probe and import, sealed versioned configuration, the
 hash-chained audit log, direct and contextless sign-in with roles, and the container). The web UI
 covers sign-in, browsing, object details and editing, account and membership tasks, search, the
