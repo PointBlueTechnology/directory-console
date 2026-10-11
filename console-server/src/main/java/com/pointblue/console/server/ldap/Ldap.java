@@ -48,7 +48,7 @@ public final class Ldap implements AutoCloseable {
     static final String EFFECTIVE_PRIVILEGES = "2.16.840.1.113719.1.27.100.33";
     /** Virtual list view request and response. eDirectory honours them without listing them in the root DSE. */
     /** Attributes always read as bytes, whatever the schema says (the login time map is a bit map). */
-    static final String BINARY = "GUID loginAllowedTimeMap";
+    static final String BINARY = "GUID loginAllowedTimeMap networkAddress Replica";
     static final String VLV_REQUEST = "2.16.840.1.113730.3.4.9";
     static final String VLV_RESPONSE = "2.16.840.1.113730.3.4.10";
 
@@ -260,6 +260,44 @@ public final class Ldap implements AutoCloseable {
         } catch (javax.naming.NameNotFoundException e) {
             return null;
         }
+    }
+
+    /**
+     * An eDirectory extended operation: {@code value} as the request (null for none), the response's
+     * value back (null when it has none). Under single sign-on it carries the proxied-authorization
+     * control, so eDirectory decides with the person's rights.
+     */
+    public synchronized byte[] extended(String oid, byte[] value) throws NamingException {
+        controls();
+        byte[] v = value == null ? null : value.clone();
+        ExtendedResponse r = ctx.extendedOperation(new ExtendedRequest() {
+            @Override
+            public String getID() {
+                return oid;
+            }
+
+            @Override
+            public byte[] getEncodedValue() {
+                return v;
+            }
+
+            @Override
+            public ExtendedResponse createExtendedResponse(String id, byte[] berValue, int offset, int length) {
+                byte[] out = berValue == null ? null : java.util.Arrays.copyOfRange(berValue, offset, offset + length);
+                return new ExtendedResponse() {
+                    @Override
+                    public String getID() {
+                        return id;
+                    }
+
+                    @Override
+                    public byte[] getEncodedValue() {
+                        return out;
+                    }
+                };
+            }
+        });
+        return r.getEncodedValue();
     }
 
     /**

@@ -196,6 +196,29 @@ public class Phase3Test {
         assertEquals("refused", Json.asMap(results.get(1)).get("status"));
     }
 
+    @Test
+    public void eDirectoryAdministrationNeedsAWholeTreeEditorAndOnProductionTheName() throws Exception {
+        Map<String, String> ed = withCsrf(signIn("cn=ed,ou=Sales,o=acme", "ed-pw"));
+        assertEquals("reads are open to any role", 200, call("GET", "/api/v2/trees/acme/edir/servers", null, ed).status());
+        Reply scoped = call("POST", "/api/v2/trees/acme/edir/schema/attributes", Map.of("name", "x", "syntax", "1.3.6.1.4.1.1466.115.121.1.15"), ed);
+        assertEquals("a scoped editor cannot change the schema", 403, scoped.status());
+
+        Map<String, String> admin = withCsrf(signIn("cn=admin,o=system", "admin-pw"));
+        server.config.update(server.config.version(), "test", "production", doc ->
+            Json.asMap(Json.asMap(doc.get("directories")).get("acme")).put("tier", "production"));
+        Reply unconfirmed = call("POST", "/api/v2/trees/acme/edir/schema/attributes", Map.of("name", "x", "syntax", "1.3.6.1.4.1.1466.115.121.1.15"), admin);
+        assertEquals(409, unconfirmed.status());
+        assertEquals("confirm-directory", unconfirmed.body().get("title"));
+        assertEquals("bad input is still refused after the confirmation", 400, call("POST", "/api/v2/trees/acme/edir/schema/attributes",
+            Map.of("name", "1bad", "syntax", "1.3.6.1.4.1.1466.115.121.1.15"), withHeader(admin, "X-Confirm-Directory", "Acme")).status());
+    }
+
+    private static Map<String, String> withHeader(Map<String, String> h, String k, String v) {
+        Map<String, String> out = new HashMap<>(h);
+        out.put(k, v);
+        return out;
+    }
+
     // ---- task presets ---------------------------------------------------------------------------
 
     @Test

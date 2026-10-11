@@ -163,7 +163,7 @@ final class Objects {
     }
 
     /** A directory refusal as a problem document, with the LDAP result code and eDirectory error number. */
-    private Http.Problem problem(Sessions.Session s, Ldap.Failure f) {
+    Http.Problem problem(Sessions.Session s, Ldap.Failure f) {
         Map<String, Object> extra = new LinkedHashMap<>();
         extra.put("ldapResultCode", f.code);
         if (f.ndsError != null) {
@@ -197,6 +197,11 @@ final class Objects {
     }
 
     // ---- schema ---------------------------------------------------------------------------------
+
+    /** Read the schema again on next use (after a schema change). */
+    void forgetSchema(String directoryId) {
+        schemas.remove(directoryId);
+    }
 
     private Schema schema(String directoryId, Ldap l) throws NamingException {
         CachedSchema c = schemas.get(directoryId);

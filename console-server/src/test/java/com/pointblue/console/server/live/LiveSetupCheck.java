@@ -153,7 +153,7 @@ public final class LiveSetupCheck {
         });
         HttpResponse<String> r = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
         Object o = r.body().isBlank() ? Map.of() : Json.parse(r.body());
-        return new Reply(r.statusCode(), o instanceof Map ? Json.asMap(o) : Map.of(), r);
+        return new Reply(r.statusCode(), o instanceof Map ? Json.asMap(o) : Map.of("list", o), r);
     }
 
     static void step(String what, Reply r) {
