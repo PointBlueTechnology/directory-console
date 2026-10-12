@@ -741,3 +741,40 @@ export type SecurityApi = ReturnType<typeof security>;
 export function pem(der: string, label = 'CERTIFICATE'): string {
   return `-----BEGIN ${label}-----\n${der.match(/.{1,64}/g)?.join('\n') ?? ''}\n-----END ${label}-----\n`;
 }
+
+export interface ProbedCertificate {
+  index: number;
+  subject: string;
+  issuer: string;
+  sha256: string;
+  notBefore: string;
+  notAfter: string;
+  names: string[];
+  selfSigned: boolean;
+}
+
+export interface Probe {
+  probeId: string;
+  host: string;
+  port: number;
+  /** "trusted", or why not: "hostname", "untrusted", "expired", … */
+  status: string;
+  message: string;
+  hostnameMatches: boolean;
+  chain: ProbedCertificate[];
+  recommended: number;
+  confirm: string;
+}
+
+/** The console's trust store (administrators; changes need a recent sign-in). */
+export const trust = {
+  /** Probe host:port; with a directory, judged as that directory's connections are (its trusted CAs too). */
+  probe: (host: string, port: number, directory?: string) =>
+    request<Probe>('POST', '/api/v2/trust/probe', { host, port, directory }).then((r) => r.data),
+  /** Trust one certificate of a probed chain for this directory's connections. */
+  add: (probeId: string, index: number, confirm: string, directory: string) =>
+    request<unknown>('POST', '/api/v2/trust/certificates', { probeId, index, confirm, scope: `directory:${directory}` }).then(() => undefined),
+  /** Accept this server's certificate at exactly this host and port, though it names others (NAT, a tunnel). */
+  hostException: (probeId: string, confirm: string) =>
+    request<unknown>('POST', '/api/v2/trust/host-exceptions', { probeId, confirm }).then(() => undefined),
+};

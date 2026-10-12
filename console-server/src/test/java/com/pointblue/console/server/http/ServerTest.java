@@ -154,6 +154,13 @@ public class ServerTest {
         assertEquals("a write without the CSRF token", 403,
             call("POST", "/api/v2/trust/probe", Map.of("directory", "prod"), session).status());
         assertEquals(200, call("POST", "/api/v2/trust/probe", Map.of("directory", "prod"), Map.of("Cookie", session.get("Cookie"), "X-CSRF-Token", csrf)).status());
+        Map<String, String> w = Map.of("Cookie", session.get("Cookie"), "X-CSRF-Token", csrf);
+        Reply other = call("POST", "/api/v2/trust/probe", Map.of("directory", "prod", "host", "localhost", "port", edir.port()), w);
+        assertEquals("another server of the directory, by a name its certificate lacks: judged with the directory's CA",
+            "hostname", other.body().get("status"));
+        assertEquals("localhost", other.body().get("host"));
+        assertEquals("the same address without the directory: its CA is not trusted globally", "untrusted",
+            call("POST", "/api/v2/trust/probe", Map.of("host", "localhost", "port", edir.port()), w).body().get("status"));
         assertEquals("another site's page", 403, call("POST", "/api/v2/trust/probe", Map.of("directory", "prod"),
             Map.of("Cookie", session.get("Cookie"), "X-CSRF-Token", csrf, "Origin", "https://evil.example")).status());
         assertEquals("DNS rebinding", 421, call("GET", "/api/v2/session", null, Map.of("Host", "evil.example")).status());

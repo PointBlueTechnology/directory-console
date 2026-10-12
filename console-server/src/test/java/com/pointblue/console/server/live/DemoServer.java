@@ -117,7 +117,9 @@ public final class DemoServer {
             .person("john", Map.of("name", "John Smith (no console role)", "preferred_username", "jsmith", "groups", List.of("staff")))
             .person("admin", Map.of("name", "Tree admin (never through SSO)", "preferred_username", "admin", "groups", List.of("console-admins")));
         DemoAccess.phase3(server, idp.issuer);
-        DemoAccess.serverAddresses(server, Map.of("cn=edir2,ou=servers,o=system", "127.0.0.1:" + edir.port()));
+        // edir2 is reached by a name its certificate lacks, as behind NAT or a tunnel: signing in to it asks
+        // an administrator to accept the certificate at that address
+        DemoAccess.serverAddresses(server, Map.of("cn=edir2,ou=servers,o=system", "localhost:" + edir.port()));
         System.out.println("\nDemo console ready at " + base + " (data " + data + "). Ctrl-C to stop.");
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();

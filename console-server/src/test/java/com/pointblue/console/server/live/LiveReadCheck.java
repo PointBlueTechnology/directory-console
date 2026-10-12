@@ -24,7 +24,10 @@ import java.util.regex.Pattern;
  * READ-ONLY live check through the console's API: servers, partitions, the servers holding the driver
  * set's replica and those running it. Writes nothing to the directory. Not a JUnit test.
  *
- *   java -cp … LiveReadCheck <environments.properties> <env> [driver set DN]
+ * With a second server ({@code serverDN=host:port}, its address as reached from here), signs in to it
+ * and reads the driver set and its first driver there, then compares them across the servers.
+ *
+ *   java -cp … LiveReadCheck <environments.properties> <env> [driver set DN] [serverDN=host:port]
  */
 public final class LiveReadCheck {
 
@@ -39,7 +42,13 @@ public final class LiveReadCheck {
             LiveSetupCheck.base = "https://localhost:" + server.port();
             LiveSetupCheck.http = ServerClient.trusting(server);
             // the password may live in the keychain: vaultConfig() resolves it, in this process only
-            Map<String, String> h = setUp(dataPath, u.getHost(), u.getPort() > 0 ? u.getPort() : 636, env.bindDn, env.vaultConfig().password);
+            String pw = env.vaultConfig().password;
+            Map<String, String> h = setUp(dataPath, u.getHost(), u.getPort() > 0 ? u.getPort() : 636, env.bindDn, pw);
+            String second = args.length > 3 ? args[3].substring(0, args[3].lastIndexOf('=')) : null;
+            if (second != null) {
+                String address = args[3].substring(args[3].lastIndexOf('=') + 1);
+                com.pointblue.console.server.http.DemoAccess.serverAddresses(server, "lab", Map.of(second, address));
+            }
             String t = "/api/v2/trees/lab";
             show("servers", call("GET", t + "/edir/servers", null, h));
             show("partitions", call("GET", t + "/edir/partitions", null, h));
@@ -55,6 +64,25 @@ public final class LiveReadCheck {
                 if (drivers != null && !drivers.isEmpty()) {
                     String drv = (String) Json.asMap(drivers.get(0)).get("guid");
                     show("servers running the first driver's set", call("GET", t + "/idm/drivers/" + drv + "/servers", null, h));
+                    if (second != null) {
+                        String guid = serverGuid(call("GET", t + "/edir/servers", null, h), second);
+                        String dsGuid = (String) ds.body().get("guid");
+                        show("before signing in to " + second, call("GET", t + "/idm/driversets/" + dsGuid + "?server=" + guid, null, h));
+                        LiveSetupCheck.Reply in = call("POST", "/api/v2/session/servers", Map.of("server", guid, "password", pw), h);
+                        show("sign in to " + second, in);
+                        if ("untrusted-certificate".equals(in.body().get("title")) && "hostname".equals(in.body().get("reason"))) {
+                            // reached by another name than its certificate's (a tunnel or NAT): an administrator adds a host exception
+                            LiveSetupCheck.Reply probe = call("POST", "/api/v2/trust/probe", Map.of("host", in.body().get("host"), "port", in.body().get("port")), h);
+                            String sha = ((String) Json.asMap(((List<?>) probe.body().get("chain")).get(0)).get("sha256")).replace(":", "").toLowerCase();
+                            show("host exception for " + in.body().get("host") + ":" + in.body().get("port"), call("POST", "/api/v2/trust/host-exceptions",
+                                Map.of("probeId", probe.body().get("probeId"), "confirm", sha.substring(sha.length() - 8)), h));
+                            show("sign in to " + second + " again", call("POST", "/api/v2/session/servers", Map.of("server", guid, "password", pw), h));
+                        }
+                        show("driver set on " + second, call("GET", t + "/idm/driversets/" + dsGuid + "?server=" + guid, null, h));
+                        show("first driver on " + second, call("GET", t + "/idm/drivers/" + drv + "?server=" + guid, null, h));
+                        show("first driver compared", call("GET", t + "/idm/drivers/" + drv + "?server=all", null, h));
+                        show("driver set object compared", call("GET", t + "/objects/" + dsGuid + "?server=all", null, h));
+                    }
                 }
             }
         } finally {
@@ -63,6 +91,17 @@ public final class LiveReadCheck {
                 st.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
             }
         }
+    }
+
+    private static String serverGuid(LiveSetupCheck.Reply servers, String dn) {
+        Object items = servers.body().containsKey("items") ? servers.body().get("items") : servers.body().get("list");
+        for (Object o : (List<?>) items) {
+            Map<String, Object> m = Json.asMap(o);
+            if (dn.equalsIgnoreCase(String.valueOf(m.get("dn")))) {
+                return (String) m.get("guid");
+            }
+        }
+        throw new IllegalStateException("no server " + dn + " in " + Json.compact(servers.body()));
     }
 
     private static void show(String what, LiveSetupCheck.Reply r) {

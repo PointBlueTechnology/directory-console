@@ -53,7 +53,8 @@ public final class FakeEdir implements AutoCloseable {
 
     public FakeEdir(String... ldif) throws Exception {
         pki = new TestPki("ACME_TREE");
-        TestPki.Server cert = pki.server("edir1", List.of("127.0.0.1", "localhost"));
+        // names only the address the console uses: reaching it as "localhost" is a host-name mismatch, as behind NAT
+        TestPki.Server cert = pki.server("edir1", List.of("127.0.0.1"));
         KeyStore ks = KeyStore.getInstance("PKCS12");
         ks.load(null, null);
         ks.setKeyEntry("s", cert.key().getPrivate(), "pw".toCharArray(), new java.security.cert.X509Certificate[] {cert.cert(), pki.ca});

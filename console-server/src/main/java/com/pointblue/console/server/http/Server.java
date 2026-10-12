@@ -668,8 +668,10 @@ public final class Server {
             if (d == null) {
                 throw new Http.Problem(404, "unknown-directory", "no directory " + dirId);
             }
-            host = d.host();
-            port = d.port();
+            if (host == null) {
+                host = d.host();
+                port = d.port();
+            }
         }
         if (host == null) {
             throw new Http.Problem(400, "missing-field", "directory, or host and port, is required");

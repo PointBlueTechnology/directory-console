@@ -52,7 +52,11 @@ public final class DemoAccess {
 
     /** Where the console reaches a server (DN → "host:port"): the demo's second server is the same fake directory. */
     public static void serverAddresses(Server server, Map<String, String> addresses) throws Exception {
+        serverAddresses(server, "acme", addresses);
+    }
+
+    public static void serverAddresses(Server server, String directory, Map<String, String> addresses) throws Exception {
         server.config.update(server.config.version(), "demo", "server addresses", doc ->
-            Json.asMap(Json.asMap(doc.get("directories")).get("acme")).put("serverAddresses", addresses));
+            Json.asMap(Json.asMap(doc.get("directories")).get(directory)).put("serverAddresses", addresses));
     }
 }
