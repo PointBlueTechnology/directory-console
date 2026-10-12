@@ -82,6 +82,10 @@ public final class DirectLogin {
         this.engines = e;
     }
 
+    public com.pointblue.console.server.idm.Engines engines() {
+        return engines;
+    }
+
     public DirectLogin(TrustStore trust) {
         this(trust, Clock.systemUTC());
     }

@@ -37,8 +37,9 @@ public final class Schema {
         }
     }
 
+    /** {@code perReplica}: eDirectory never synchronizes it ({@code X-NDS_NEVER_SYNC}); each server keeps its own value. */
     public record AttributeType(String oid, List<String> names, String syntax, boolean singleValue,
-                                boolean readOnly, boolean operational, String ndsName) {
+                                boolean readOnly, boolean operational, String ndsName, boolean perReplica) {
         public String name() {
             return names.isEmpty() ? oid : names.get(0);
         }
@@ -63,7 +64,7 @@ public final class Schema {
             AttributeType a = new AttributeType(p.get("").get(0), p.getOrDefault("NAME", List.of()),
                 first(p, "SYNTAX") == null ? null : first(p, "SYNTAX").replaceAll("\\{\\d+}$", ""),
                 p.containsKey("SINGLE-VALUE"), p.containsKey("NO-USER-MODIFICATION"),
-                first(p, "USAGE") != null && !first(p, "USAGE").equals("userApplications"), first(p, "X-NDS_NAME"));
+                first(p, "USAGE") != null && !first(p, "USAGE").equals("userApplications"), first(p, "X-NDS_NAME"), flag(p, "X-NDS_NEVER_SYNC"));
             attributes.put(a.oid(), a);
             a.names().forEach(n -> attributeByName.put(n.toLowerCase(Locale.ROOT), a));
             attributeByName.put(a.oid(), a);

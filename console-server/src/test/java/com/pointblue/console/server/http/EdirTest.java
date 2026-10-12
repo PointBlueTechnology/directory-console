@@ -157,6 +157,50 @@ public class EdirTest {
     }
 
     @Test
+    public void serverTargetedOperations() throws Exception {
+        String sales = (String) call("GET", "/api/v2/trees/acme/objects?dn=ou%3DSales%2Co%3Dacme", null, h).body().get("guid");
+        List<Map<String, Object>> holders = list(call("GET", "/api/v2/trees/acme/objects/" + sales + "/servers", null, h));
+        assertEquals(2, holders.size());
+        Map<String, Object> s1 = holders.stream().filter(x -> S1.equals(x.get("dn"))).findFirst().orElseThrow();
+        Map<String, Object> s2 = holders.stream().filter(x -> S2.equals(x.get("dn"))).findFirst().orElseThrow();
+        assertEquals("the fake's dsaName is edir1", true, s1.get("connected"));
+        assertEquals(false, s2.get("signedIn"));
+
+        Reply own = call("GET", "/api/v2/trees/acme/objects/" + sales + "?server=" + s1.get("guid"), null, h);
+        assertEquals("the connected server needs no second sign-in", 200, own.status());
+        assertEquals(S1, Json.asMap(own.body().get("servedBy")).get("dn"));
+        Reply needs = call("GET", "/api/v2/trees/acme/objects/" + sales + "?server=" + s2.get("guid"), null, h);
+        assertEquals(409, needs.status());
+        assertEquals("server-sign-in-required", needs.body().get("title"));
+        assertEquals(404, call("GET", "/api/v2/trees/acme/objects/" + sales + "?server=00000000000000000000000000000000", null, h).status());
+        assertEquals(400, call("GET", "/api/v2/trees/acme/objects/" + sales + "?server=nope", null, h).status());
+        assertEquals("all is for reads", 400, call("PATCH", "/api/v2/trees/acme/objects/" + sales + "?server=all", Map.of("changes", List.of()), h).status());
+
+        // edir2 publishes no address; with one set in the directory's settings, its certificate is checked like any other
+        Reply noAddress = call("POST", "/api/v2/session/servers", Map.of("server", s2.get("guid"), "password", "admin-pw"), h);
+        assertEquals(503, noAddress.status());
+        try (FakeEdir other = new FakeEdir()) {
+            server.config.update(server.config.version(), "test", "address", doc -> Json.asMap(Json.asMap(doc.get("directories")).get("acme"))
+                .put("serverAddresses", Map.of(S2, "127.0.0.1:" + other.port())));
+            Reply untrusted = call("POST", "/api/v2/session/servers", Map.of("server", s2.get("guid"), "password", "admin-pw"), h);
+            assertEquals("a server whose certificate is not trusted", 409, untrusted.status());
+            assertEquals("untrusted-certificate", untrusted.body().get("title"));
+        }
+
+        Reply compare = call("GET", "/api/v2/trees/acme/objects/" + sales + "?server=all", null, h);
+        assertEquals(200, compare.status());
+        List<Map<String, Object>> results = ((List<?>) compare.body().get("servers")).stream().map(Json::asMap).toList();
+        assertEquals("ok", results.stream().filter(r -> S1.equals(Json.asMap(r.get("server")).get("dn"))).findFirst().orElseThrow().get("status"));
+        assertEquals("server-sign-in-required", results.stream().filter(r -> S2.equals(Json.asMap(r.get("server")).get("dn"))).findFirst().orElseThrow().get("status"));
+    }
+
+    @Test
+    public void perReplicaAttributesAreMarked() throws Exception {
+        assertEquals(true, call("GET", "/api/v2/trees/acme/schema/attributes/DirXML-DriverStartOption", null, h).body().get("perReplica"));
+        assertEquals(false, call("GET", "/api/v2/trees/acme/schema/attributes/description", null, h).body().get("perReplica"));
+    }
+
+    @Test
     public void indexesAndSchemaChanges() throws Exception {
         String g1 = (String) list(call("GET", "/api/v2/trees/acme/edir/servers", null, h)).get(0).get("guid");
         assertEquals(201, call("POST", "/api/v2/trees/acme/edir/schema/attributes", Map.of("name", "acmeBadge", "syntax", "1.3.6.1.4.1.1466.115.121.1.15", "singleValue", true), h).status());

@@ -15,6 +15,7 @@ import { AttributeModal, AuxClassModal, DeleteModal, MoveModal, PasswordModal, R
 import { AccountTab } from './AccountTab';
 import { GroupMembersTab, UserGroupsTab } from './MembershipTab';
 import { RightsTab } from './RightsTab';
+import { ReplicasTab } from './ReplicasTab';
 import { HeadingLevel } from '../heading';
 
 type Dialog = null | { kind: 'attr'; attribute?: string } | { kind: 'rename' } | { kind: 'move' } | { kind: 'delete' }
@@ -199,6 +200,9 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
         <Tab eventKey="rights" title={<TabTitleText>Rights</TabTitleText>}>
           <RightsTab obj={obj} etag={etag} onChanged={refreshed} />
         </Tab>
+        <Tab eventKey="replicas" title={<TabTitleText>Replicas</TabTitleText>}>
+          <ReplicasTab obj={obj} />
+        </Tab>
         <Tab eventKey="identity" title={<TabTitleText>Identity</TabTitleText>}>
           <DescriptionList isHorizontal className="dc-tab-body">
             <Copy term="GUID" value={obj.guid} />
@@ -211,6 +215,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
             <Plain term="Modified" value={when(op.modifyTimestamp)} />
             <Plain term="Modified by" value={op.modifiersName} />
             <Plain term="Revision" value={op.revision} />
+            <Plain term="Read from" value={obj.servedBy?.dn} />
           </DescriptionList>
         </Tab>
       </Tabs>

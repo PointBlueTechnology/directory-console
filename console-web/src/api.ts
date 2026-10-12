@@ -92,6 +92,8 @@ export type Value = string | Reference | Binary | Acl;
 export interface DirObject extends Row {
   attributes: Record<string, Value[]>;
   operational: Record<string, unknown>;
+  /** The server that answered. */
+  servedBy?: { dn: string };
   /** What the console offers the caller on this object (eDirectory may still refuse). */
   allowed?: { edit: boolean; presets: string[] };
 }
@@ -121,6 +123,8 @@ export interface SchemaClass {
 }
 
 export interface SchemaAttribute {
+  /** Never synchronized: each server keeps its own value. */
+  perReplica?: boolean;
   name: string;
   names: string[];
   oid: string;
@@ -253,7 +257,11 @@ export function tree(id: string) {
   return {
     roots: () => request<{ items: Row[] }>('GET', `${base}/roots`).then((r) => r.data.items),
     resolve: (dn: string) => request<DirObject>('GET', `${base}/objects?${new URLSearchParams({ dn })}`),
-    read: (guid: string) => request<DirObject>('GET', obj(guid)),
+    read: (guid: string, server?: string) => request<DirObject>('GET', server ? `${obj(guid)}?server=${encodeURIComponent(server)}` : obj(guid)),
+    /** The servers holding a replica of this object. */
+    servers: (guid: string) => request<ServerChoice[]>('GET', `${obj(guid)}/servers`).then((r) => r.data),
+    /** This object as each replica has it. */
+    compare: (guid: string) => request<ObjectComparison>('GET', `${obj(guid)}?server=all`).then((r) => r.data),
     children: (guid: string, q: { offset?: number; count?: number; startAt?: string; kind?: 'all' | 'containers' | 'leaves' } = {}) => {
       const p = new URLSearchParams();
       Object.entries(q).forEach(([k, v]) => v !== undefined && v !== '' && p.set(k, String(v)));
@@ -314,6 +322,9 @@ export const session = {
     request<Me>('POST', '/api/v2/session', { directory, name, password, choice }).then((r) => r.data),
   signOut: () => request<void>('DELETE', '/api/v2/session'),
   stepUp: (password: string) => request<void>('POST', '/api/v2/session/step-up', { password }),
+  /** Sign in to another server of the tree, as the same person, for its replica (direct sign-in). */
+  signInServer: (server: string, password: string) =>
+    request<{ server: { guid: string; name: string }; idm: boolean }>('POST', '/api/v2/session/servers', { server, password }).then((r) => r.data),
   /** Single sign-on starts with a full-page navigation (the provider's page), not a request. */
   ssoUrl: (directory: string, next = '/') => `/api/v2/oidc/start?directory=${encodeURIComponent(directory)}&next=${encodeURIComponent(next)}`,
 };
@@ -381,10 +392,13 @@ export interface Job {
 export type PasswordKind = 'named' | 'remote-loader' | 'key' | 'keystore';
 
 /** Identity Manager for one directory. {@code confirm}: the directory's name, typed for a production directory. */
-export function idm(id: string) {
+/** Identity Manager for one directory, on {@code server}'s engine (its GUID) or the connected server's. {@code confirm}: the directory's name, typed for a production directory. */
+export function idm(id: string, server?: string) {
   const base = `/api/v2/trees/${encodeURIComponent(id)}/idm`;
   const h = (confirm?: string): Record<string, string> => (confirm ? { 'X-Confirm-Directory': confirm } : {});
-  const get = <T>(p: string) => request<T>('GET', base + p).then((r) => r.data);
+  // a driver's per-replica values (start option, state, named passwords) belong to one server: send it along
+  const at = (p: string, on = server) => (on ? `${p}${p.includes('?') ? '&' : '?'}server=${encodeURIComponent(on)}` : p);
+  const get = <T>(p: string) => request<T>('GET', at(base + p)).then((r) => r.data);
   return {
     status: () => get<IdmStatus>(''),
     driverSets: () => get<{ items: Row[] }>('/driversets').then((r) => r.items),
@@ -393,26 +407,54 @@ export function idm(id: string) {
     driver: (guid: string) => get<Record<string, unknown> & Identity>(`/drivers/${guidPath(guid)}`),
     driverPart: <T>(guid: string, part: string) => get<T>(`/drivers/${guidPath(guid)}/${part}`),
     lifecycle: (guid: string, action: 'start' | 'stop' | 'restart', confirm?: string) =>
-      request<{ before: string; after: string; seen: string; error?: string }>('POST', `${base}/drivers/${guidPath(guid)}/${action}`, {}, h(confirm)).then((r) => r.data),
+      request<{ before: string; after: string; seen: string; error?: string }>('POST', at(`${base}/drivers/${guidPath(guid)}/${action}`), {}, h(confirm)).then((r) => r.data),
     startOption: (guid: string, option: 'auto' | 'manual' | 'disabled', confirm?: string) =>
-      request<{ before: string; after: string }>('PUT', `${base}/drivers/${guidPath(guid)}/start-option`, { option }, h(confirm)).then((r) => r.data),
+      request<{ before: string; after: string }>('PUT', at(`${base}/drivers/${guidPath(guid)}/start-option`), { option }, h(confirm)).then((r) => r.data),
     logLevel: (guid: string, level: number | null, events: number[] | null, confirm?: string) =>
-      request<unknown>('PUT', `${base}/drivers/${guidPath(guid)}/log-level`, { level, events }, h(confirm)).then((r) => r.data),
-    clearCache: (guid: string, confirm?: string) => request<unknown>('POST', `${base}/drivers/${guidPath(guid)}/cache/clear`, {}, h(confirm)).then((r) => r.data),
+      request<unknown>('PUT', at(`${base}/drivers/${guidPath(guid)}/log-level`), { level, events }, h(confirm)).then((r) => r.data),
+    clearCache: (guid: string, confirm?: string) => request<unknown>('POST', at(`${base}/drivers/${guidPath(guid)}/cache/clear`), {}, h(confirm)).then((r) => r.data),
     resync: (guid: string, since: string | null, confirm?: string) =>
-      request<unknown>('POST', `${base}/drivers/${guidPath(guid)}/resync`, since ? { since } : {}, h(confirm)).then((r) => r.data),
+      request<unknown>('POST', at(`${base}/drivers/${guidPath(guid)}/resync`), since ? { since } : {}, h(confirm)).then((r) => r.data),
     job: (guid: string, action: 'start' | 'abort', confirm?: string) =>
-      request<unknown>('POST', `${base}/jobs/${guidPath(guid)}/${action}`, {}, h(confirm)).then((r) => r.data),
+      request<unknown>('POST', at(`${base}/jobs/${guidPath(guid)}/${action}`), {}, h(confirm)).then((r) => r.data),
     passwords: (kind: 'drivers' | 'driversets', guid: string) => get<{ named: string[] }>(`/${kind}/${guidPath(guid)}/passwords`),
     setPassword: (kind: 'drivers' | 'driversets', guid: string, body: { kind: PasswordKind; name?: string; displayName?: string; value: string }, confirm?: string) =>
-      request<void>('POST', `${base}/${kind}/${guidPath(guid)}/passwords`, body, h(confirm)),
+      request<void>('POST', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm)),
     removePassword: (kind: 'drivers' | 'driversets', guid: string, body: { kind: PasswordKind; name?: string }, confirm?: string) =>
-      request<void>('DELETE', `${base}/${kind}/${guidPath(guid)}/passwords`, body, h(confirm)),
+      request<void>('DELETE', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm)),
     objectAssociations: (guid: string) => get<Record<string, unknown>>(`/objects/${guidPath(guid)}/associations`),
+    /** The servers that run this driver's driver set. */
+    driverServers: (guid: string) => request<ServerChoice[]>('GET', `${base}/drivers/${guidPath(guid)}/servers`).then((r) => r.data),
+    /** The driver's state and start option on each of those servers. */
+    compareDriver: (guid: string) => request<Comparison<{ state?: string; startOption?: string; cacheSize?: string; unprocessedSize?: string }>>(
+      'GET', at(`${base}/drivers/${guidPath(guid)}`, 'all')).then((r) => r.data),
+    comparePasswords: (kind: 'drivers' | 'driversets', guid: string) => request<Comparison<{ named?: string[] }>>(
+      'GET', at(`${base}/${kind}/${guidPath(guid)}/passwords`, 'all')).then((r) => r.data),
   };
 }
 
 export type Idm = ReturnType<typeof idm>;
+
+/** A server an operation can run on: {@code connected} is the session's own; {@code signedIn} needs no further sign-in. */
+export interface ServerChoice {
+  guid: string;
+  dn: string;
+  name: string;
+  type?: string;
+  connected: boolean;
+  signedIn: boolean;
+}
+
+/** One value per server (server=all): {@code status} is "ok", or why that server could not answer. */
+export interface Comparison<T> {
+  dn: string;
+  servers: (T & { server: { guid: string; dn: string; name: string; type?: string }; status: string; detail?: string })[];
+}
+
+export interface ObjectComparison extends Comparison<{ revision?: unknown }> {
+  /** Per-replica attributes, and any attribute whose values differ between servers; values by server GUID. */
+  attributes: { name: string; perReplica: boolean; differs: boolean; values: Record<string, Value[]> }[];
+}
 
 // ---- Task presets and settings (Phase 3) -------------------------------------------------------
 

@@ -98,7 +98,19 @@ final class Objects {
         if (l == null) {
             throw new Http.Problem(501, "not-available", "directory objects need a direct sign-in in this version");
         }
+        String target = Http.query(ex).get("server");
         try {
+            if ("all".equals(target)) {
+                // compare one object across every server holding a replica (reads only)
+                if (!method.equals("GET") || p.length != 3 || !p[1].equals("objects")) {
+                    throw new Http.Problem(400, "bad-request", "server=all reads one object from every replica; change one server at a time");
+                }
+                compare(ex, l, s, p[2]);
+                return;
+            }
+            if (target != null) {
+                l = server.on(s, target).ldap();
+            }
             Schema schema = schema(s.principal.directoryId(), l);
             String route = method + " " + String.join("/", java.util.Arrays.copyOfRange(p, 1, p.length)).replaceAll("^objects/[0-9a-f]{32}", "objects/{guid}")
                 .replaceAll("^schema/(classes|attributes)/.+", "schema/$1/{name}");
@@ -123,6 +135,7 @@ final class Objects {
                 case "GET objects" -> resolve(ex, l, schema, s);
                 case "GET objects/{guid}" -> read(ex, l, schema, s, guid);
                 case "GET objects/{guid}/children" -> children(ex, l, schema, guid);
+                case "GET objects/{guid}/servers" -> holders(ex, l, s, guid);
                 case "GET objects/{guid}/rights" -> rights(ex, l, s, guid);
                 case "POST objects/{guid}/password" -> tasks.password(ex, l, s, guid);
                 case "GET objects/{guid}/account" -> tasks.account(ex, l, guid);
@@ -252,6 +265,7 @@ final class Objects {
         m.put("readOnly", a.readOnly());
         m.put("operational", a.operational());
         m.put("binary", a.binary());
+        m.put("perReplica", a.perReplica());
         if (a.ndsName() != null) {
             m.put("ndsName", a.ndsName());
         }
@@ -381,7 +395,76 @@ final class Objects {
     void read(HttpExchange ex, Ldap l, Schema schema, Sessions.Session s, String guid) throws IOException, NamingException {
         Ldap.Entry e = byGuid(l, guid, fullRead());
         ex.getResponseHeaders().set("ETag", etag(e));
-        Http.json(ex, 200, withAllowed(objectJson(e, schema), e, s));
+        Map<String, Object> m = withAllowed(objectJson(e, schema), e, s);
+        m.put("servedBy", Map.of("dn", l.dsaName()));
+        Http.json(ex, 200, m);
+    }
+
+    /** The servers holding a replica of this object (for choosing where to read or write per-replica attributes). */
+    private void holders(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        String dn = dnOf(l, guid);
+        String own = s.ldap().dsaName();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (com.pointblue.console.server.ldap.Servers.Holder h : com.pointblue.console.server.ldap.Servers.holders(s.ldap(), dn)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("guid", h.guid());
+            m.put("dn", h.dn());
+            m.put("name", h.name());
+            m.put("type", h.type().id());
+            m.put("connected", Names.same(h.dn(), own));
+            m.put("signedIn", Names.same(h.dn(), own) || s.servers.containsKey(h.guid()) || "oidc".equals(s.principal.via()));
+            out.add(m);
+        }
+        Http.json(ex, 200, out);
+    }
+
+    /**
+     * One object as each server holding a replica has it: the per-replica attributes (never
+     * synchronized) and any other attribute whose values differ. A server not yet signed in to (direct
+     * sign-in) is reported as such, not as a failure of the whole read.
+     */
+    private void compare(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Schema schema = schema(s.principal.directoryId(), l);
+        String dn = dnOf(l, guid);
+        List<Map<String, Object>> results = new ArrayList<>();
+        Map<String, Map<String, Object>> values = new LinkedHashMap<>();   // server guid -> attributes
+        for (com.pointblue.console.server.ldap.Servers.Holder h : com.pointblue.console.server.ldap.Servers.holders(s.ldap(), dn)) {
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("server", Map.of("guid", h.guid(), "dn", h.dn(), "name", String.valueOf(h.name()), "type", h.type().id()));
+            try {
+                Ldap on = server.on(s, h.guid()).ldap();
+                Ldap.Entry e = byGuid(on, guid, fullRead());
+                Map<String, Object> json = objectJson(e, schema);
+                values.put(h.guid(), new LinkedHashMap<>(Json.asMap(json.get("attributes"))));
+                r.put("status", "ok");
+                r.put("revision", Json.asMap(json.get("operational")).get("revision"));
+            } catch (Http.Problem p) {
+                r.put("status", p.type);
+                r.put("detail", p.getMessage());
+            } catch (NamingException x) {
+                r.put("status", "failed");
+                r.put("detail", Ldap.Failure.of(x).getMessage());
+            }
+            results.add(r);
+        }
+        java.util.Set<String> names = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        values.values().forEach(v -> names.addAll(v.keySet()));
+        List<Map<String, Object>> attributes = new ArrayList<>();
+        for (String a : names) {
+            Schema.AttributeType t = schema.attribute(a);
+            boolean perReplica = t != null && t.perReplica();
+            java.util.Set<String> distinct = new java.util.HashSet<>();
+            Map<String, Object> by = new LinkedHashMap<>();
+            values.forEach((g, v) -> {
+                Object val = v.entrySet().stream().filter(x -> x.getKey().equalsIgnoreCase(a)).map(Map.Entry::getValue).findFirst().orElse(List.of());
+                by.put(g, val);
+                distinct.add(Json.compact(val));
+            });
+            if (perReplica || distinct.size() > 1) {
+                attributes.add(Map.of("name", a, "perReplica", perReplica, "differs", distinct.size() > 1, "values", by));
+            }
+        }
+        Http.json(ex, 200, Map.of("dn", dn, "servers", results, "attributes", attributes));
     }
 
     /**

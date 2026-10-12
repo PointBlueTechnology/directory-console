@@ -248,6 +248,7 @@ public final class Server {
             case "GET /api/v2/session" -> Http.json(ex, 200, me(session(ex, null)));
             case "DELETE /api/v2/session" -> signOut(ex);
             case "POST /api/v2/session/step-up" -> stepUpSignIn(ex);
+            case "POST /api/v2/session/servers" -> serverSignIn(ex);
             case "GET /api/v2/trust/certificates" -> trustList(ex);
             case "POST /api/v2/trust/probe" -> trustProbe(ex);
             case "POST /api/v2/trust/certificates" -> trustAdd(ex);
@@ -422,6 +423,135 @@ public final class Server {
             throw new Http.Problem(401, "bad-credentials", "the password is incorrect");
         } catch (com.pointblue.console.server.ldap.Ldap.Untrusted | javax.naming.NamingException e) {
             throw new Http.Problem(503, "unavailable", "the directory did not answer: " + e.getMessage());
+        } finally {
+            java.util.Arrays.fill(pw, '\0');
+        }
+    }
+
+    // ---- other servers of the tree (per-replica attributes) -----------------------------------------
+
+    /** Where an operation runs: the session's own connection, or one to another server. */
+    record On(String serverDn, com.pointblue.console.server.ldap.Ldap ldap, com.pointblue.dirxml.dev.operate.Operate.Engine engine, String engineProblem) {
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, String> serverAddresses(String directoryId) {
+        Object dirs = config.read().get("directories");
+        Object d = dirs instanceof Map<?, ?> m ? m.get(directoryId) : null;
+        Object a = d instanceof Map<?, ?> dm ? dm.get("serverAddresses") : null;
+        return a instanceof Map<?, ?> am ? (Map<String, String>) am : Map.of();
+    }
+
+    /**
+     * The connection for an operation on server {@code guid}'s replica (null or the session's own
+     * server: the session's connection). A single sign-on session reaches another server the way it
+     * reaches its own: the service account with the proxied-authorization control. A direct sign-in
+     * has no password to reuse, so the first use of a server answers {@code server-sign-in-required}
+     * and the person signs in to it once ({@code POST /session/servers}).
+     */
+    On on(Sessions.Session s, String guid) throws javax.naming.NamingException {
+        com.pointblue.console.server.ldap.Ldap own = s.ldap();
+        if (guid == null || guid.isBlank()) {
+            return new On(own.dsaName(), own, s.engine, s.engineProblem);
+        }
+        if (!com.pointblue.console.server.ldap.Names.guid(guid)) {
+            throw new Http.Problem(400, "bad-server", "server is a server's GUID");
+        }
+        Sessions.ServerConnection c = s.servers.get(guid);
+        if (c != null) {
+            return new On(c.dn(), c.ldap(), c.engine() == null ? null : c.engine().engine(), c.engineProblem());
+        }
+        com.pointblue.console.server.ldap.Ldap.Entry srv = com.pointblue.console.server.ldap.Servers.find(own, guid);
+        if (srv == null) {
+            throw new Http.Problem(404, "no-such-server", "no eDirectory server has GUID " + guid);
+        }
+        if (com.pointblue.console.server.ldap.Names.same(srv.dn(), own.dsaName())) {
+            return new On(own.dsaName(), own, s.engine, s.engineProblem);
+        }
+        if (!"oidc".equals(s.principal.via())) {
+            throw new Http.Problem(409, "server-sign-in-required", "sign in to " + srv.first("cn") + " to work with its replica",
+                Map.of("server", Map.of("guid", guid, "dn", srv.dn(), "name", String.valueOf(srv.first("cn")))));
+        }
+        com.pointblue.console.server.ldap.Servers.Located where;
+        try {
+            where = com.pointblue.console.server.ldap.Servers.locate(own, guid, serverAddresses(s.principal.directoryId()));
+        } catch (javax.naming.NamingException e) {
+            throw new Http.Problem(503, "unavailable", e.getMessage());
+        }
+        {
+            DirectoryConfig d = DirectoryConfig.find(config.read(), s.principal.directoryId());
+            String pw = config.secret(d.serviceAccountPasswordPath());
+            com.pointblue.console.server.ldap.Ldap l;
+            try {
+                l = com.pointblue.console.server.ldap.Ldap.connect(trust, new com.pointblue.console.server.ldap.Ldap.Target(d.id(), where.host(), where.port()), null,
+                    d.serviceAccountDn(), pw.toCharArray(), T);
+            } catch (com.pointblue.console.server.ldap.Ldap.Untrusted u) {
+                throw untrusted(where, u);
+            } catch (com.pointblue.console.server.ldap.Ldap.BadCredentials e) {
+                throw new Http.Problem(503, "unavailable", "the console's service account could not sign in to " + where.name());
+            }
+            l.actAs(s.principal.dn());
+            Sessions.ServerConnection made = new Sessions.ServerConnection(where.dn(), where.name(), l, null, com.pointblue.console.server.auth.OidcLogin.NO_ENGINE);
+            s.servers.put(guid, made);
+            return new On(made.dn(), l, null, made.engineProblem());
+        }
+    }
+
+    private static Http.Problem untrusted(com.pointblue.console.server.ldap.Servers.Located where, com.pointblue.console.server.ldap.Ldap.Untrusted u) {
+        return new Http.Problem(409, "untrusted-certificate", where.name() + " (" + where.host() + ":" + where.port() + "): " + u.getMessage(),
+            Map.of("reason", u.cause.reason.name().toLowerCase(Locale.ROOT), "host", where.host(), "port", where.port()));
+    }
+
+    /** {@code {"server": guid, "password"}}: a direct sign-in's connection to another server, as the same person. */
+    private void serverSignIn(HttpExchange ex) throws IOException {
+        Sessions.Session s = session(ex, null);
+        String client = Http.client(ex);
+        if (!failedByClient.allowed(client)) {
+            throw new Http.Problem(429, "too-many-attempts", "too many failed sign-ins; wait a few minutes");
+        }
+        Map<String, Object> b = Http.body(ex);
+        String guid = Http.string(b, "server", true);
+        if (!com.pointblue.console.server.ldap.Names.guid(guid)) {
+            throw new Http.Problem(400, "bad-server", "server is a server's GUID");
+        }
+        if ("oidc".equals(s.principal.via())) {
+            throw new Http.Problem(409, "not-needed", "single sign-on reaches every server without signing in again");
+        }
+        char[] pw = Http.string(b, "password", true).toCharArray();
+        try {
+            com.pointblue.console.server.ldap.Servers.Located where = com.pointblue.console.server.ldap.Servers.locate(s.ldap(), guid, serverAddresses(s.principal.directoryId()));
+            if (where == null) {
+                throw new Http.Problem(404, "no-such-server", "no eDirectory server has GUID " + guid);
+            }
+            com.pointblue.console.server.ldap.Ldap.Target target = new com.pointblue.console.server.ldap.Ldap.Target(s.principal.directoryId(), where.host(), where.port());
+            com.pointblue.console.server.ldap.Ldap l;
+            try {
+                l = com.pointblue.console.server.ldap.Ldap.connect(trust, target, null, s.principal.dn(), pw, T);
+            } catch (com.pointblue.console.server.ldap.Ldap.BadCredentials e) {
+                failedByClient.record(client);
+                audit.log(who(s), "sign-in.server", where.dn(), Map.of("client", client), "refused");
+                throw new Http.Problem(403, "bad-credentials", "the password is incorrect");
+            } catch (com.pointblue.console.server.ldap.Ldap.Untrusted u) {
+                throw untrusted(where, u);
+            }
+            com.pointblue.console.server.idm.Engines.Opened engine = null;
+            String problem = login.engines().unavailable();
+            if (problem == null) {
+                try {
+                    engine = login.engines().open(l, trust, target, s.principal.dn(), pw);
+                } catch (Exception e) {
+                    problem = "the Identity Manager engine connection to " + where.name() + " could not be opened: " + e.getMessage();
+                }
+            }
+            Sessions.ServerConnection old = s.servers.put(guid, new Sessions.ServerConnection(where.dn(), where.name(), l, engine, problem));
+            if (old != null) {
+                old.close();
+            }
+            failedByClient.clear(client);
+            audit.log(who(s), "sign-in.server", where.dn(), Map.of("client", client), "ok");
+            Http.json(ex, 200, Map.of("server", Map.of("guid", guid, "dn", where.dn(), "name", String.valueOf(where.name())), "idm", problem == null));
+        } catch (javax.naming.NamingException e) {
+            throw new Http.Problem(503, "unavailable", "the server did not answer: " + e.getMessage());
         } finally {
             java.util.Arrays.fill(pw, '\0');
         }

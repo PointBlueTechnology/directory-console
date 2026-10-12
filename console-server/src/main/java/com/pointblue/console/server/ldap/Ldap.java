@@ -210,6 +210,17 @@ public final class Ldap implements AutoCloseable {
         return boundDn;
     }
 
+    private volatile String dsaName;
+
+    /** The DN of the eDirectory server this connection talks to (the root DSE's {@code dsaName}), read once. */
+    public String dsaName() throws NamingException {
+        if (dsaName == null) {
+            Entry root = read("", "dsaName");
+            dsaName = root == null ? "" : String.valueOf(root.first("dsaName"));
+        }
+        return dsaName;
+    }
+
     /**
      * The underlying JNDI context, lent to DirXMLDev's {@code Vault} for Identity Manager operations.
      * Callers hold this object's monitor while using it ({@code synchronized (ldap) {…}}), as every

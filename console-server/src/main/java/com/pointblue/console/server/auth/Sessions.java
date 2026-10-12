@@ -87,6 +87,23 @@ public final class Sessions {
         public Ldap ldap() {
             return ldap;
         }
+
+        /** Connections to other servers of the tree (server GUID → connection), opened when first needed. */
+        public final Map<String, ServerConnection> servers = new ConcurrentHashMap<>();
+    }
+
+    /** A session's connection to one more server: as the person, and its Identity Manager engine when one could be opened. */
+    public record ServerConnection(String dn, String name, Ldap ldap, com.pointblue.console.server.idm.Engines.Opened engine, String engineProblem) {
+        public void close() {
+            if (engine != null && engine.handle() != null) {
+                try {
+                    engine.handle().close();
+                } catch (Exception ignored) {
+                    // already gone
+                }
+            }
+            ldap.close();
+        }
     }
 
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -142,6 +159,10 @@ public final class Sessions {
         }
         if (s != null && s.ldap != null) {
             s.ldap.close();
+        }
+        if (s != null) {
+            s.servers.values().forEach(ServerConnection::close);
+            s.servers.clear();
         }
     }
 

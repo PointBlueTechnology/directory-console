@@ -5,7 +5,8 @@ import {
   TextInput, Title, ToggleGroup, ToggleGroupItem,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type Job, idm } from '../api';
+import { type Comparison, type Job, type ServerChoice, idm } from '../api';
+import { useServerSignIn } from '../components/ServerSignIn';
 import { useSession } from '../session';
 import { useHeading } from '../heading';
 import { linkProps } from '../router';
@@ -14,19 +15,33 @@ import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../components/IdmParts';
 
 type Idm = ReturnType<typeof idm>;
-type Status = Record<string, unknown> & { dn: string; name: string; state?: string; startOption?: string; driverSetDn?: string; ancestors?: { dn: string; name: string }[] };
+type Status = Record<string, unknown> & { servedBy?: { dn: string }; dn: string; name: string; state?: string; startOption?: string; driverSetDn?: string; ancestors?: { dn: string; name: string }[] };
 
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
 
 /** One driver: state and lifecycle, and the operations an IDM administrator runs on it day to day. */
 export function DriverPage({ guid }: { guid: string }) {
   const { me } = useSession();
-  const api = useMemo(() => idm(me.directory), [me.directory]);
+  // the server whose engine and replica the page works on: undefined is the connected server
+  const [server, setServer] = useState<string | undefined>(undefined);
+  const [servers, setServers] = useState<ServerChoice[]>([]);
+  const api = useMemo(() => idm(me.directory, server), [me.directory, server]);
+  const signIn = useServerSignIn();
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [tab, setTab] = useState<string | number>('overview');
-  const load = useCallback(() => { setError(null); api.driver(guid).then((s) => setStatus(s as Status)).catch(setError); }, [api, guid]);
+  const load = useCallback(() => {
+    setError(null);
+    signIn.run(() => api.driver(guid)).then((s) => setStatus(s as Status)).catch((e) => {
+      setError(e);
+      if (server) {
+        setServer(undefined);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, guid]);
   useEffect(load, [load]);
+  useEffect(() => { idm(me.directory).driverServers(guid).then(setServers).catch(() => setServers([])); }, [me.directory, guid]);
 
   if (!status) {
     return <PageSection>{error ? <ProblemAlert error={error} onRetry={load} /> : <Spinner aria-label="Loading the driver" />}</PageSection>;
@@ -40,12 +55,23 @@ export function DriverPage({ guid }: { guid: string }) {
       <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsMd' }} className="dc-tab-body">
         <FlexItem><Title headingLevel="h1">{status.name}</Title></FlexItem>
         {status.state && <FlexItem><StateLabel state={status.state} /></FlexItem>}
+        {servers.length > 1 && (
+          <FlexItem>
+            <FormSelect id="driver-server" aria-label="Server" value={server ?? ''} onChange={(_e, v) => setServer(v || undefined)}>
+              {servers.map((x) => <FormSelectOption key={x.guid} value={x.connected ? '' : x.guid} label={`On ${x.name}${x.connected ? ' (connected)' : ''}`} />)}
+            </FormSelect>
+          </FlexItem>
+        )}
       </Flex>
       <div className="dc-subtle dc-mono">{status.dn}</div>
+      {servers.length > 1 && <p className="dc-subtle">Start option, state and named passwords are kept by each server; the page shows and changes {(servers.find((x) => x.guid === server) ?? servers.find((x) => x.connected))?.name}'s.</p>}
       <Card className="dc-tab-body">
         <CardBody>
           <Tabs activeKey={tab} onSelect={(_e, k) => setTab(k)} aria-label="Driver" mountOnEnter unmountOnExit>
-            <Tab eventKey="overview" title={<TabTitleText>Overview</TabTitleText>}><Overview api={api} guid={guid} status={status} onChanged={load} /></Tab>
+            <Tab eventKey="overview" title={<TabTitleText>Overview</TabTitleText>}>
+              <Overview api={api} guid={guid} status={status} onChanged={load} />
+              {servers.length > 1 && <ServerComparison guid={guid} />}
+            </Tab>
             <Tab eventKey="jobs" title={<TabTitleText>Jobs</TabTitleText>}>
               <JobsTable api={api} load={() => api.driverPart<{ jobs: Job[] }>(guid, 'jobs')} />
             </Tab>
@@ -60,6 +86,7 @@ export function DriverPage({ guid }: { guid: string }) {
           </Tabs>
         </CardBody>
       </Card>
+      {signIn.dialog}
     </PageSection>
   );
 }
@@ -295,5 +322,43 @@ function PasswordSync({ api, guid }: { api: Idm; guid: string }) {
         <DescriptionListGroup key={i}><DescriptionListTerm>{s.name ?? `Setting ${i + 1}`}</DescriptionListTerm><DescriptionListDescription>{show(s.value ?? s)}</DescriptionListDescription></DescriptionListGroup>
       ))}
     </DescriptionList>
+  );
+}
+
+/** The driver's state and start option on every server that runs its driver set. */
+function ServerComparison({ guid }: { guid: string }) {
+  const { me } = useSession();
+  const signIn = useServerSignIn();
+  const [c, setC] = useState<Comparison<{ state?: string; startOption?: string }> | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const load = useCallback(() => { idm(me.directory).compareDriver(guid).then(setC).catch(setError); }, [me.directory, guid]);
+  useEffect(load, [load]);
+  return (
+    <div className="dc-tab-body">
+      <Title headingLevel="h2" size="md">On each server</Title>
+      <ProblemAlert error={error} />
+      {!c ? <Spinner size="md" aria-label="Loading" /> : (
+        <Table aria-label="The driver on each server" variant="compact">
+          <Thead><Tr><Th>Server</Th><Th>State</Th><Th>Starts</Th></Tr></Thead>
+          <Tbody>
+            {c.servers.map((r) => (
+              <Tr key={r.server.guid}>
+                <Td dataLabel="Server">{r.server.name}</Td>
+                {r.status === 'ok' ? (
+                  <><Td dataLabel="State">{r.state ? <StateLabel state={r.state} /> : '—'}</Td><Td dataLabel="Starts">{show(r.startOption)}</Td></>
+                ) : (
+                  <Td dataLabel="State" colSpan={2}>
+                    {r.status === 'server-sign-in-required'
+                      ? <Button variant="link" isInline onClick={() => signIn.run(() => idm(me.directory, r.server.guid).driver(guid)).then(load, setError)}>Sign in to see it</Button>
+                      : <span className="dc-subtle">{r.detail ?? r.status}</span>}
+                  </Td>
+                )}
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
+      {signIn.dialog}
+    </div>
   );
 }

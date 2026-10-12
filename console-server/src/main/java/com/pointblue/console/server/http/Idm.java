@@ -79,10 +79,21 @@ final class Idm {
             status(ex, s);
             return;
         }
-        Ldap l = s.ldap();
-        Operate.Engine engine = s.engine;
+        String onServer = Http.query(ex).get("server");
+        if ("all".equals(onServer)) {
+            compare(ex, s, route, guid);
+            return;
+        }
+        Server.On on;
+        try {
+            on = s.ldap() == null ? null : server.on(s, onServer);
+        } catch (javax.naming.NamingException e) {
+            throw new Http.Problem(503, "unavailable", "the server could not be reached: " + e.getMessage());
+        }
+        Ldap l = on == null ? null : on.ldap();
+        Operate.Engine engine = on == null ? null : on.engine();
         if (engine == null || l == null) {
-            throw new Http.Problem(503, "idm-unavailable", "Identity Manager operations are unavailable: " + s.engineProblem);
+            throw new Http.Problem(503, "idm-unavailable", "Identity Manager operations are unavailable: " + (on == null ? s.engineProblem : on.engineProblem()));
         }
         DirectoryConfig d = DirectoryConfig.find(server.config.read(), s.principal.directoryId());
         String confirm = ex.getRequestHeaders().getFirst("X-Confirm-Directory");
@@ -105,12 +116,14 @@ final class Idm {
                     }
                     case "GET driversets/{guid}/activation" -> result(ex, Operate.driversetActivation(engine, env(d, target(l, guid, true))));
                     case "GET driversets/{guid}/servers" -> result(ex, Operate.driversetServers(engine, env(d, target(l, guid, true))));
+                    case "GET drivers/{guid}/servers" -> Http.json(ex, 200, runningServers(s, l, engine, d, target(l, guid, false)));
                     case "GET driversets/{guid}/jobs" -> result(ex, Operate.jobList(engine, env(d, target(l, guid, true)), null));
                     case "GET driversets/{guid}/log-level" -> result(ex, Operate.logLevelShow(engine, env(d, target(l, guid, true)), null));
                     case "GET drivers/{guid}" -> {
                         Target t = target(l, guid, false);
                         Map<String, Object> out = new LinkedHashMap<>(identity(t, guid));
                         out.putAll(Json.asMap(parse(Operate.driverStatus(engine, env(d, t), t.name(), tree(d)))));
+                        out.put("servedBy", Map.of("dn", on.serverDn()));
                         Http.json(ex, 200, out);
                     }
                     case "POST drivers/{guid}/start", "POST drivers/{guid}/stop", "POST drivers/{guid}/restart" -> {
@@ -209,6 +222,67 @@ final class Idm {
         }
     }
 
+    /**
+     * A driver's (or driver set's) per-replica values on every server that runs its driver set: the
+     * driver's state and start option, or the named passwords. A server not signed in to yet, or
+     * without an engine connection, is reported as such. (On ig4 the engine of a server that does not
+     * run the driver set answers "Protocol Error".)
+     */
+    private void compare(HttpExchange ex, Sessions.Session s, String route, String guid) throws IOException {
+        boolean passwords = route.equals("GET drivers/{guid}/passwords") || route.equals("GET driversets/{guid}/passwords");
+        if (!passwords && !route.equals("GET drivers/{guid}")) {
+            throw new Http.Problem(400, "bad-request", "server=all compares a driver's status or named passwords; change one server at a time");
+        }
+        DirectoryConfig d = DirectoryConfig.find(server.config.read(), s.principal.directoryId());
+        List<Map<String, Object>> results = new ArrayList<>();
+        String dn;
+        List<Map<String, Object>> running;
+        if (s.engine == null) {
+            throw new Http.Problem(503, "idm-unavailable", "Identity Manager operations are unavailable: " + s.engineProblem);
+        }
+        try {
+            synchronized (s.ldap()) {
+                Target own = target(s.ldap(), guid, route.startsWith("GET driversets"));
+                dn = own.dn();
+                running = runningServers(s, s.ldap(), s.engine, d, own);
+            }
+        } catch (javax.naming.NamingException e) {
+            throw new Http.Problem(502, "directory-error", Ldap.Failure.of(e).getMessage());
+        }
+        for (Map<String, Object> h : running) {
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("server", Map.of("guid", h.get("guid"), "dn", h.get("dn"), "name", String.valueOf(h.get("name"))));
+            try {
+                Server.On on = server.on(s, (String) h.get("guid"));
+                if (on.engine() == null) {
+                    r.put("status", "idm-unavailable");
+                    r.put("detail", on.engineProblem());
+                } else {
+                    synchronized (on.ldap()) {
+                        Target t = target(on.ldap(), guid, route.startsWith("GET driversets"));
+                        if (passwords) {
+                            r.put("named", on.engine().namedPasswords(t.dn()));
+                        } else {
+                            Map<String, Object> st = Json.asMap(parse(Operate.driverStatus(on.engine(), env(d, t), t.name(), tree(d))));
+                            for (String k : new String[] {"state", "startOption", "cacheSize", "unprocessedSize"}) {
+                                r.put(k, st.get(k));
+                            }
+                        }
+                    }
+                    r.put("status", "ok");
+                }
+            } catch (Http.Problem p) {
+                r.put("status", p.type);
+                r.put("detail", p.getMessage());
+            } catch (Exception e) {
+                r.put("status", "failed");
+                r.put("detail", e.getMessage());
+            }
+            results.add(r);
+        }
+        Http.json(ex, 200, Map.of("dn", dn, "servers", results));
+    }
+
     private void status(HttpExchange ex, Sessions.Session s) throws IOException {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("available", s.engine != null);
@@ -249,6 +323,32 @@ final class Idm {
     }
 
     /** The driver set or driver with this GUID; 404 when it is something else. */
+    /** The servers that run {@code t}'s driver set (its Identity Manager servers), each with its GUID: per-replica driver values live there. */
+    private List<Map<String, Object>> runningServers(Sessions.Session s, Ldap l, Operate.Engine engine, DirectoryConfig d, Target t) throws NamingException {
+        Target set = new Target(t.driverSetDn(), String.valueOf(Names.leaf(t.driverSetDn()).getValue()), t.driverSetDn(), true);
+        Object parsed = parse(Operate.driversetServers(engine, env(d, set)));
+        List<Map<String, Object>> out = new ArrayList<>();
+        String own = s.ldap().dsaName();
+        Object list = parsed instanceof Map<?, ?> m ? m.get("servers") : null;
+        if (list instanceof List<?> dns) {
+            for (Object dn : dns) {
+                Ldap.Entry e = l.read(String.valueOf(dn), "GUID", "cn");
+                if (e == null || e.attributes().get("guid") == null) {
+                    continue;
+                }
+                String g = Names.guidHex(e.attributes().get("guid").get(0));
+                Map<String, Object> r = new LinkedHashMap<>();
+                r.put("guid", g);
+                r.put("dn", e.dn());
+                r.put("name", e.first("cn"));
+                r.put("connected", Names.same(e.dn(), own));
+                r.put("signedIn", Names.same(e.dn(), own) || s.servers.containsKey(g) || "oidc".equals(s.principal.via()));
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
     private Target target(Ldap l, String guid, boolean driverSet) throws NamingException {
         Ldap.Entry e = server.objects.byGuid(l, guid, "objectClass", "cn");
         String cls = driverSet ? "DirXML-DriverSet" : "DirXML-Driver";

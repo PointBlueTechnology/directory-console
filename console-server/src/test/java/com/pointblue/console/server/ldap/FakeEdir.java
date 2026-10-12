@@ -171,6 +171,7 @@ public final class FakeEdir implements AutoCloseable {
         "attributeTypes: ( 2.5.4.10 NAME ( 'o' 'organizationName' ) SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{64} X-NDS_NAME 'O' )",
         "attributeTypes: ( 2.5.4.11 NAME ( 'ou' 'organizationalUnitName' ) SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{64} X-NDS_NAME 'OU' )",
         "attributeTypes: ( 2.5.4.13 NAME 'description' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{1024} X-NDS_NAME 'Description' )",
+        "attributeTypes: ( 2.16.840.1.113719.1.14.4.1.13 NAME 'DirXML-DriverStartOption' SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE X-NDS_NEVER_SYNC '1' )",
         "attributeTypes: ( 2.5.4.31 NAME ( 'member' 'uniqueMember' ) SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 X-NDS_NAME 'Member' X-NDS_NONREMOVABLE '1' )",
         "attributeTypes: ( 2.16.840.1.113719.1.1.4.1.25 NAME 'groupMembership' SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 X-NDS_NAME 'Group Membership' )",
         "attributeTypes: ( 2.16.840.1.113719.1.1.4.1.24 NAME 'securityEquals' SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 X-NDS_NAME 'Security Equals' )",

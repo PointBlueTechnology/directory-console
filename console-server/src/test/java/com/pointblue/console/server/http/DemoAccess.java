@@ -49,4 +49,10 @@ public final class DemoAccess {
                     Map.of("group", "console-admins", "role", "admin"))));
         });
     }
+
+    /** Where the console reaches a server (DN → "host:port"): the demo's second server is the same fake directory. */
+    public static void serverAddresses(Server server, Map<String, String> addresses) throws Exception {
+        server.config.update(server.config.version(), "demo", "server addresses", doc ->
+            Json.asMap(Json.asMap(doc.get("directories")).get("acme")).put("serverAddresses", addresses));
+    }
 }
