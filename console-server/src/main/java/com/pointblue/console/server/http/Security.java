@@ -119,6 +119,16 @@ final class Security {
         }
     }
 
+    /** The Security container (eDirectory keeps it at the tree root as cn=Security) with its pointers to the CA and the Login Policy. */
+    private Ldap.Entry securityContainer(Ldap l) throws NamingException {
+        Ldap.Entry sec = l.read("cn=Security", "nDSPKITreeCADN", "sASLoginPolicyDN");
+        if (sec != null) {
+            return sec;
+        }
+        List<Ldap.Entry> found = l.search("", "(objectClass=sASSecurity)", null, SearchControls.SUBTREE_SCOPE, new String[] {"nDSPKITreeCADN", "sASLoginPolicyDN"}, 1);
+        return found.isEmpty() ? null : found.get(0);
+    }
+
     /** Where new policies and challenge sets go: eDirectory's standard container, or the first password policy container found. */
     private String policiesContainer(Ldap l) throws NamingException {
         if (l.read(POLICIES, "cn") != null) {
@@ -163,7 +173,7 @@ final class Security {
     private Map<String, Object> pki(Ldap l) throws NamingException {
         Map<String, Object> out = new LinkedHashMap<>();
         // the Organizational CA
-        Ldap.Entry sec = l.read("cn=Security", "nDSPKITreeCADN");
+        Ldap.Entry sec = securityContainer(l);
         Map<String, Object> ca = null;
         if (sec != null && sec.first("nDSPKITreeCADN") != null) {
             Ldap.Entry c = l.read(sec.first("nDSPKITreeCADN"), "GUID", "cn", "hostServer", "nDSPKIPublicKeyCertificate", "nDSPKIPublicKeyCertificateEC",
@@ -727,7 +737,9 @@ final class Security {
             }
         }
         m.put("containers", containers);
-        Ldap.Entry lp = l.read("cn=Login Policy,cn=Security", "nspmPasswordPolicyDN");
+        Ldap.Entry sec = securityContainer(l);
+        String lpDn = sec == null || sec.first("sASLoginPolicyDN") == null ? "cn=Login Policy,cn=Security" : sec.first("sASLoginPolicyDN");
+        Ldap.Entry lp = l.read(lpDn, "nspmPasswordPolicyDN");
         m.put("loginPolicy", lp == null ? null : refOf(l, lp.first("nspmPasswordPolicyDN")));
         return m;
     }
@@ -929,7 +941,10 @@ final class Security {
     /** The Login Policy's sequences ("name;grade;methods", as stored), the default, and the installed login methods. */
     private Map<String, Object> loginPolicy(Ldap l) throws NamingException {
         Map<String, Object> m = new LinkedHashMap<>();
-        Ldap.Entry lp = l.read("cn=Login Policy,cn=Security", "sASLoginSequence", "sasDefaultLoginSequence", "nspmPasswordPolicyDN");
+        Ldap.Entry sec = securityContainer(l);
+        String lpDn = sec == null || sec.first("sASLoginPolicyDN") == null ? "cn=Login Policy,cn=Security" : sec.first("sASLoginPolicyDN");
+        String root = sec == null ? "cn=Security" : sec.dn();
+        Ldap.Entry lp = l.read(lpDn, "sASLoginSequence", "sasDefaultLoginSequence", "nspmPasswordPolicyDN");
         List<Map<String, Object>> seqs = new ArrayList<>();
         if (lp != null) {
             for (Object v : lp.attributes().getOrDefault("sasloginsequence", List.of())) {
@@ -946,9 +961,15 @@ final class Security {
         }
         m.put("sequences", seqs);
         List<Map<String, Object>> methods = new ArrayList<>();
-        for (String container : new String[] {"cn=Authorized Login Methods,cn=Security", "cn=Authorized Post Login Methods,cn=Security"}) {
-            for (Ldap.Entry e : l.search(container, "(objectClass=*)", null, SearchControls.ONELEVEL_SCOPE,
-                    new String[] {"GUID", "cn", "description", "sASMethodVendor", "sASMethodIdentifier", "objectClass"}, 200)) {
+        for (String container : new String[] {"cn=Authorized Login Methods," + root, "cn=Authorized Post Login Methods," + root}) {
+            List<Ldap.Entry> found;
+            try {
+                found = l.search(container, "(objectClass=*)", null, SearchControls.ONELEVEL_SCOPE,
+                    new String[] {"GUID", "cn", "description", "sASMethodVendor", "sASMethodIdentifier", "objectClass"}, 200);
+            } catch (javax.naming.NameNotFoundException e) {
+                continue;
+            }
+            for (Ldap.Entry e : found) {
                 Map<String, Object> x = ref(e);
                 x.put("description", e.first("description"));
                 x.put("vendor", e.first("sASMethodVendor"));

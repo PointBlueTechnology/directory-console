@@ -5,7 +5,7 @@ import {
 } from '@patternfly/react-core';
 import { EllipsisVIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { ApiError, type DirObject, type Preset, edir, isGroup, isUser, presets } from '../api';
+import { ApiError, type DirObject, type Preset, edir, isGroup, isUser, isWithheld, presets } from '../api';
 import { useConfirmed } from './Confirm';
 import { PresetModal } from './PresetModal';
 import { useSession } from '../session';
@@ -174,7 +174,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
                   </Td>
                   {editor && (
                     <Td isActionCell>
-                      <Button variant="link" isInline onClick={() => setDialog({ kind: 'attr', attribute: name })} aria-label={`Edit ${name}`}>Edit</Button>
+                      {!values.some(isWithheld) && <Button variant="link" isInline onClick={() => setDialog({ kind: 'attr', attribute: name })} aria-label={`Edit ${name}`}>Edit</Button>}
                     </Td>
                   )}
                 </Tr>

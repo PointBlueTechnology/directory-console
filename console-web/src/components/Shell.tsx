@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import {
   Dropdown, DropdownItem, DropdownList, Masthead, MastheadBrand, MastheadContent, MastheadLogo, MastheadMain,
   MastheadToggle, MenuToggle, Nav, NavItem, NavList, Page, PageSidebar, PageSidebarBody, PageToggleButton,
-  ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarGroup, ToolbarItem,
+  Bullseye, Spinner, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarGroup, ToolbarItem,
 } from '@patternfly/react-core';
 import { MoonIcon, SunIcon, UserIcon } from '@patternfly/react-icons';
 import { useSession } from '../session';
@@ -12,11 +12,17 @@ import { Search } from '../pages/Search';
 import { SchemaPage } from '../pages/SchemaPage';
 import { ObjectPage } from '../pages/ObjectPage';
 import { NotFound } from '../pages/NotFound';
-import { IdmPage } from '../pages/IdmPage';
-import { DriverPage } from '../pages/DriverPage';
-import { SettingsPage } from '../pages/SettingsPage';
-import { EdirPage, ServerPage } from '../pages/EdirPage';
 import { ErrorBoundary } from './ErrorBoundary';
+
+// administration pages load when first opened: most sessions never visit them
+const IdmPage = lazy(() => import('../pages/IdmPage').then((m) => ({ default: m.IdmPage })));
+const DriverPage = lazy(() => import('../pages/DriverPage').then((m) => ({ default: m.DriverPage })));
+const SettingsPage = lazy(() => import('../pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const EdirPage = lazy(() => import('../pages/EdirPage').then((m) => ({ default: m.EdirPage })));
+const ServerPage = lazy(() => import('../pages/EdirPage').then((m) => ({ default: m.ServerPage })));
+const SecurityPage = lazy(() => import('../pages/SecurityPage').then((m) => ({ default: m.SecurityPage })));
+const PasswordPolicyPage = lazy(() => import('../pages/PolicyPages').then((m) => ({ default: m.PasswordPolicyPage })));
+const ChallengeSetPage = lazy(() => import('../pages/PolicyPages').then((m) => ({ default: m.ChallengeSetPage })));
 
 const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>) => boolean }[] = [
   { to: '/browse', label: 'Browse' },
@@ -24,6 +30,7 @@ const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>
   { to: '/schema', label: 'Schema' },
   // a person with task presets only has no role: Identity Manager is not for them
   { to: '/edir', label: 'eDirectory', show: (s) => s.me.roles.length > 0 },
+  { to: '/security', label: 'Security', show: (s) => s.me.roles.length > 0 },
   { to: '/idm', label: 'Identity Manager', show: (s) => s.me.roles.length > 0 },
   { to: '/settings', label: 'Settings', show: (s) => s.can('admin') },
 ];
@@ -100,7 +107,9 @@ export function Shell() {
 
   return (
     <Page masthead={masthead} sidebar={sidebar} isManagedSidebar mainAriaLabel="Directory Console">
-      <ErrorBoundary resetKey={path}>{route(path)}</ErrorBoundary>
+      <ErrorBoundary resetKey={path}>
+        <Suspense fallback={<Bullseye><Spinner aria-label="Loading" /></Bullseye>}>{route(path)}</Suspense>
+      </ErrorBoundary>
     </Page>
   );
 }
@@ -126,6 +135,21 @@ function route(path: string) {
   m = match('/schema/:kind/:name', path);
   if (m && (m.kind === 'classes' || m.kind === 'attributes')) {
     return <SchemaPage kind={m.kind} name={m.name} />;
+  }
+  if (path === '/security') {
+    return <SecurityPage />;
+  }
+  m = match('/security/:tab', path);
+  if (m) {
+    return <SecurityPage tab={m.tab} />;
+  }
+  m = match('/security/password-policies/:guid', path);
+  if (m) {
+    return <PasswordPolicyPage guid={m.guid} />;
+  }
+  m = match('/security/challenge-sets/:guid', path);
+  if (m) {
+    return <ChallengeSetPage guid={m.guid} />;
   }
   if (path === '/edir') {
     return <EdirPage />;

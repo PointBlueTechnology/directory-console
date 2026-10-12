@@ -87,7 +87,13 @@ export interface Acl {
   trustee: Reference | { special: string };
   attribute: string;
 }
-export type Value = string | Reference | Binary | Acl;
+/** A secret attribute (a private key, a login secret): the console says it is set, never what it is. */
+export type Withheld = { withheld: number };
+export type Value = string | Reference | Binary | Acl | Withheld;
+
+export function isWithheld(v: Value): v is Withheld {
+  return typeof v === 'object' && 'withheld' in v;
+}
 
 export interface DirObject extends Row {
   attributes: Record<string, Value[]>;
@@ -330,7 +336,7 @@ export const session = {
 };
 
 export function isReference(v: Value): v is Reference {
-  return typeof v === 'object' && 'dn' in v && !('privileges' in v);
+  return typeof v === 'object' && 'dn' in v && !('privileges' in v) && !('withheld' in v);
 }
 
 export function isBinary(v: Value): v is Binary {
@@ -630,3 +636,108 @@ export function edir(id: string) {
 }
 
 export type Edir = ReturnType<typeof edir>;
+
+// ---- Security services (Phase 6a) --------------------------------------------------------------
+
+export interface Certificate {
+  subject: string;
+  issuer: string;
+  serial: string;
+  notBefore: string;
+  notAfter: string;
+  signatureAlgorithm: string;
+  key: string;
+  subjectAltNames: string[];
+  keyUsage: string[];
+  extendedKeyUsage: string[];
+  ca: boolean;
+  sha256: string;
+  der: string;
+  error?: string;
+}
+
+export interface Ref { guid?: string | null; dn: string; name: string }
+
+export interface Pki {
+  ca: (Ref & { host?: string; defaultRsaKeySize?: string; defaultLifeYears?: string; certificates: Certificate[] }) | null;
+  serverCertificates: (Ref & { server: { dn: string; name: string } | null; usedBy: string[]; certificate: Certificate | null; chain: Certificate[] })[];
+  trustedRoots: (Ref & { container: string; certificate: Certificate | null })[];
+  crls: (Ref & { type: 'rsa' | 'ec'; issued?: string; nextIssue?: string; number?: string; status?: string; host?: string;
+    distributionPoints: string[]; thisUpdate?: string; nextUpdate?: string | null; revoked?: number; der?: string; crlError?: string })[];
+}
+
+export type PolicyRules = Record<string, number | boolean | string | string[] | null>;
+export type PolicyOptions = Record<'universalPassword' | 'advancedRules' | 'userRetrieve' | 'adminRetrieve' | 'syncDistribution' | 'removeNds' | 'syncNds' | 'syncSimple', boolean>;
+
+export interface PasswordPolicySummary extends Ref {
+  description?: string;
+  universalPassword: boolean;
+  minLength?: string;
+  maxLength?: string;
+  assignments: number;
+}
+
+export interface PasswordPolicy extends Ref {
+  description?: string;
+  rules: PolicyRules;
+  options: PolicyOptions;
+  challengeSet: Ref | null;
+  forgotten: { enabled: boolean; action: string | null; authentication: string[]; loginConfig: boolean };
+  assignments: Ref[];
+}
+
+export interface Question { kind: 'admin' | 'user'; text?: string | null; min?: number | null; max?: number | null }
+
+export interface ChallengeSet extends Ref {
+  description?: string;
+  required: Question[];
+  random: Question[];
+  randomCount: number;
+  minResponse?: number | null;
+  maxResponse?: number | null;
+}
+
+export interface LoginPolicy {
+  defaultSequence: string | null;
+  passwordPolicy: Ref | null;
+  sequences: { name: string; grade: string | null; methods: string[] }[];
+  methods: (Ref & { description?: string; vendor?: string; postLogin: boolean })[];
+}
+
+/** Security services for one directory. {@code confirm}: the directory's name, typed for a production directory. */
+export function security(id: string) {
+  const base = `/api/v2/trees/${encodeURIComponent(id)}/security`;
+  const h = (confirm?: string, more: Record<string, string> = {}): Record<string, string> => ({ ...(confirm ? { 'X-Confirm-Directory': confirm } : {}), ...more });
+  const get = <T>(p: string) => request<T>('GET', base + p).then((r) => r.data);
+  return {
+    pki: () => get<Pki>('/pki'),
+    policies: () => get<PasswordPolicySummary[]>('/password-policies'),
+    policy: (guid: string) => get<PasswordPolicy>(`/password-policies/${guidPath(guid)}`),
+    createPolicy: (body: { name: string; description?: string; rules?: PolicyRules; options?: Partial<PolicyOptions>; challengeSet?: string | null }, confirm?: string) =>
+      request<PasswordPolicy>('POST', `${base}/password-policies`, body, h(confirm)).then((r) => r.data),
+    updatePolicy: (guid: string, body: { description?: string | null; rules?: PolicyRules; options?: Partial<PolicyOptions>; challengeSet?: string | null }, confirm?: string) =>
+      request<PasswordPolicy>('PATCH', `${base}/password-policies/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
+    deletePolicy: (guid: string, count: number, confirm?: string) =>
+      request<void>('DELETE', `${base}/password-policies/${guidPath(guid)}`, undefined, h(confirm, count ? { 'X-Confirm-Count': String(count) } : {})),
+    assign: (guid: string, target: string, confirm?: string) =>
+      request<PasswordPolicy>('POST', `${base}/password-policies/${guidPath(guid)}/assignments`, { target }, h(confirm)).then((r) => r.data),
+    unassign: (guid: string, target: string, confirm?: string) =>
+      request<PasswordPolicy>('DELETE', `${base}/password-policies/${guidPath(guid)}/assignments/${guidPath(target)}`, undefined, h(confirm)).then((r) => r.data),
+    policyFor: (guid: string) => get<{ own: Ref | null; containers: { container: string; policy: Ref }[]; loginPolicy: Ref | null }>(`/objects/${guidPath(guid)}/password-policy`),
+    challengeSets: () => get<(Ref & { description?: string; required: number; random: number; randomCount: number })[]>('/challenge-sets'),
+    challengeSet: (guid: string) => get<ChallengeSet>(`/challenge-sets/${guidPath(guid)}`),
+    createChallengeSet: (body: Partial<ChallengeSet> & { name: string }, confirm?: string) =>
+      request<ChallengeSet>('POST', `${base}/challenge-sets`, body, h(confirm)).then((r) => r.data),
+    updateChallengeSet: (guid: string, body: Partial<ChallengeSet>, confirm?: string) =>
+      request<ChallengeSet>('PATCH', `${base}/challenge-sets/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
+    deleteChallengeSet: (guid: string, confirm?: string) => request<void>('DELETE', `${base}/challenge-sets/${guidPath(guid)}`, undefined, h(confirm)),
+    loginPolicy: () => get<LoginPolicy>('/login-policy'),
+  };
+}
+
+export type SecurityApi = ReturnType<typeof security>;
+
+/** A certificate (base64 DER) as PEM text, for download. */
+export function pem(der: string, label = 'CERTIFICATE'): string {
+  return `-----BEGIN ${label}-----\n${der.match(/.{1,64}/g)?.join('\n') ?? ''}\n-----END ${label}-----\n`;
+}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Label, Spinner } from '@patternfly/react-core';
-import { type Value, isAcl, isBinary, isReference } from '../api';
+import { type Value, isAcl, isBinary, isReference, isWithheld } from '../api';
 import { useSession } from '../session';
 import { navigate } from '../router';
 
@@ -8,6 +8,9 @@ import { navigate } from '../router';
 export function ValueView({ value }: { value: Value }) {
   if (typeof value === 'string') {
     return <span className="dc-mono">{value}</span>;
+  }
+  if (isWithheld(value)) {
+    return <Label isCompact color="purple">set ({value.withheld} value{value.withheld === 1 ? '' : 's'}), never shown</Label>;
   }
   if (isBinary(value)) {
     return <Label isCompact>{Math.floor((value.base64.length * 3) / 4) - (value.base64.endsWith('==') ? 2 : value.base64.endsWith('=') ? 1 : 0)} bytes, binary</Label>;

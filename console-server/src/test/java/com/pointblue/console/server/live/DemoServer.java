@@ -77,6 +77,7 @@ public final class DemoServer {
             byte[] tcp = java.util.HexFormat.of().parseHex("3923" + "020c" + srv[1]);
             edir.server.modify(srv[0], new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD, "networkAddress", tcp));
         }
+        securityServices(edir);
         edir.partitions.partition("", Map.of("cn=edir1,ou=servers,o=system", 0, "cn=edir2,ou=servers,o=system", 1))
             .partition("o=acme", Map.of("cn=edir1,ou=servers,o=system", 0, "cn=edir2,ou=servers,o=system", 1))
             .partition("o=system", Map.of("cn=edir1,ou=servers,o=system", 0, "cn=edir2,ou=servers,o=system", 2));
@@ -134,5 +135,44 @@ public final class DemoServer {
             throw new IllegalStateException(method + " " + path + " -> " + r.statusCode() + " " + r.body());
         }
         return r.body().isBlank() ? Map.of() : Json.asMap(Json.parse(r.body()));
+    }
+
+    /**
+     * eDirectory keeps cn=Security at the tree root; the fake's naming contexts are o=acme and o=system,
+     * so the demo's Security container is under o=system (the console finds it by its class).
+     */
+    private static void securityServices(FakeEdir edir) throws Exception {
+        java.util.Base64.Encoder b64 = java.util.Base64.getEncoder();
+        String sec = "cn=Security,o=system";
+        String ca = b64.encodeToString(edir.pki.ca.getEncoded());
+        String s1 = b64.encodeToString(edir.pki.server("edir1", List.of("127.0.0.1", "edir1.acme.example")).cert().getEncoded());
+        String s2 = b64.encodeToString(edir.pki.server("edir2", List.of("127.0.0.2", "edir2.acme.example")).cert().getEncoded());
+        edir.add("dn: " + sec, "objectClass: sASSecurity", "cn: Security", "nDSPKITreeCADN: cn=ACME_TREE CA," + sec, "sASLoginPolicyDN: cn=Login Policy," + sec);
+        edir.add("dn: cn=ACME_TREE CA," + sec, "objectClass: nDSPKICertificateAuthority", "cn: ACME_TREE CA", "hostServer: cn=edir1,ou=servers,o=system",
+            "ndspkiDefaultRSAKeySize: 4096", "ndspkiDefaultCertificateLife: 10", "nDSPKIPublicKeyCertificate:: " + ca, "nDSPKIPrivateKey:: " + b64.encodeToString("wrapped-key".getBytes()));
+        edir.add("dn: cn=SSL CertificateDNS - edir1,ou=servers,o=system", "objectClass: nDSPKIKeyMaterial", "cn: SSL CertificateDNS - edir1",
+            "hostServer: cn=edir1,ou=servers,o=system", "nDSPKIPublicKeyCertificate:: " + s1, "nDSPKIPrivateKey:: " + b64.encodeToString("wrapped".getBytes()));
+        edir.add("dn: cn=SSL CertificateDNS - edir2,ou=servers,o=system", "objectClass: nDSPKIKeyMaterial", "cn: SSL CertificateDNS - edir2",
+            "hostServer: cn=edir2,ou=servers,o=system", "nDSPKIPublicKeyCertificate:: " + s2);
+        edir.server.modify("cn=LDAP Server - edir1,ou=servers,o=system", new com.unboundid.ldap.sdk.Modification(
+            com.unboundid.ldap.sdk.ModificationType.REPLACE, "ldapKeyMaterialName", "SSL CertificateDNS"));
+        edir.add("dn: cn=Login Policy," + sec, "objectClass: sASLoginPolicy", "cn: Login Policy", "sasDefaultLoginSequence: <no default>",
+            "sASLoginSequence: NDS;Password;NDS", "sASLoginSequence: Challenge Response;Password;Challenge Response");
+        edir.add("dn: cn=Authorized Login Methods," + sec, "objectClass: sASLoginMethodContainer", "cn: Authorized Login Methods");
+        edir.add("dn: cn=NDS,cn=Authorized Login Methods," + sec, "objectClass: sASNMASLoginMethod", "cn: NDS", "sASMethodVendor: Novell, Inc.");
+        edir.add("dn: cn=Challenge Response,cn=Authorized Login Methods," + sec, "objectClass: sASNMASLoginMethod", "cn: Challenge Response", "sASMethodVendor: NetIQ Corporation");
+        edir.add("dn: cn=Password Policies," + sec, "objectClass: nspmPasswordPolicyContainer", "cn: Password Policies");
+        edir.add("dn: cn=Basics,cn=Password Policies," + sec, "objectClass: nsimChallengeSet", "cn: Basics", "description: Two questions to reset a password",
+            "nsimRequiredQuestions: <RequiredQuestions><UserDefined MaxLength=\"128\" MinLength=\"4\"/><AdminDefined><Question MaxLength=\"64\" MinLength=\"2\"><![CDATA[First school?]]></Question></AdminDefined></RequiredQuestions>",
+            "nsimRandomQuestions: <RandomQuestions><AdminDefined><Question MaxLength=\"64\" MinLength=\"2\"><![CDATA[City of birth?]]></Question></AdminDefined></RandomQuestions>",
+            "nsimNumberRandomQuestions: 0");
+        edir.add("dn: cn=Staff,cn=Password Policies," + sec, "objectClass: nspmPasswordPolicy", "cn: Staff", "description: Everyone in ou=Users",
+            "nspmConfigurationOptions: 884", "passwordMinimumLength: 10", "nspmMaximumLength: 64", "nspmMinUpperCaseCharacters: 1", "nspmMinNumericCharacters: 1",
+            "passwordExpirationInterval: 7776000", "passwordUniqueRequired: TRUE", "nspmPasswordHistoryLimit: 8", "nspmCaseSensitive: TRUE",
+            "nsimChallengeSetDN: cn=Basics,cn=Password Policies," + sec, "nsimAssignments: ou=Sales,ou=Users,o=acme");
+        edir.add("dn: cn=Service accounts,cn=Password Policies," + sec, "objectClass: nspmPasswordPolicy", "cn: Service accounts",
+            "nspmConfigurationOptions: 596", "passwordMinimumLength: 24", "nspmMaximumLength: 128");
+        edir.server.modify("ou=Sales,ou=Users,o=acme", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.REPLACE,
+            "nspmPasswordPolicyDN", "cn=Staff,cn=Password Policies," + sec));
     }
 }
