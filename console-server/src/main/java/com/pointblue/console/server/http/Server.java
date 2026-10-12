@@ -67,6 +67,7 @@ public final class Server {
     private final Idm idm = new Idm(this);
     private final Settings settings = new Settings(this);
     private final Edir edir = new Edir(this);
+    private final Security security = new Security(this);
     private final StaticFiles ui = new StaticFiles("web");
 
     /** Open the data directory and listen on {@code port}. {@code publicUrl} is how browsers reach this server. */
@@ -226,6 +227,10 @@ public final class Server {
         }
         if (path.startsWith("/api/v2/trees/") && path.matches("/api/v2/trees/[^/]+/idm(/.*)?")) {
             idm.handle(ex, path, method);
+            return;
+        }
+        if (path.matches("/api/v2/trees/[^/]+/security(/.*)?")) {
+            security.handle(ex, path, method);
             return;
         }
         if (path.matches("/api/v2/trees/[^/]+/edir(/.*)?")) {

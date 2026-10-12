@@ -700,6 +700,9 @@ final class Objects {
             if (t != null && t.readOnly()) {
                 throw new Http.Problem(400, "read-only-attribute", attr + " is maintained by the directory");
             }
+            if (com.pointblue.console.server.ldap.Secrets.withheld(attr)) {
+                throw new Http.Problem(400, "secret-attribute", attr + " holds a secret: set passwords with the password task; keys and secrets are managed by their own tools");
+            }
             int code = switch (op) {
                 case "add" -> DirContext.ADD_ATTRIBUTE;
                 case "remove" -> DirContext.REMOVE_ATTRIBUTE;

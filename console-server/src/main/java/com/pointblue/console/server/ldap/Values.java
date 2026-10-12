@@ -40,6 +40,9 @@ public final class Values {
     }
 
     static Object toJson(Schema.AttributeType type, Object v) {
+        if (v instanceof Secrets.Withheld w) {
+            return Map.of("withheld", w.count());
+        }
         if (v instanceof byte[] b) {
             return Map.of("base64", Base64.getEncoder().encodeToString(b));
         }

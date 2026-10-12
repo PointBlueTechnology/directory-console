@@ -48,7 +48,8 @@ public final class Ldap implements AutoCloseable {
     static final String EFFECTIVE_PRIVILEGES = "2.16.840.1.113719.1.27.100.33";
     /** Virtual list view request and response. eDirectory honours them without listing them in the root DSE. */
     /** Attributes always read as bytes, whatever the schema says (the login time map is a bit map). */
-    static final String BINARY = "GUID loginAllowedTimeMap networkAddress Replica";
+    static final String BINARY = "GUID loginAllowedTimeMap networkAddress Replica nDSPKIPublicKeyCertificate nDSPKIPublicKeyCertificateEC "
+        + "nDSPKICertificateChain nDSPKITrustedRootCertificate certificateRevocationList cACertificate userCertificate nsimChallengeSetGUID";
     static final String VLV_REQUEST = "2.16.840.1.113730.3.4.9";
     static final String VLV_RESPONSE = "2.16.840.1.113730.3.4.10";
 
@@ -641,6 +642,11 @@ public final class Ldap implements AutoCloseable {
         NamingEnumeration<? extends Attribute> all = as.getAll();
         while (all.hasMore()) {
             Attribute a = all.next();
+            if (Secrets.withheld(a.getID())) {
+                // never kept in memory past this point, never returned
+                out.put(a.getID().toLowerCase(java.util.Locale.ROOT), List.of(new Secrets.Withheld(a.size())));
+                continue;
+            }
             List<Object> values = new ArrayList<>();
             NamingEnumeration<?> vs = a.getAll();
             while (vs.hasMore()) {

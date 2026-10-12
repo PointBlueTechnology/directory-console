@@ -244,10 +244,13 @@ public class ObjectsTest {
         assertEquals(204, call("DELETE", "/api/v2/trees/acme/objects/" + guid, null, with(h, moved.etag())).status());
         assertEquals(404, call("GET", "/api/v2/trees/acme/objects/" + guid, null, h).status());
 
-        // a password write is audited by attribute name only
+        // secrets are not written through the generic editor; the password task is audited without the value
         String smith = (String) resolve(h, "cn=Smith\\, John,ou=Users,o=acme").body().get("guid");
-        assertEquals(200, call("PATCH", "/api/v2/trees/acme/objects/" + smith,
-            Map.of("changes", List.of(Map.of("op", "replace", "attribute", "userPassword", "values", List.of("S3cret-value!")))), with(h, "*")).status());
+        Reply generic = call("PATCH", "/api/v2/trees/acme/objects/" + smith,
+            Map.of("changes", List.of(Map.of("op", "replace", "attribute", "userPassword", "values", List.of("S3cret-value!")))), with(h, "*"));
+        assertEquals(400, generic.status());
+        assertEquals("secret-attribute", generic.body().get("title"));
+        assertEquals(204, call("POST", "/api/v2/trees/acme/objects/" + smith + "/password", Map.of("password", "S3cret-value!"), h).status());
         String auditText;
         try (var files = Files.list(dataPath.resolve("audit"))) {
             StringBuilder b = new StringBuilder();
@@ -256,7 +259,7 @@ public class ObjectsTest {
             }
             auditText = b.toString();
         }
-        assertTrue(auditText.contains("object.create") && auditText.contains("object.move") && auditText.contains("replace userPassword"));
+        assertTrue(auditText.contains("object.create") && auditText.contains("object.move") && auditText.contains("object.password"));
         assertFalse("no value reaches the audit log", auditText.contains("S3cret-value!") || auditText.contains("changed\""));
 
         // a viewer reads but cannot write
