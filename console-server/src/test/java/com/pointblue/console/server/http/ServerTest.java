@@ -161,6 +161,19 @@ public class ServerTest {
         assertEquals("localhost", other.body().get("host"));
         assertEquals("the same address without the directory: its CA is not trusted globally", "untrusted",
             call("POST", "/api/v2/trust/probe", Map.of("host", "localhost", "port", edir.port()), w).body().get("status"));
+        String leaf = ((String) Json.asMap(((List<?>) other.body().get("chain")).get(0)).get("sha256")).replace(":", "");
+        assertEquals(201, call("POST", "/api/v2/trust/host-exceptions", Map.of("probeId", other.body().get("probeId"), "confirm", leaf.substring(56)), w).status());
+        List<?> exceptions = (List<?>) call("GET", "/api/v2/trust/certificates", null, session).body().get("hostExceptions");
+        assertEquals(1, exceptions.size());
+        assertEquals(other.body().get("chain") instanceof List<?> c ? Json.asMap(c.get(0)).get("sha256") : null, Json.asMap(exceptions.get(0)).get("sha256"));
+        assertEquals("trusted at that address now", "trusted",
+            call("POST", "/api/v2/trust/probe", Map.of("directory", "prod", "host", "localhost", "port", edir.port()), w).body().get("status"));
+        Map<String, Object> where = Map.of("host", "localhost", "port", edir.port());
+        assertEquals(204, call("DELETE", "/api/v2/trust/host-exceptions", where, w).status());
+        assertEquals(404, call("DELETE", "/api/v2/trust/host-exceptions", where, w).status());
+        assertEquals(List.of(), call("GET", "/api/v2/trust/certificates", null, session).body().get("hostExceptions"));
+        Map<String, Object> listed = Json.asMap(((List<?>) call("GET", "/api/v2/trust/certificates", null, session).body().get("certificates")).get(0));
+        assertTrue(listed.containsKey("notBefore") && listed.containsKey("names") && listed.containsKey("selfSigned"));
         assertEquals("another site's page", 403, call("POST", "/api/v2/trust/probe", Map.of("directory", "prod"),
             Map.of("Cookie", session.get("Cookie"), "X-CSRF-Token", csrf, "Origin", "https://evil.example")).status());
         assertEquals("DNS rebinding", 421, call("GET", "/api/v2/session", null, Map.of("Host", "evil.example")).status());

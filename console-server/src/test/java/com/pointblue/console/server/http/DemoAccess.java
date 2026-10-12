@@ -59,4 +59,9 @@ public final class DemoAccess {
         server.config.update(server.config.version(), "demo", "server addresses", doc ->
             Json.asMap(Json.asMap(doc.get("directories")).get(directory)).put("serverAddresses", addresses));
     }
+
+    /** Trust a certificate as an administrator would, for the demo's certificate list. */
+    public static void trust(Server server, java.security.cert.X509Certificate cert, String scope, String by) throws Exception {
+        server.trust.add(cert, com.pointblue.console.server.tls.TrustStore.Kind.CA, scope, by, "upload");
+    }
 }

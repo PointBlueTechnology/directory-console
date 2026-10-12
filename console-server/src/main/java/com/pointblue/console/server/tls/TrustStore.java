@@ -47,7 +47,10 @@ public final class TrustStore {
             m.put("scope", scope);
             m.put("subject", cert.getSubjectX500Principal().getName());
             m.put("issuer", cert.getIssuerX500Principal().getName());
+            m.put("notBefore", cert.getNotBefore().toInstant().toString());
             m.put("notAfter", cert.getNotAfter().toInstant().toString());
+            m.put("names", Certs.names(cert));
+            m.put("selfSigned", Certs.selfSigned(cert));
             m.put("addedBy", addedBy);
             m.put("addedAt", addedAt.toString());
             m.put("how", how);
@@ -143,6 +146,20 @@ public final class TrustStore {
         List<HostException> all = new ArrayList<>(hostExceptions());
         all.removeIf(h -> h.host.equalsIgnoreCase(host) && h.port == port);
         all.add(new HostException(host.toLowerCase(Locale.ROOT), port, Certs.id(leaf), by, Instant.now()));
+        writeHostExceptions(all);
+    }
+
+    /** Remove the host exception for exactly {@code host:port}; false when there is none. */
+    public synchronized boolean removeHostException(String host, int port) throws IOException {
+        List<HostException> all = new ArrayList<>(hostExceptions());
+        if (!all.removeIf(h -> h.host.equalsIgnoreCase(host) && h.port == port)) {
+            return false;
+        }
+        writeHostExceptions(all);
+        return true;
+    }
+
+    private void writeHostExceptions(List<HostException> all) throws IOException {
         List<Map<String, Object>> json = new ArrayList<>();
         for (HostException h : all) {
             json.add(Map.of("host", h.host, "port", h.port, "leafId", h.leafId, "addedBy", h.addedBy, "addedAt", h.addedAt.toString()));

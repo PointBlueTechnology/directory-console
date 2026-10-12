@@ -33,10 +33,15 @@ public final class TestPki {
     public final X509Certificate ca;
 
     public TestPki(String tree) throws Exception {
+        this(tree, Duration.ofDays(3650));
+    }
+
+    /** A tree CA valid for {@code validity} from now. */
+    public TestPki(String tree, Duration validity) throws Exception {
         caKey = Certs.ecKeyPair();
         X500Name name = new X500Name("OU=Organizational CA,O=" + tree);
         X509v3CertificateBuilder b = new JcaX509v3CertificateBuilder(name, BigInteger.ONE,
-            Date.from(Instant.now().minusSeconds(60)), Date.from(Instant.now().plus(Duration.ofDays(3650))), name, caKey.getPublic());
+            Date.from(Instant.now().minusSeconds(60)), Date.from(Instant.now().plus(validity)), name, caKey.getPublic());
         b.addExtension(Extension.basicConstraints, true, new BasicConstraints(true));
         b.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.keyCertSign | KeyUsage.cRLSign));
         ca = new JcaX509CertificateConverter().getCertificate(b.build(new JcaContentSignerBuilder("SHA256withECDSA").build(caKey.getPrivate())));

@@ -120,6 +120,8 @@ public final class DemoServer {
         // edir2 is reached by a name its certificate lacks, as behind NAT or a tunnel: signing in to it asks
         // an administrator to accept the certificate at that address
         DemoAccess.serverAddresses(server, Map.of("cn=edir2,ou=servers,o=system", "localhost:" + edir.port()));
+        // a partner tree's CA, trusted for every directory and expiring soon: the certificate list and banner warn
+        DemoAccess.trust(server, new com.pointblue.console.server.tls.TestPki("PARTNER_TREE", java.time.Duration.ofDays(21)).ca, "global", "cn=admin,o=system");
         System.out.println("\nDemo console ready at " + base + " (data " + data + "). Ctrl-C to stop.");
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();

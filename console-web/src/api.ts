@@ -766,15 +766,59 @@ export interface Probe {
   confirm: string;
 }
 
+export interface TrustedCertificate {
+  /** The fingerprint as lower-case hex, no separators. */
+  id: string;
+  sha256: string;
+  /** "ca": chains that validate to it are trusted; "pinned-server": exactly this certificate is. */
+  kind: 'ca' | 'pinned-server';
+  /** "global", "directory:<id>" or "user:<subject>". */
+  scope: string;
+  subject: string;
+  issuer: string;
+  names: string[];
+  selfSigned: boolean;
+  notBefore: string;
+  notAfter: string;
+  addedBy: string;
+  addedAt: string;
+  /** "probe", "upload" or "bootstrap". */
+  how: string;
+}
+
+export interface HostExceptionInfo {
+  host: string;
+  port: number;
+  leafId: string;
+  sha256: string;
+  addedBy: string;
+  addedAt: string;
+}
+
 /** The console's trust store (administrators; changes need a recent sign-in). */
 export const trust = {
+  list: () => request<{ certificates: TrustedCertificate[]; hostExceptions: HostExceptionInfo[] }>('GET', '/api/v2/trust/certificates').then((r) => r.data),
   /** Probe host:port; with a directory, judged as that directory's connections are (its trusted CAs too). */
   probe: (host: string, port: number, directory?: string) =>
     request<Probe>('POST', '/api/v2/trust/probe', { host, port, directory }).then((r) => r.data),
+  /** Probe a configured directory at its own address. */
+  probeDirectory: (directory: string) => request<Probe>('POST', '/api/v2/trust/probe', { directory }).then((r) => r.data),
   /** Trust one certificate of a probed chain for this directory's connections. */
-  add: (probeId: string, index: number, confirm: string, directory: string) =>
-    request<unknown>('POST', '/api/v2/trust/certificates', { probeId, index, confirm, scope: `directory:${directory}` }).then(() => undefined),
+  add: (probeId: string, index: number, confirm: string, directory: string, kind?: 'ca' | 'pinned-server') =>
+    request<unknown>('POST', '/api/v2/trust/certificates', { probeId, index, confirm, scope: `directory:${directory}`, kind }).then(() => undefined),
+  /** Trust an uploaded PEM certificate (the last one in the file: the root of a chain). */
+  upload: (pem: string, scope: string, kind?: 'ca' | 'pinned-server') =>
+    request<TrustedCertificate>('POST', '/api/v2/trust/certificates', { pem, scope, kind }).then((r) => r.data),
+  remove: (id: string) => request<void>('DELETE', `/api/v2/trust/certificates/${id}`).then(() => undefined),
   /** Accept this server's certificate at exactly this host and port, though it names others (NAT, a tunnel). */
   hostException: (probeId: string, confirm: string) =>
     request<unknown>('POST', '/api/v2/trust/host-exceptions', { probeId, confirm }).then(() => undefined),
+  removeHostException: (host: string, port: number) =>
+    request<void>('DELETE', '/api/v2/trust/host-exceptions', { host, port }).then(() => undefined),
 };
+
+/** Days from now until {@code iso}, a part day counting as one; negative once it has passed. */
+export function daysUntil(iso: string, now = Date.now()): number {
+  const d = (new Date(iso).getTime() - now) / 86_400_000;
+  return d < 0 ? Math.floor(d) : Math.ceil(d);
+}

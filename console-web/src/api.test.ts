@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError, guidPath, request, setCsrf } from './api';
+import { ApiError, daysUntil, guidPath, request, setCsrf } from './api';
 
 function fake(status: number, body: unknown, headers: Record<string, string> = {}) {
   const calls: { url: string; init: RequestInit }[] = [];
@@ -38,4 +38,10 @@ describe('guidPath', () => {
     expect(() => guidPath('cn=x,o=acme')).toThrow();
     expect(() => guidPath('../../session')).toThrow();
   });
+});
+
+describe('daysUntil', () => {
+  const now = Date.parse('2026-10-12T12:00:00Z');
+  it('counts a part day as one, ahead', () => expect(daysUntil('2026-11-02T11:59:00Z', now)).toBe(21));
+  it('is negative once passed', () => expect(daysUntil('2026-10-12T11:00:00Z', now)).toBe(-1));
 });

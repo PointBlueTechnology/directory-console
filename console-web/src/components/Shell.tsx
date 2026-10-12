@@ -2,10 +2,11 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import {
   Dropdown, DropdownItem, DropdownList, Masthead, MastheadBrand, MastheadContent, MastheadLogo, MastheadMain,
   MastheadToggle, MenuToggle, Nav, NavItem, NavList, Page, PageSidebar, PageSidebarBody, PageToggleButton,
-  Bullseye, Spinner, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarGroup, ToolbarItem,
+  Alert, AlertActionLink, Bullseye, PageSection, Spinner, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarGroup, ToolbarItem,
 } from '@patternfly/react-core';
 import { MoonIcon, SunIcon, UserIcon } from '@patternfly/react-icons';
 import { useSession } from '../session';
+import { daysUntil, trust } from '../api';
 import { linkProps, match, navigate, useLocation } from '../router';
 import { Browser } from '../pages/Browser';
 import { Search } from '../pages/Search';
@@ -17,6 +18,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 // administration pages load when first opened: most sessions never visit them
 const IdmPage = lazy(() => import('../pages/IdmPage').then((m) => ({ default: m.IdmPage })));
 const DriverPage = lazy(() => import('../pages/DriverPage').then((m) => ({ default: m.DriverPage })));
+const CertificatesPage = lazy(() => import('../pages/CertificatesPage').then((m) => ({ default: m.CertificatesPage })));
 const SettingsPage = lazy(() => import('../pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const EdirPage = lazy(() => import('../pages/EdirPage').then((m) => ({ default: m.EdirPage })));
 const ServerPage = lazy(() => import('../pages/EdirPage').then((m) => ({ default: m.ServerPage })));
@@ -32,6 +34,7 @@ const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>
   { to: '/edir', label: 'eDirectory', show: (s) => s.me.roles.length > 0 },
   { to: '/security', label: 'Security', show: (s) => s.me.roles.length > 0 },
   { to: '/idm', label: 'Identity Manager', show: (s) => s.me.roles.length > 0 },
+  { to: '/certificates', label: 'Certificates', show: (s) => s.can('admin') },
   { to: '/settings', label: 'Settings', show: (s) => s.can('admin') },
 ];
 
@@ -107,6 +110,7 @@ export function Shell() {
 
   return (
     <Page masthead={masthead} sidebar={sidebar} isManagedSidebar mainAriaLabel="Directory Console">
+      {sessionState.can('admin') && path !== '/certificates' && <ExpiryBanner />}
       <ErrorBoundary resetKey={path}>
         <Suspense fallback={<Bullseye><Spinner aria-label="Loading" /></Bullseye>}>{route(path)}</Suspense>
       </ErrorBoundary>
@@ -164,6 +168,9 @@ function route(path: string) {
   if (path === '/settings') {
     return <SettingsPage />;
   }
+  if (path === '/certificates') {
+    return <CertificatesPage />;
+  }
   if (path === '/idm') {
     return <IdmPage />;
   }
@@ -176,6 +183,27 @@ function route(path: string) {
     return <DriverPage guid={m.guid} />;
   }
   return <NotFound />;
+}
+
+/** Administrators are told of trusted certificates expired or expiring within 30 days (DESIGN 6.5). */
+function ExpiryBanner() {
+  const [soon, setSoon] = useState<{ expired: number; expiring: number } | null>(null);
+  useEffect(() => {
+    trust.list().then((t) => {
+      const days = t.certificates.map((c) => daysUntil(c.notAfter));
+      setSoon({ expired: days.filter((d) => d < 0).length, expiring: days.filter((d) => d >= 0 && d <= 30).length });
+    }).catch(() => setSoon(null));
+  }, []);
+  if (!soon || (soon.expired === 0 && soon.expiring === 0)) {
+    return null;
+  }
+  const parts = [soon.expired && `${soon.expired} expired`, soon.expiring && `${soon.expiring} expiring within 30 days`].filter(Boolean).join(', ');
+  return (
+    <PageSection padding={{ default: 'noPadding' }}>
+      <Alert variant={soon.expired ? 'danger' : 'warning'} isInline component="h2" title={`Trusted certificates: ${parts}`}
+        actionLinks={<AlertActionLink onClick={() => navigate('/certificates')}>Review certificates</AlertActionLink>} />
+    </PageSection>
+  );
 }
 
 /** Light or dark, following the system until the person picks; the choice is kept in this browser only. */

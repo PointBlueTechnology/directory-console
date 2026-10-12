@@ -258,6 +258,7 @@ public final class Server {
             case "POST /api/v2/trust/probe" -> trustProbe(ex);
             case "POST /api/v2/trust/certificates" -> trustAdd(ex);
             case "POST /api/v2/trust/host-exceptions" -> hostException(ex);
+            case "DELETE /api/v2/trust/host-exceptions" -> hostExceptionRemove(ex);
             case "GET /api/v2/config" -> {
                 session(ex, Role.ADMIN);
                 Http.json(ex, 200, config.redacted());
@@ -652,7 +653,8 @@ public final class Server {
         }
         List<Map<String, Object>> exceptions = new ArrayList<>();
         for (TrustStore.HostException h : trust.hostExceptions()) {
-            exceptions.add(Map.of("host", h.host(), "port", h.port(), "leafId", h.leafId(), "addedBy", h.addedBy(), "addedAt", h.addedAt().toString()));
+            exceptions.add(Map.of("host", h.host(), "port", h.port(), "leafId", h.leafId(), "sha256", h.leafId().toUpperCase(Locale.ROOT).replaceAll("(..)(?!$)", "$1:"),
+                "addedBy", h.addedBy(), "addedAt", h.addedAt().toString()));
         }
         Http.json(ex, 200, Map.of("certificates", out, "hostExceptions", exceptions));
     }
@@ -785,5 +787,20 @@ public final class Server {
         trust.addHostException(r.host(), r.port(), leaf, s.principal.dn());
         audit.log(who(s), "trust.host-exception", r.host() + ":" + r.port(), Map.of("leaf", Certs.sha256(leaf)), "ok");
         Http.json(ex, 201, Map.of("host", r.host(), "port", r.port(), "leaf", Certs.sha256(leaf)));
+    }
+
+    /** {@code {host, port}}: stop accepting that address's certificate for names it does not carry. */
+    private void hostExceptionRemove(HttpExchange ex) throws IOException {
+        Sessions.Session s = session(ex, Role.ADMIN);
+        stepUp(s);
+        Map<String, Object> b = Http.body(ex);
+        String host = Http.string(b, "host", true);
+        int port = Http.integer(b, "port", 636);
+        boolean removed = trust.removeHostException(host, port);
+        audit.log(who(s), "trust.host-exception.remove", host + ":" + port, Map.of(), removed ? "ok" : "not-found");
+        if (!removed) {
+            throw new Http.Problem(404, "not-found", "no host exception for " + host + ":" + port);
+        }
+        Http.json(ex, 204, Map.of());
     }
 }
