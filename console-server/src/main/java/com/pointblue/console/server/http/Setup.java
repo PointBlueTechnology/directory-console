@@ -172,6 +172,14 @@ final class Setup {
         try {
             List<X509Certificate> chain = Probe.read(host, port, T);
             TrustStore.Evaluation ev = server.trust.evaluate(chain.toArray(new X509Certificate[0]), host, port, id, null);
+            if (!ev.trusted() && ev.reason() == TrustStore.Reason.HOSTNAME && Boolean.TRUE.equals(b.get("hostException"))) {
+                // reached by a name the certificate does not carry (a tunnel, a load balancer, NAT): accept exactly
+                // this certificate at exactly this host and port, as the host exceptions of DESIGN 6.4 do after setup
+                server.trust.addHostException(host, port, chain.get(0), "bootstrap");
+                server.audit.log(AuditLog.Actor.SYSTEM, "trust.host-exception", host + ":" + port, Map.of("sha256", Certs.sha256(chain.get(0)),
+                    "names", Certs.names(chain.get(0))), "ok");
+                ev = server.trust.evaluate(chain.toArray(new X509Certificate[0]), host, port, id, null);
+            }
             trusted = ev.trusted();
             Map<String, Object> out = new LinkedHashMap<>(e.json());
             out.put("connection", Map.of("trusted", ev.trusted(), "reason", ev.reason() == null ? "" : ev.reason().name().toLowerCase(), "message", ev.message()));

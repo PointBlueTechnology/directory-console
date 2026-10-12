@@ -72,14 +72,34 @@ public final class Partitions {
 
     /** The partitions (and subordinate references) {@code serverDn} holds; "" is the tree root. */
     public static List<String> list(Ldap l, String serverDn) throws NamingException {
-        byte[] r = l.extended(LIST_REPLICAS, octets(serverDn));
+        return decodeList(l.extended(LIST_REPLICAS, octets(serverDn)));
+    }
+
+    /**
+     * eDirectory 9.2.8 answers with a SEQUENCE OF OCTET STRING (ig4); 9.3.3 with one OCTET STRING holding
+     * JSON, {@code {"partitions":["", "o=data"]}} (test3, 2026-10-12). Novell's JLDAP reads only the first.
+     */
+    static List<String> decodeList(byte[] r) {
         List<String> out = new ArrayList<>();
         if (r == null || r.length == 0) {
             return out;
         }
-        for (Ber.Element e : Ber.read(r).get(0).children()) {
-            out.add(new String(e.value(), StandardCharsets.UTF_8));
+        Ber.Element top = Ber.read(r).get(0);
+        if (top.tag() == 0x30) {
+            for (Ber.Element e : top.children()) {
+                out.add(new String(e.value(), StandardCharsets.UTF_8));
+            }
+            return out;
         }
+        String text = new String(top.value(), StandardCharsets.UTF_8).trim();
+        if (text.startsWith("{")) {
+            Object partitions = com.pointblue.dirxml.dev.json.Json.asMap(com.pointblue.dirxml.dev.json.Json.parse(text)).get("partitions");
+            if (partitions instanceof List<?> list) {
+                list.forEach(x -> out.add(String.valueOf(x)));
+            }
+            return out;
+        }
+        out.add(text);
         return out;
     }
 

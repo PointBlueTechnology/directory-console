@@ -27,6 +27,25 @@ public class PartitionsTest {
     }
 
     @Test
+    public void listReplicasInBothServerVersionsForms() {
+        // ig4, eDirectory 9.2.8: SEQUENCE OF OCTET STRING
+        assertEquals(List.of("", "o=data"), Partitions.decodeList(HexFormat.of().parseHex("30840000000a040004066f3d64617461")));
+        // test3, eDirectory 9.3.3: one OCTET STRING holding JSON
+        assertEquals(List.of(""), Partitions.decodeList(HexFormat.of().parseHex("04137b22706172746974696f6e73223a5b22225d7d")));
+        assertEquals(List.of(), Partitions.decodeList(new byte[0]));
+    }
+
+    @Test
+    public void replicaInfoFromEdirectory933() {
+        // test3b's replica of the tree root partition: unchanged from 9.2.8
+        Partitions.ReplicaInfo i = Partitions.decodeInfo(HexFormat.of().parseHex("020300806602010002046acd197e02046acd197e0201040400020101020100"));
+        assertEquals("", i.partitionDn());
+        assertEquals(Partitions.Type.READ_WRITE, Partitions.Type.of(i.type()));
+        assertEquals(0, i.state());
+        assertEquals(4, i.localPartitionId());
+    }
+
+    @Test
     public void getReplicaInfoFieldsAreInJldapsOrder() {
         // partitionID, state, modTime, purgeTime, localPartitionID, partitionDN, type (state in the high 16 bits), flags
         byte[] r = Ber.concat(i(32866), i(0), i(1791753112L), i(1791753107L), i(6), str("o=data"), i(0x310001), i(1));
