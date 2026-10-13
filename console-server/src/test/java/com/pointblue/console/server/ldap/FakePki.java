@@ -34,8 +34,17 @@ public final class FakePki extends InMemoryExtendedOperationHandler {
     /** user DN (lower case) → certificate name → certificate. */
     public final Map<String, Map<String, X509Certificate>> userCertificates = new ConcurrentHashMap<>();
     public volatile int refuseNext;
+    /** The EBA CA's "address:port" (null: no EBA), and each server's NCP certificate: UID (the server's GUID, with dashes) → address. */
+    public volatile String ebaCa;
+    public final Map<String, String> ncp = new java.util.concurrent.ConcurrentHashMap<>();
     /** What was revoked: "server|user DN (dotted) / certificate name / reason". */
     public final List<String> revoked = java.util.Collections.synchronizedList(new ArrayList<>());
+
+    /** A server's GUID as EBA writes it in an NCP certificate's subject: upper-case hex with dashes (8-4-4-4-12). */
+    public static String uid(byte[] guid) {
+        String h = java.util.HexFormat.of().withUpperCase().formatHex(guid);
+        return h.substring(0, 8) + "-" + h.substring(8, 12) + "-" + h.substring(12, 16) + "-" + h.substring(16, 20) + "-" + h.substring(20);
+    }
 
     FakePki(TestPki pki) {
         this.pki = pki;
@@ -48,7 +57,7 @@ public final class FakePki extends InMemoryExtendedOperationHandler {
 
     @Override
     public List<String> getSupportedExtendedRequestOIDs() {
-        return List.of(P + "105", P + "107");
+        return List.of(P + "105", P + "107", P + "113", P + "117", P + "121");
     }
 
     /** {@code cn=a.ou=b\.c.o=d} → {@code cn=a,ou=b.c,o=d}. */
@@ -96,6 +105,29 @@ public final class FakePki extends InMemoryExtendedOperationHandler {
             return switch (oid.substring(P.length()) + " " + verb) {
                 case "105 createCertificate" -> createServer(handler, id, response, payload);
                 case "107 createCertificate" -> createUser(handler, id, response, payload);
+                case "113 GetUapCsrCertificates", "117 getCertificates", "121 getCACertificate" -> {
+                    if (ebaCa == null || !ebaCa.equals(payload.get("serverIP"))) {
+                        yield json(id, response, Map.of("code", -2104, "message", "EBA invalid EBA Server"));
+                    }
+                    long from = 1790184416L;
+                    long to = 2105544416L;
+                    if (verb.equals("GetUapCsrCertificates")) {
+                        yield json(id, response, Map.of("CSR", List.of()));
+                    }
+                    if (verb.equals("getCACertificate")) {
+                        yield json(id, response, Map.of("EBACAAddress", ebaCa, "certificateVersion", 3, "serialNumber", "2C3E1C97BF160A41B5692C3E1C97BF16",
+                            "subjectName", "/CN=EBACA", "issuerName", "/CN=EBACA", "validitystart", from, "validityEnd", to,
+                            "signatureAlgorithm", "ecdsa-with-SHA384", "EBARenewalFlag", 1));
+                    }
+                    List<Map<String, Object>> certs = new ArrayList<>();
+                    int n = 0;
+                    for (Map.Entry<String, String> server : ncp.entrySet()) {
+                        certs.add(Map.of("EBACAAddress", ebaCa, "subjectNames", "ncp://" + server.getValue(), "certificateVersion", 3,
+                            "serialNumber", String.format("%032X", ++n), "subjectName", "/UID=" + server.getKey(), "issuerName", "/CN=EBACA",
+                            "validitystart", from, "validityEnd", to, "signatureAlgorithm", "ecdsa-with-SHA384"));
+                    }
+                    yield json(id, response, Map.of("SubjectNames", certs));
+                }
                 case "105 revokeCertificate", "107 revokeCertificate" -> {
                     String who = String.valueOf(payload.getOrDefault("serverDN", payload.get("userDN")));
                     if (payload.get("crlConfigurationDN") == null) {

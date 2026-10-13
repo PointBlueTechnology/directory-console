@@ -5,6 +5,7 @@ import com.pointblue.console.server.auth.Role;
 import com.pointblue.console.server.auth.Sessions;
 import com.pointblue.console.server.ldap.Ldap;
 import com.pointblue.console.server.ldap.Names;
+import com.pointblue.console.server.ldap.Eba;
 import com.pointblue.console.server.ldap.Pki;
 import com.pointblue.console.server.ldap.Servers;
 import com.pointblue.dirxml.dev.json.Json;
@@ -115,6 +116,7 @@ final class Security {
                 case "PATCH challenge-sets/{guid}" -> updateChallengeSet(ex, l, s, guid);
                 case "DELETE challenge-sets/{guid}" -> deleteChallengeSet(ex, l, s, guid);
                 case "GET login-policy" -> Http.json(ex, 200, loginPolicy(l));
+                case "GET eba" -> Http.json(ex, 200, eba(l));
                 case "POST login-policy/sequences" -> changeSequence(ex, l, s, null);
                 case "PATCH login-policy/sequences/{name}" -> changeSequence(ex, l, s, java.net.URLDecoder.decode(p[4], java.nio.charset.StandardCharsets.UTF_8));
                 case "DELETE login-policy/sequences/{name}" -> deleteSequence(ex, l, s, java.net.URLDecoder.decode(p[4], java.nio.charset.StandardCharsets.UTF_8));
@@ -397,6 +399,55 @@ final class Security {
             }
         }
         return l.dsaName();
+    }
+
+    // ---- EBA (6b) -----------------------------------------------------------------------------------
+
+    /**
+     * The tree's EBA CA (found among the servers' NCP addresses), its certificate, each server's NCP
+     * certificate and the requests awaiting approval; {@code available: false} when no server answers.
+     */
+    private Map<String, Object> eba(Ldap l) throws NamingException {
+        List<String> candidates = new ArrayList<>();
+        Map<String, Map<String, Object>> byGuid = new LinkedHashMap<>();
+        for (Ldap.Entry srv : l.search("", "(objectClass=ncpServer)", null, SearchControls.SUBTREE_SCOPE, new String[] {"networkAddress", "GUID", "cn"}, 200)) {
+            if (srv.attributes().get("guid") != null) {
+                byGuid.put(Names.guidHex(srv.attributes().get("guid").get(0)), Map.of("dn", srv.dn(), "name", String.valueOf(srv.first("cn")),
+                    "guid", Names.guidHex(srv.attributes().get("guid").get(0))));
+            }
+            List<String> tcp = new ArrayList<>();
+            for (Object a : srv.attributes().getOrDefault("networkaddress", List.of())) {
+                String text = a instanceof byte[] b ? Edir.networkAddress(b) : null;
+                if (text != null && text.startsWith("tcp ")) {
+                    tcp.add(text.substring(4));
+                }
+            }
+            // the NCP port first: that is the address EBA knows a server by
+            tcp.sort((x, y) -> Boolean.compare(!x.endsWith(":524"), !y.endsWith(":524")));
+            candidates.addAll(tcp);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        String ca = Eba.findCa(l, candidates);
+        out.put("available", ca != null);
+        if (ca == null) {
+            out.put("problem", "no server answered as the tree's EBA CA (tried " + String.join(", ", candidates) + ")");
+            return out;
+        }
+        out.put("caAddress", ca);
+        try {
+            out.put("ca", Eba.caCertificate(l, ca));
+            // an NCP certificate's subject is /UID=<the server's GUID>
+            List<Map<String, Object>> ncp = Eba.ncpCertificates(l, ca);
+            for (Map<String, Object> c : ncp) {
+                String uid = String.valueOf(c.get("subject")).replaceFirst("^/UID=", "").replace("-", "").toLowerCase(Locale.ROOT);
+                c.put("server", byGuid.get(uid));
+            }
+            out.put("ncpCertificates", ncp);
+            out.put("pendingRequests", Eba.pendingCsrs(l, ca));
+        } catch (Pki.Refused r) {
+            throw new Http.Problem(409, "pki-refused", r.getMessage(), Map.of("code", r.code));
+        }
+        return out;
     }
 
     // ---- login sequences (6b) ----------------------------------------------------------------------

@@ -296,4 +296,25 @@ public class SecurityTest {
         lp = edir.entry("cn=Login Policy,cn=Security,o=system");
         assertEquals(List.of("NDS;Password;NDS", "Challenge Response;Password;Challenge Response"), List.of(lp.getAttributeValues("sASLoginSequence")));
     }
+
+    @Test
+    public void ebaIsFoundAmongTheServersNcpAddresses() throws Exception {
+        String t = "/api/v2/trees/acme/security/eba";
+        assertEquals("no server answers as the EBA CA", false, call("GET", t, null, h).body().get("available"));
+        // "9#" (TCP), then port 524 and 127.0.0.9, as eDirectory sends networkAddress over LDAP
+        byte[] tcp = {'9', '#', 0x02, 0x0c, 127, 0, 0, 9};
+        edir.server.modify("cn=edir1,ou=servers,o=system", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD, "networkAddress", tcp));
+        edir.pkiOps.ebaCa = "127.0.0.9:524";
+        String uid = com.pointblue.console.server.ldap.FakePki.uid(edir.entry("cn=edir1,ou=servers,o=system").getAttributeValueBytes("GUID"));
+        edir.pkiOps.ncp.put(uid, "127.0.0.9:524");
+        Map<String, Object> eba = call("GET", t, null, h).body();
+        assertEquals(String.valueOf(eba), true, eba.get("available"));
+        assertEquals("127.0.0.9:524", eba.get("caAddress"));
+        assertEquals("2036-09-20T17:26:56Z", Json.asMap(eba.get("ca")).get("notAfter"));
+        assertEquals(true, Json.asMap(eba.get("ca")).get("renewable"));
+        Map<String, Object> ncp = Json.asMap(((List<?>) eba.get("ncpCertificates")).get(0));
+        assertEquals("the NCP certificate's UID is the server's GUID", "edir1", Json.asMap(ncp.get("server")).get("name"));
+        assertEquals("ncp://127.0.0.9:524", ncp.get("address"));
+        assertEquals(List.of(), eba.get("pendingRequests"));
+    }
 }

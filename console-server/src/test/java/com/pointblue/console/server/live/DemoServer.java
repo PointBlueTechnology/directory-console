@@ -122,6 +122,10 @@ public final class DemoServer {
         DemoAccess.serverAddresses(server, Map.of("cn=edir2,ou=servers,o=system", "localhost:" + edir.port()));
         // a partner tree's CA, trusted for every directory and expiring soon: the certificate list and banner warn
         DemoAccess.trust(server, new com.pointblue.console.server.tls.TestPki("PARTNER_TREE", java.time.Duration.ofDays(21)).ca, "global", "cn=admin,o=system");
+        // EBA: edir1 is the tree's EBA CA; both servers have NCP certificates
+        edir.pkiOps.ebaCa = "127.0.0.1:524";
+        edir.pkiOps.ncp.put(com.pointblue.console.server.ldap.FakePki.uid(edir.entry("cn=edir1,ou=servers,o=system").getAttributeValueBytes("GUID")), "127.0.0.1:524");
+        edir.pkiOps.ncp.put(com.pointblue.console.server.ldap.FakePki.uid(edir.entry("cn=edir2,ou=servers,o=system").getAttributeValueBytes("GUID")), "127.0.0.2:524");
         // a server at another address whose pinned certificate changed: the Certificates page shows the alert
         DemoAccess.pinAlert(server, "acme", "edir3.acme.example", 636,
             new java.security.cert.X509Certificate[] {new com.pointblue.console.server.tls.TestPki("ROGUE_TREE").server("edir3", List.of("edir3.acme.example")).cert()});

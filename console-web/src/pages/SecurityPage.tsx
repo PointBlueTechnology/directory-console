@@ -4,7 +4,7 @@ import {
   Form, FormGroup, Label, LabelGroup, Modal, ModalBody, ModalFooter, ModalHeader, PageSection, Spinner, Tab, Tabs, TabTitleText, TextInput, Title,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { ApiError, type Certificate, type EdirServer, type SequenceRequest, type LoginPolicy, type PasswordPolicySummary, type Pki, edir, pem, security } from '../api';
+import { ApiError, type Certificate, type EbaState, type EdirServer, type SequenceRequest, type LoginPolicy, type PasswordPolicySummary, type Pki, edir, pem, security } from '../api';
 import { useSession } from '../session';
 import { linkProps, navigate } from '../router';
 import { useHeading } from '../heading';
@@ -56,6 +56,7 @@ export function SecurityPage({ tab = 'certificates' }: { tab?: string }) {
         <Tab eventKey="password-policies" title={<TabTitleText>Password policies</TabTitleText>}><PoliciesView /></Tab>
         <Tab eventKey="challenge-sets" title={<TabTitleText>Challenge sets</TabTitleText>}><ChallengeSetsView /></Tab>
         <Tab eventKey="login-methods" title={<TabTitleText>Login methods</TabTitleText>}><LoginMethodsView /></Tab>
+        <Tab eventKey="eba" title={<TabTitleText>EBA</TabTitleText>}><EbaView /></Tab>
       </Tabs>
     </PageSection>
   );
@@ -414,6 +415,51 @@ function LoginMethodsView() {
       {editing && <SequenceModal policy={lp} editing={editing.sequence} onSave={save} onClose={() => setEditing(null)} />}
       {confirmed.dialog}
       {sure.dialog}
+    </div>
+  );
+}
+
+/**
+ * EBA (enhanced background authentication): the tree's EBA CA, which issues each server an NCP
+ * certificate for server-to-server and client authentication, and the requests awaiting approval.
+ */
+function EbaView() {
+  const { me } = useSession();
+  const api = useMemo(() => security(me.directory), [me.directory]);
+  const [eba, setEba] = useState<EbaState | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const load = useCallback(() => { setError(null); api.eba().then(setEba).catch(setError); }, [api]);
+  useEffect(load, [load]);
+  if (!eba) {
+    return error ? <ProblemAlert error={error} onRetry={load} /> : <Spinner aria-label="Looking for the EBA CA" />;
+  }
+  if (!eba.available) {
+    return <div className="dc-tab-body"><p>EBA is not set up in this tree: {eba.problem}.</p></div>;
+  }
+  return (
+    <div className="dc-tab-body">
+      <DescriptionList isHorizontal isCompact>
+        <DescriptionListGroup><DescriptionListTerm>EBA CA</DescriptionListTerm><DescriptionListDescription><span className="dc-mono">{eba.ca?.subject}</span> on <span className="dc-mono">{eba.caAddress}</span></DescriptionListDescription></DescriptionListGroup>
+        <DescriptionListGroup><DescriptionListTerm>Valid until</DescriptionListTerm><DescriptionListDescription><ExpiryLabel notAfter={eba.ca?.notAfter ?? undefined} /></DescriptionListDescription></DescriptionListGroup>
+        <DescriptionListGroup><DescriptionListTerm>Signature</DescriptionListTerm><DescriptionListDescription>{eba.ca?.signatureAlgorithm}</DescriptionListDescription></DescriptionListGroup>
+        <DescriptionListGroup><DescriptionListTerm>Serial</DescriptionListTerm><DescriptionListDescription className="dc-mono">{eba.ca?.serial}</DescriptionListDescription></DescriptionListGroup>
+      </DescriptionList>
+      <Title headingLevel="h2" size="md" className="dc-tab-body">Servers' NCP certificates</Title>
+      <Table aria-label="NCP certificates" variant="compact">
+        <Thead><Tr><Th>Server</Th><Th>Address</Th><Th>Serial</Th><Th>Valid until</Th></Tr></Thead>
+        <Tbody>
+          {(eba.ncpCertificates ?? []).map((c) => (
+            <Tr key={c.serial}>
+              <Td dataLabel="Server">{c.server ? <a {...linkProps(`/edir/servers/${c.server.guid}`)}>{c.server.name}</a> : <span className="dc-mono">{c.subject}</span>}</Td>
+              <Td dataLabel="Address"><span className="dc-mono">{c.address}</span></Td>
+              <Td dataLabel="Serial"><span className="dc-mono">{c.serial}</span></Td>
+              <Td dataLabel="Valid until"><ExpiryLabel notAfter={c.notAfter ?? undefined} /></Td>
+            </Tr>
+          ))}
+        </Tbody>
+      </Table>
+      <Title headingLevel="h2" size="md" className="dc-tab-body">Requests awaiting approval</Title>
+      {(eba.pendingRequests ?? []).length === 0 ? <p>None.</p> : <pre className="dc-mono">{JSON.stringify(eba.pendingRequests, null, 2)}</pre>}
     </div>
   );
 }

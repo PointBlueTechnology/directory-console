@@ -717,6 +717,25 @@ export interface LoginPolicy {
   methods: (Ref & { description?: string; vendor?: string; postLogin: boolean })[];
 }
 
+export interface EbaCertificate {
+  subject: string;
+  issuer: string;
+  serial: string;
+  notBefore: string | null;
+  notAfter: string | null;
+  signatureAlgorithm: string;
+}
+
+/** The tree's EBA (enhanced background authentication): its CA, each server's NCP certificate, requests awaiting approval. */
+export interface EbaState {
+  available: boolean;
+  problem?: string;
+  caAddress?: string;
+  ca?: EbaCertificate & { renewable: boolean };
+  ncpCertificates?: (EbaCertificate & { address: string; server: { dn: string; name: string; guid: string } | null })[];
+  pendingRequests?: unknown[];
+}
+
 export interface SequenceRequest {
   name?: string;
   methods: string[];
@@ -751,6 +770,7 @@ export function security(id: string) {
       request<ChallengeSet>('PATCH', `${base}/challenge-sets/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
     deleteChallengeSet: (guid: string, confirm?: string) => request<void>('DELETE', `${base}/challenge-sets/${guidPath(guid)}`, undefined, h(confirm)),
     loginPolicy: () => get<LoginPolicy>('/login-policy'),
+    eba: () => get<EbaState>('/eba'),
     createSequence: (body: SequenceRequest, confirm?: string) =>
       request<LoginPolicy>('POST', `${base}/login-policy/sequences`, body, h(confirm)).then((r) => r.data),
     /** {@code count}: how many objects name the sequence, confirmed when the console asked. */

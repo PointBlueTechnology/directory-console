@@ -52,6 +52,7 @@ public final class LiveReadCheck {
             String t = "/api/v2/trees/lab";
             show("servers", call("GET", t + "/edir/servers", null, h));
             show("partitions", call("GET", t + "/edir/partitions", null, h));
+            show("EBA", call("GET", t + "/security/eba", null, h));
             String driverSet = args.length > 2 ? args[2] : null;
             if (driverSet != null) {
                 LiveSetupCheck.Reply ds = call("GET", t + "/objects?dn=" + java.net.URLEncoder.encode(driverSet, "UTF-8"), null, h);
