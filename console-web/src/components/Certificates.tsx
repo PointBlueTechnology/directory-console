@@ -57,7 +57,16 @@ export function scopeText(scope: string, directories: Directory[]): string {
     return `${directories.find((d) => d.id === id)?.name ?? id} only`;
   }
   if (scope.startsWith('user:')) {
-    return `Personal (${scope.slice('user:'.length)})`;
+    // user:<url-encoded DN>@host:port, for a directory the person entered themselves
+    const subject = scope.slice('user:'.length);
+    const at = subject.lastIndexOf('@');
+    let who = subject;
+    try {
+      who = decodeURIComponent(subject.slice(0, at < 0 ? undefined : at).replace(/\+/g, ' '));
+    } catch {
+      // shown as kept
+    }
+    return at < 0 ? `Personal: ${who}` : `Personal: ${who} at ${subject.slice(at + 1)}`;
   }
   return scope;
 }

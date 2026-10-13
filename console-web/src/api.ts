@@ -34,7 +34,7 @@ export interface Me {
   directory: string;
   roles: RoleId[];
   grants: Grant[];
-  via: 'direct' | 'break-glass' | 'oidc';
+  via: 'direct' | 'break-glass' | 'oidc' | 'user-directory';
   csrf: string;
 }
 
@@ -324,6 +324,11 @@ export function guidPath(guid: string): string {
 export const session = {
   me: () => request<Me>('GET', '/api/v2/session').then((r) => r.data),
   directories: () => request<Directory[]>('GET', '/api/v2/directories').then((r) => r.data),
+  /** Whether people may sign in to directories they enter themselves. */
+  signInOptions: () => request<{ otherDirectories: boolean }>('GET', '/api/v2/sign-in/options').then((r) => r.data),
+  /** Sign in to a directory by address; {@code accept} carries a certificate the person confirmed on the previous try. */
+  signInOther: (host: string, port: number, name: string, password: string, accept?: { probeId: string; confirm: string; index?: number }) =>
+    request<Me>('POST', '/api/v2/session/other', { host, port, name, password, accept }).then((r) => r.data),
   signIn: (directory: string, name: string | undefined, password: string, choice?: string) =>
     request<Me>('POST', '/api/v2/session', { directory, name, password, choice }).then((r) => r.data),
   signOut: () => request<void>('DELETE', '/api/v2/session'),
@@ -769,6 +774,8 @@ export interface Probe {
 export interface TrustedCertificate {
   /** The fingerprint as lower-case hex, no separators. */
   id: string;
+  /** Where it is kept: the fingerprint, with a suffix for a person's own certificate. */
+  key?: string;
   sha256: string;
   /** "ca": chains that validate to it are trusted; "pinned-server": exactly this certificate is. */
   kind: 'ca' | 'pinned-server';
@@ -789,6 +796,8 @@ export interface TrustedCertificate {
 export interface HostExceptionInfo {
   host: string;
   port: number;
+  /** "global", or "user:<subject>" for one person's own. */
+  scope?: string;
   leafId: string;
   sha256: string;
   addedBy: string;
@@ -831,7 +840,7 @@ export const trust = {
   /** Trust an uploaded PEM certificate (the last one in the file: the root of a chain). */
   upload: (pem: string, scope: string, kind?: 'ca' | 'pinned-server') =>
     request<TrustedCertificate>('POST', '/api/v2/trust/certificates', { pem, scope, kind }).then((r) => r.data),
-  remove: (id: string) => request<void>('DELETE', `/api/v2/trust/certificates/${id}`).then(() => undefined),
+  remove: (key: string) => request<void>('DELETE', `/api/v2/trust/certificates/${key}`).then(() => undefined),
   /** Accept this server's certificate at exactly this host and port, though it names others (NAT, a tunnel). */
   hostException: (probeId: string, confirm: string) =>
     request<unknown>('POST', '/api/v2/trust/host-exceptions', { probeId, confirm }).then(() => undefined),
@@ -844,3 +853,9 @@ export function daysUntil(iso: string, now = Date.now()): number {
   const d = (new Date(iso).getTime() - now) / 86_400_000;
   return d < 0 ? Math.floor(d) : Math.ceil(d);
 }
+
+/** Console-wide settings (administrators; a change needs a recent sign-in). */
+export const consoleSettings = {
+  get: () => request<{ otherDirectories: boolean }>('GET', '/api/v2/console/settings').then((r) => r.data),
+  put: (v: { otherDirectories: boolean }) => request<{ otherDirectories: boolean }>('PUT', '/api/v2/console/settings', v).then((r) => r.data),
+};

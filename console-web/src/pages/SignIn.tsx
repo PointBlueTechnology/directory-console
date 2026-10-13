@@ -3,7 +3,11 @@ import {
   ActionGroup, Alert, Button, Form, FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem,
   Divider, LoginPage, Radio, TextInput,
 } from '@patternfly/react-core';
-import { ApiError, type Candidate, type Directory, type Me, session } from '../api';
+import { ApiError, type Candidate, type Directory, type Me, type Probe, session } from '../api';
+import { CertificateDetails } from '../components/Certificates';
+
+/** The directory list's choice for an address the person types. */
+const OTHER = '__other__';
 
 interface Props {
   reason?: string;
@@ -48,21 +52,54 @@ export function SignIn({ reason, onSignedIn }: Props) {
   const [choice, setChoice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(ssoError);
   const [busy, setBusy] = useState(false);
+  const [others, setOthers] = useState(false);
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState('636');
+  const [offer, setOffer] = useState<Probe | null>(null);
+  const [confirm, setConfirm] = useState('');
   const chosen = directories?.find((d) => d.id === directory);
+  const other = directory === OTHER;
 
   useEffect(() => {
     session.directories().then((d) => {
       setDirectories(d);
-      if (d.length > 0) {
-        setDirectory(d[0].id);
-      }
+      setDirectory(d.length > 0 ? d[0].id : OTHER);
     }).catch(() => setError('The console did not answer. Try again in a moment.'));
+    session.signInOptions().then((o) => setOthers(o.otherDirectories)).catch(() => setOthers(false));
   }, []);
+
+  /** A directory the person entered: an untrusted certificate is offered to them, and accepted for their own sign-ins. */
+  const submitOther = async () => {
+    try {
+      const accept = offer ? { probeId: offer.probeId, confirm: confirm.trim() } : undefined;
+      onSignedIn(await session.signInOther(host.trim(), Number(port), name.trim(), password, accept));
+    } catch (x) {
+      if (x instanceof ApiError && x.code === 'untrusted-certificate' && x.problem.probe) {
+        setOffer(x.problem.probe as unknown as Probe);
+        setConfirm('');
+        setError(null);
+        return;
+      }
+      if (x instanceof ApiError && x.code === 'configured-directory' && typeof x.problem.directory === 'string') {
+        setDirectory(x.problem.directory);
+        setOffer(null);
+        setError(`${x.message}.`);
+        return;
+      }
+      setPassword('');
+      setError(x instanceof ApiError ? (x.code === 'confirmation-mismatch' ? 'Those are not the last 8 digits of the fingerprint.' : message(x)) : 'Sign-in failed.');
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    if (other) {
+      await submitOther();
+      setBusy(false);
+      return;
+    }
     try {
       onSignedIn(await session.signIn(directory, name, password, candidates ? choice ?? undefined : undefined));
     } catch (x) {
@@ -98,14 +135,26 @@ export function SignIn({ reason, onSignedIn }: Props) {
         {error && <Alert component="h3" variant="danger" isInline title={error} />}
         {!candidates && (
           <>
-            {directories && directories.length > 1 && (
+            {directories && (directories.length > 1 || others) && (
               <FormGroup label="Directory" fieldId="directory" isRequired>
-                <FormSelect id="directory" value={directory} onChange={(_e, v) => setDirectory(v)}>
+                <FormSelect id="directory" value={directory} onChange={(_e, v) => { setDirectory(v); setOffer(null); }}>
                   {directories.map((d) => <FormSelectOption key={d.id} value={d.id} label={d.name} />)}
+                  {others && <FormSelectOption value={OTHER} label="Another directory…" />}
                 </FormSelect>
               </FormGroup>
             )}
-            {chosen?.sso && (
+            {other && (
+              <>
+                <FormGroup label="Address" fieldId="other-host" isRequired>
+                  <TextInput id="other-host" value={host} onChange={(_e, v) => { setHost(v); setOffer(null); }} isRequired aria-describedby="other-host-help" />
+                  <FormHelperText><HelperText id="other-host-help"><HelperTextItem>An eDirectory server's host name or IP address. You work there with your own rights.</HelperTextItem></HelperText></FormHelperText>
+                </FormGroup>
+                <FormGroup label="LDAPS port" fieldId="other-port" isRequired>
+                  <TextInput id="other-port" type="number" value={port} onChange={(_e, v) => { setPort(v); setOffer(null); }} isRequired />
+                </FormGroup>
+              </>
+            )}
+            {!other && chosen?.sso && (
               <>
                 <Button component="a" variant="primary" isBlock href={session.ssoUrl(chosen.id, location.pathname + location.search)}>
                   Sign in with {chosen.sso}
@@ -119,10 +168,26 @@ export function SignIn({ reason, onSignedIn }: Props) {
                 aria-describedby="name-help" isRequired autoFocus />
               <FormHelperText>
                 <HelperText id="name-help">
-                  <HelperTextItem>Your user name, or your full name such as jsmith.sales.acme</HelperTextItem>
+                  <HelperTextItem>{other ? 'Your full name (DN), such as cn=jsmith,ou=sales,o=acme' : 'Your user name, or your full name such as jsmith.sales.acme'}</HelperTextItem>
                 </HelperText>
               </FormHelperText>
             </FormGroup>
+            {other && offer && (
+              <section aria-labelledby="offer-title" className="dc-tab-body">
+                <Alert id="offer-title" component="h3" variant="warning" isInline title="The console does not trust this directory's certificate">
+                  {offer.status === 'pin-changed'
+                    ? 'This address now presents a different certificate from the one you accepted before. Unless you know it was renewed, do not go on.'
+                    : 'It was not issued by a certificate authority the console trusts for you.'}
+                  {' '}If it is the certificate you expect (check its fingerprint with the directory's administrator), type the last 8 digits: it is then trusted for your own sign-ins to this address, once your password is accepted.
+                  {!offer.hostnameMatches && ` It names ${offer.chain[0].names.join(', ') || 'no host'}, not ${offer.host}; that is accepted for you too.`}
+                </Alert>
+                <CertificateDetails cert={offer.chain[offer.status === 'hostname' || offer.status === 'pin-changed' ? 0 : offer.recommended]} />
+                <p className="dc-subtle">{offer.confirm}</p>
+                <FormGroup label="Last 8 digits of the fingerprint" fieldId="offer-confirm" isRequired>
+                  <TextInput id="offer-confirm" className="dc-mono" value={confirm} onChange={(_e, v) => setConfirm(v)} isRequired />
+                </FormGroup>
+              </section>
+            )}
           </>
         )}
         {candidates && (
@@ -138,9 +203,10 @@ export function SignIn({ reason, onSignedIn }: Props) {
             autoComplete="current-password" isRequired />
         </FormGroup>
         <ActionGroup>
-          <Button type="submit" variant={chosen?.sso ? 'secondary' : 'primary'} isBlock isLoading={busy}
-            isDisabled={busy || !directory || !password || (!candidates && !name) || (!!candidates && !choice)}>
-            Sign in
+          <Button type="submit" variant={!other && chosen?.sso ? 'secondary' : 'primary'} isBlock isLoading={busy}
+            isDisabled={busy || !directory || !password || (!candidates && !name) || (!!candidates && !choice)
+              || (other && (!host.trim() || !(Number(port) > 0))) || (other && !!offer && confirm.replace(/[^0-9a-fA-F]/g, '').length !== 8)}>
+            {other && offer ? 'Trust and sign in' : 'Sign in'}
           </Button>
           {candidates && <Button variant="link" onClick={restart}>Use a different name</Button>}
         </ActionGroup>

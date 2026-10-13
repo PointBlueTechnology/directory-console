@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionGroup, Alert, Button, Checkbox, ClipboardCopy, EmptyState, EmptyStateBody, Form, FormGroup, FormHelperText, FormSection, HelperText,
-  HelperTextItem, Label, LabelGroup, PageSection, Spinner, Tab, Tabs, TabTitleText, TextArea, TextInput, Title, Toolbar, ToolbarContent, ToolbarItem,
+  HelperTextItem, Label, LabelGroup, List, ListItem, PageSection, Spinner, Tab, Tabs, TabTitleText, TextArea, TextInput, Title, Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
 import { DownloadIcon, PlusIcon, UploadIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type DirectorySettings, type OidcSettings, type Preset, type RoleMappingJson, settings } from '../api';
+import { type DirectorySettings, type OidcSettings, type Preset, type RoleMappingJson, consoleSettings, settings } from '../api';
 import { useSession } from '../session';
 import { HeadingLevel, useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
@@ -51,10 +51,49 @@ export function SettingsPage() {
             <Tab eventKey="sso" title={<TabTitleText>Single sign-on</TabTitleText>}>
               <SsoSection s={s} save={(v) => api.oidc(v, etag)} test={api.testMapping} onSaved={saved} />
             </Tab>
+            <Tab eventKey="other" title={<TabTitleText>Other directories</TabTitleText>}>
+              <OtherDirectoriesSection />
+            </Tab>
           </Tabs>
         </HeadingLevel.Provider>
       )}
     </PageSection>
+  );
+}
+
+/**
+ * Console-wide: whether people may sign in to directories they enter themselves (DESIGN 6.3). They
+ * work there with their own eDirectory rights only, and the certificates they accept are their own.
+ */
+function OtherDirectoriesSection() {
+  const { run, dialog } = useStepUp();
+  const [on, setOn] = useState<boolean | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => { consoleSettings.get().then((v) => setOn(v.otherDirectories), setError); }, []);
+  const change = (v: boolean) => {
+    setError(null);
+    setNotice(null);
+    run(() => consoleSettings.put({ otherDirectories: v })).then((r) => {
+      setOn(r.otherDirectories);
+      setNotice(r.otherDirectories ? 'People may now sign in to directories they enter.' : 'Only the configured directories can be signed in to.');
+    }, setError);
+  };
+  return (
+    <div className="dc-tab-body">
+      <p>This applies to the whole console, not only this directory. When it is on, the sign-in page offers "Another directory…": a person types an eDirectory server's address, their full name (DN) and password.</p>
+      <List>
+        <ListItem>They work there with their own eDirectory rights only: no role mappings, task presets, Identity Manager or console settings.</ListItem>
+        <ListItem>A certificate the console does not trust is shown to them; once they confirm its fingerprint and their password is accepted, it is trusted for their own sign-ins to that address only. Their certificates are listed on the Certificates page, where you can remove them.</ListItem>
+        <ListItem>The configured directories' addresses are refused there: only administrators trust their certificates.</ListItem>
+      </List>
+      {on === null && !error && <Spinner size="md" aria-label="Loading" />}
+      {on !== null && (
+        <Checkbox id="other-directories" label="Let people sign in to directories they enter themselves" isChecked={on} onChange={(_e, v) => change(v)} />
+      )}
+      <Outcome error={error} notice={notice} />
+      {dialog}
+    </div>
   );
 }
 

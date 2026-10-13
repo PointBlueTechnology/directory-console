@@ -85,7 +85,7 @@ final class Security {
             if (!s.principal.may(Role.EDITOR, "")) {
                 throw new Http.Problem(403, "forbidden", "security settings need an editor role for the whole tree");
             }
-            DirectoryConfig d = DirectoryConfig.find(server.config.read(), s.principal.directoryId());
+            DirectoryConfig d = server.directoryOf(s);
             if (d != null && d.production()) {
                 String typed = ex.getRequestHeaders().getFirst("X-Confirm-Directory");
                 if (typed == null || !typed.trim().equalsIgnoreCase(d.name())) {

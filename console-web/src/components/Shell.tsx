@@ -33,7 +33,8 @@ const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>
   // a person with task presets only has no role: Identity Manager is not for them
   { to: '/edir', label: 'eDirectory', show: (s) => s.me.roles.length > 0 },
   { to: '/security', label: 'Security', show: (s) => s.me.roles.length > 0 },
-  { to: '/idm', label: 'Identity Manager', show: (s) => s.me.roles.length > 0 },
+  // Identity Manager needs a configured directory: not for one the person entered themselves
+  { to: '/idm', label: 'Identity Manager', show: (s) => s.me.roles.length > 0 && s.me.via !== 'user-directory' },
   { to: '/certificates', label: 'Certificates', show: (s) => s.can('admin') },
   { to: '/settings', label: 'Settings', show: (s) => s.can('admin') },
 ];
@@ -81,7 +82,7 @@ export function Shell() {
                     </MenuToggle>
                   )}>
                   <DropdownList>
-                    <DropdownItem key="who" isDisabled description={`${me.directory} · ${me.roles.join(', ')}`}>{me.dn}</DropdownItem>
+                    <DropdownItem key="who" isDisabled description={me.via === 'user-directory' ? 'a directory you entered · your own rights' : `${me.directory} · ${me.roles.join(', ')}`}>{me.dn}</DropdownItem>
                     <DropdownItem key="out" onClick={signOut}>Sign out</DropdownItem>
                   </DropdownList>
                 </Dropdown>

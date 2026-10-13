@@ -47,7 +47,7 @@ final class Presets {
     }
 
     private DirectoryConfig directory(Sessions.Session s) {
-        DirectoryConfig d = DirectoryConfig.find(server.config.read(), s.principal.directoryId());
+        DirectoryConfig d = server.directoryOf(s);
         if (d == null) {
             throw new Http.Problem(404, "unknown-directory", "no directory " + s.principal.directoryId());
         }

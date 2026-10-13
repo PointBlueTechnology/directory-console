@@ -472,7 +472,7 @@ final class Objects {
      * the task presets that reach it and fit its class. eDirectory may still refuse.
      */
     private Map<String, Object> withAllowed(Map<String, Object> m, Ldap.Entry e, Sessions.Session s) {
-        DirectoryConfig d = DirectoryConfig.find(server.config.read(), s.principal.directoryId());
+        DirectoryConfig d = server.directoryOf(s);
         List<Object> classes = e.attributes().getOrDefault("objectclass", List.of());
         List<String> ids = new ArrayList<>();
         for (String id : s.principal.presetsAt(e.dn())) {

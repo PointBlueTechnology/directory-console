@@ -45,7 +45,7 @@ public final class Server {
 
     static final String COOKIE = "__Host-console";
     static final Duration STEP_UP = Duration.ofMinutes(10);
-    private static final Duration T = Duration.ofSeconds(10);
+    static final Duration T = Duration.ofSeconds(10);
 
     final DataDir data;
     final ConfigStore config;
@@ -53,13 +53,14 @@ public final class Server {
     final TrustStore trust;
     final ConsoleTls tls;
     final Probe probes = new Probe();
+    final OtherDirectory other = new OtherDirectory(this);
     final Sessions sessions = new Sessions(Duration.ofMinutes(30), Duration.ofHours(12));
     final DirectLogin login;
     final com.pointblue.console.server.auth.OidcLogin oidc;
     final String publicUrl;
     private final Set<String> hosts;
-    private final Throttle failedByClient = new Throttle(10, Duration.ofMinutes(1));
-    private final Throttle failedByName = new Throttle(5, Duration.ofMinutes(5));
+    final Throttle failedByClient = new Throttle(10, Duration.ofMinutes(1));
+    final Throttle failedByName = new Throttle(5, Duration.ofMinutes(5));
     private final HttpsServer http;
     private volatile Bootstrap bootstrap;
     private volatile Setup setup;
@@ -254,6 +255,10 @@ public final class Server {
             objects.handle(ex, path, method);
             return;
         }
+        if (other.handles(method, path)) {
+            other.handle(ex, method, path);
+            return;
+        }
         switch (method + " " + path) {
             case "GET /api/v2/directories" -> directories(ex);
             case "POST /api/v2/session" -> signIn(ex);
@@ -315,11 +320,22 @@ public final class Server {
     }
 
     /** The audit actor for a session. */
-    private static AuditLog.Actor who(Sessions.Session s) {
+    static AuditLog.Actor who(Sessions.Session s) {
         return new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via());
     }
 
-    private Map<String, Object> me(Sessions.Session s) {
+    /** The session's directory: configured, or one the person entered at sign-in. */
+    DirectoryConfig directoryOf(Sessions.Session s) {
+        DirectoryConfig d = DirectoryConfig.find(config.read(), s.principal.directoryId());
+        return d != null ? d : other.entered.get(s.principal.directoryId());
+    }
+
+    /** The personal trust subject for a session's own connections (a directory the person entered), else null. */
+    static String trustSubject(Sessions.Session s) {
+        return OtherDirectory.VIA.equals(s.principal.via()) ? s.principal.subject() : null;
+    }
+
+    Map<String, Object> me(Sessions.Session s) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("name", s.principal.name());
         m.put("dn", s.principal.dn());
@@ -429,9 +445,9 @@ public final class Server {
         if ("oidc".equals(s.principal.via())) {
             throw new Http.Problem(409, "sign-in-again", "sign out and sign in again through single sign-on");
         }
-        DirectoryConfig d = DirectoryConfig.find(config.read(), s.principal.directoryId());
+        DirectoryConfig d = directoryOf(s);
         char[] pw = Http.string(Http.body(ex), "password", true).toCharArray();
-        try (com.pointblue.console.server.ldap.Ldap ignored = com.pointblue.console.server.ldap.Ldap.connect(trust, d.target(), null, s.principal.dn(), pw, T)) {
+        try (com.pointblue.console.server.ldap.Ldap ignored = com.pointblue.console.server.ldap.Ldap.connect(trust, d.target(), trustSubject(s), s.principal.dn(), pw, T)) {
             sessions.reauthenticated(s);
             failedByClient.clear(client);
             audit.log(who(s), "sign-in.step-up", d.id(), Map.of("client", client), "ok");
@@ -498,7 +514,7 @@ public final class Server {
             throw new Http.Problem(503, "unavailable", e.getMessage());
         }
         {
-            DirectoryConfig d = DirectoryConfig.find(config.read(), s.principal.directoryId());
+            DirectoryConfig d = directoryOf(s);
             String pw = config.secret(d.serviceAccountPasswordPath());
             com.pointblue.console.server.ldap.Ldap l;
             try {
@@ -545,7 +561,7 @@ public final class Server {
             com.pointblue.console.server.ldap.Ldap.Target target = new com.pointblue.console.server.ldap.Ldap.Target(s.principal.directoryId(), where.host(), where.port());
             com.pointblue.console.server.ldap.Ldap l;
             try {
-                l = com.pointblue.console.server.ldap.Ldap.connect(trust, target, null, s.principal.dn(), pw, T);
+                l = com.pointblue.console.server.ldap.Ldap.connect(trust, target, trustSubject(s), s.principal.dn(), pw, T);
             } catch (com.pointblue.console.server.ldap.Ldap.BadCredentials e) {
                 failedByClient.record(client);
                 audit.log(who(s), "sign-in.server", where.dn(), Map.of("client", client), "refused");
@@ -667,7 +683,7 @@ public final class Server {
         List<Map<String, Object>> exceptions = new ArrayList<>();
         for (TrustStore.HostException h : trust.hostExceptions()) {
             exceptions.add(Map.of("host", h.host(), "port", h.port(), "leafId", h.leafId(), "sha256", h.leafId().toUpperCase(Locale.ROOT).replaceAll("(..)(?!$)", "$1:"),
-                "addedBy", h.addedBy(), "addedAt", h.addedAt().toString()));
+                "addedBy", h.addedBy(), "addedAt", h.addedAt().toString(), "scope", h.scope()));
         }
         List<Map<String, Object>> alerts = new ArrayList<>();
         for (TrustStore.Alert a : trust.alerts()) {

@@ -95,7 +95,7 @@ final class Idm {
         if (engine == null || l == null) {
             throw new Http.Problem(503, "idm-unavailable", "Identity Manager operations are unavailable: " + (on == null ? s.engineProblem : on.engineProblem()));
         }
-        DirectoryConfig d = DirectoryConfig.find(server.config.read(), s.principal.directoryId());
+        DirectoryConfig d = server.directoryOf(s);
         String confirm = ex.getRequestHeaders().getFirst("X-Confirm-Directory");
         synchronized (l) {   // the person's JNDI context is shared with the engine's reads
             try {
@@ -233,7 +233,7 @@ final class Idm {
         if (!passwords && !route.equals("GET drivers/{guid}")) {
             throw new Http.Problem(400, "bad-request", "server=all compares a driver's status or named passwords; change one server at a time");
         }
-        DirectoryConfig d = DirectoryConfig.find(server.config.read(), s.principal.directoryId());
+        DirectoryConfig d = server.directoryOf(s);
         List<Map<String, Object>> results = new ArrayList<>();
         String dn;
         List<Map<String, Object>> running;

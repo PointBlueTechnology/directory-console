@@ -142,7 +142,7 @@ function CertificatesSection({ store, directories, usedBy, onAdd, onChanged }: {
         ? `${users.join(', ')} ${users.length === 1 ? 'connects' : 'connect'} through ${c.subject} now. Their connections, including sign-in, fail until another certificate is trusted for them.`
         : `${c.subject} is no longer trusted for ${scopeText(c.scope, directories).toLowerCase()}.`,
       'Stop trusting',
-      () => { setError(null); stepUp.run(() => trust.remove(c.id)).then(onChanged, setError); });
+      () => { setError(null); stepUp.run(() => trust.remove(c.key ?? c.id)).then(onChanged, setError); });
   };
   return (
     <section className="dc-tab-body" aria-labelledby="certs-trusted">
@@ -166,9 +166,9 @@ function CertificatesSection({ store, directories, usedBy, onAdd, onChanged }: {
           {sortByExpiry(store.certificates).map((c, i) => {
             const users = usedBy(c.sha256);
             return (
-              <Tbody key={c.id} isExpanded={open === c.id}>
+              <Tbody key={c.key ?? c.id} isExpanded={open === (c.key ?? c.id)}>
                 <Tr>
-                  <Td expand={{ rowIndex: i, isExpanded: open === c.id, onToggle: () => setOpen(open === c.id ? null : c.id) }} />
+                  <Td expand={{ rowIndex: i, isExpanded: open === (c.key ?? c.id), onToggle: () => setOpen(open === (c.key ?? c.id) ? null : (c.key ?? c.id)) }} />
                   <Td dataLabel="Certificate">{c.subject}</Td>
                   <Td dataLabel="Trusted as">{c.kind === 'ca' ? 'Certificate authority' : 'This server only'}</Td>
                   <Td dataLabel="For">{scopeText(c.scope, directories)}</Td>
@@ -177,7 +177,7 @@ function CertificatesSection({ store, directories, usedBy, onAdd, onChanged }: {
                   <Td dataLabel="Added">{new Date(c.addedAt).toLocaleDateString()} <span className="dc-subtle">by {shortName(c.addedBy)}, {HOW[c.how] ?? c.how}</span></Td>
                   <Td isActionCell><Button variant="link" isDanger size="sm" onClick={() => remove(c)}>Remove</Button></Td>
                 </Tr>
-                <Tr isExpanded={open === c.id}>
+                <Tr isExpanded={open === (c.key ?? c.id)}>
                   <Td colSpan={8}>
                     <div className="dc-tab-body">
                       <CertificateDetails cert={c} />
@@ -215,8 +215,8 @@ function HostExceptionsSection({ store, onChanged }: { store: { hostExceptions: 
           <Thead><Tr><Th>Address</Th><Th>Certificate (SHA-256)</Th><Th>Added</Th><Th screenReaderText="Actions" /></Tr></Thead>
           <Tbody>
             {store.hostExceptions.map((h) => (
-              <Tr key={`${h.host}:${h.port}`}>
-                <Td dataLabel="Address"><span className="dc-mono">{h.host}:{h.port}</span></Td>
+              <Tr key={`${h.host}:${h.port}:${h.scope ?? 'global'}`}>
+                <Td dataLabel="Address"><span className="dc-mono">{h.host}:{h.port}</span>{h.scope && h.scope !== 'global' && <><br /><span className="dc-subtle">{scopeText(h.scope, [])}</span></>}</Td>
                 <Td dataLabel="Certificate (SHA-256)" modifier="breakWord"><span className="dc-mono">{h.sha256}</span></Td>
                 <Td dataLabel="Added">{new Date(h.addedAt).toLocaleDateString()} <span className="dc-subtle">by {shortName(h.addedBy)}</span></Td>
                 <Td isActionCell><Button variant="link" isDanger size="sm" onClick={() => remove(h)}>Remove</Button></Td>

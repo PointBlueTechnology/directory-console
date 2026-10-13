@@ -144,7 +144,7 @@ final class Edir {
 
     /** A production directory wants its name typed for these changes (the same gate as Identity Manager's). */
     private void confirm(HttpExchange ex, Sessions.Session s) {
-        DirectoryConfig d = DirectoryConfig.find(server.config.read(), s.principal.directoryId());
+        DirectoryConfig d = server.directoryOf(s);
         if (d != null && d.production()) {
             String typed = ex.getRequestHeaders().getFirst("X-Confirm-Directory");
             if (typed == null || !typed.trim().equalsIgnoreCase(d.name())) {

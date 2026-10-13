@@ -49,9 +49,15 @@ public final class TrustStore {
             this(id, cert, kind, scope, addedBy, addedAt, how, null);
         }
 
+        /** Where the entry is kept: the fingerprint, with a suffix for a person's own (it may sit beside an administrator's). */
+        public String key() {
+            return keyOf(id, scope);
+        }
+
         public Map<String, Object> json() {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", id);
+            m.put("key", key());
             m.put("sha256", Certs.sha256(cert));
             m.put("kind", kind.name().toLowerCase(Locale.ROOT).replace('_', '-'));
             m.put("scope", scope);
@@ -106,7 +112,15 @@ public final class TrustStore {
         this.listener = l;
     }
 
-    public record HostException(String host, int port, String leafId, String addedBy, Instant addedAt) {
+    /** {@code scope}: global, or one person's ({@code user:<subject>}) for a directory they entered themselves. */
+    public record HostException(String host, int port, String leafId, String addedBy, Instant addedAt, String scope) {
+        public HostException(String host, int port, String leafId, String addedBy, Instant addedAt) {
+            this(host, port, leafId, addedBy, addedAt, "global");
+        }
+
+        boolean inScope(String directoryId, String subject) {
+            return scope.equals("global") || scope.equals("directory:" + directoryId) || scope.equals("user:" + subject);
+        }
     }
 
     /** Why a chain was refused; a sign-in maps it to an {@code untrusted-certificate} problem. */
@@ -137,10 +151,23 @@ public final class TrustStore {
 
     // ---- entries --------------------------------------------------------------------------------
 
+    /** An entry's key: its fingerprint, or for a person's own ({@code user:} scope) the fingerprint and a scope suffix. */
+    public static String keyOf(String id, String scope) {
+        if (!scope.startsWith("user:")) {
+            return id;
+        }
+        try {
+            byte[] h = MessageDigest.getInstance("SHA-256").digest(scope.getBytes(StandardCharsets.UTF_8));
+            return id + "-" + java.util.HexFormat.of().formatHex(h, 0, 6);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     public synchronized List<Entry> entries() throws IOException {
         List<Entry> out = new ArrayList<>();
         try (Stream<Path> s = Files.list(dir)) {
-            for (Path meta : s.filter(p -> p.getFileName().toString().matches("[0-9a-f]{64}\\.json")).sorted().toList()) {
+            for (Path meta : s.filter(p -> p.getFileName().toString().matches("[0-9a-f]{64}(-[0-9a-f]{12})?\\.json")).sorted().toList()) {
                 Map<String, Object> m = Json.asMap(Json.parse(Files.readString(meta, StandardCharsets.UTF_8)));
                 String id = Json.asString(m.get("id"));
                 X509Certificate c;
@@ -175,12 +202,12 @@ public final class TrustStore {
         if (e.pinnedAt != null) {
             for (Entry old : entries()) {
                 if (old.kind == Kind.PINNED_SERVER && e.pinnedAt.equalsIgnoreCase(old.pinnedAt) && old.scope.equals(scope) && !old.id.equals(e.id)) {
-                    remove(old.id);
+                    remove(old.key());
                 }
             }
         }
         DataDir.write(dir.resolve(e.id + ".pem"), Certs.pem(cert).getBytes(StandardCharsets.US_ASCII));
-        DataDir.write(dir.resolve(e.id + ".json"), Json.pretty(e.json()).getBytes(StandardCharsets.UTF_8));
+        DataDir.write(dir.resolve(e.key() + ".json"), Json.pretty(e.json()).getBytes(StandardCharsets.UTF_8));
         List<Alert> alerts = new ArrayList<>(alerts());
         if (alerts.removeIf(a -> a.presentedId.equals(e.id))) {
             writeAlerts(alerts);
@@ -256,12 +283,18 @@ public final class TrustStore {
         }
     }
 
-    public synchronized boolean remove(String id) throws IOException {
-        if (!id.matches("[0-9a-f]{64}")) {
+    /** Remove the entry with this key (see {@link Entry#key()}); the certificate file goes with its last entry. */
+    public synchronized boolean remove(String key) throws IOException {
+        if (!key.matches("[0-9a-f]{64}(-[0-9a-f]{12})?")) {
             return false;
         }
-        boolean had = Files.deleteIfExists(dir.resolve(id + ".json"));
-        Files.deleteIfExists(dir.resolve(id + ".pem"));
+        boolean had = Files.deleteIfExists(dir.resolve(key + ".json"));
+        String id = key.substring(0, 64);
+        try (Stream<Path> s = Files.list(dir)) {
+            if (s.noneMatch(p -> p.getFileName().toString().startsWith(id) && p.getFileName().toString().endsWith(".json"))) {
+                Files.deleteIfExists(dir.resolve(id + ".pem"));
+            }
+        }
         return had;
     }
 
@@ -272,23 +305,35 @@ public final class TrustStore {
             for (Object o : Json.asList(Json.parse(Files.readString(f, StandardCharsets.UTF_8)))) {
                 Map<String, Object> m = Json.asMap(o);
                 out.add(new HostException(Json.asString(m.get("host")), Json.asInt(m.get("port"), 0), Json.asString(m.get("leafId")),
-                    Json.asString(m.get("addedBy")), Instant.parse(Json.asString(m.get("addedAt")))));
+                    Json.asString(m.get("addedBy")), Instant.parse(Json.asString(m.get("addedAt"))),
+                    m.get("scope") == null ? "global" : Json.asString(m.get("scope"))));
             }
         }
         return out;
     }
 
     public synchronized void addHostException(String host, int port, X509Certificate leaf, String by) throws IOException {
+        addHostException(host, port, leaf, by, "global");
+    }
+
+    /** Accept {@code leaf} at exactly {@code host:port} for {@code scope}, replacing what that scope had there. */
+    public synchronized void addHostException(String host, int port, X509Certificate leaf, String by, String scope) throws IOException {
+        checkScope(scope);
         List<HostException> all = new ArrayList<>(hostExceptions());
-        all.removeIf(h -> h.host.equalsIgnoreCase(host) && h.port == port);
-        all.add(new HostException(host.toLowerCase(Locale.ROOT), port, Certs.id(leaf), by, Instant.now()));
+        all.removeIf(h -> h.host.equalsIgnoreCase(host) && h.port == port && h.scope.equals(scope));
+        all.add(new HostException(host.toLowerCase(Locale.ROOT), port, Certs.id(leaf), by, Instant.now(), scope));
         writeHostExceptions(all);
     }
 
-    /** Remove the host exception for exactly {@code host:port}; false when there is none. */
+    /** Remove the host exceptions for exactly {@code host:port}, in every scope; false when there are none. */
     public synchronized boolean removeHostException(String host, int port) throws IOException {
+        return removeHostException(host, port, null);
+    }
+
+    /** As {@link #removeHostException(String, int)}, in {@code scope} only (null: every scope). */
+    public synchronized boolean removeHostException(String host, int port, String scope) throws IOException {
         List<HostException> all = new ArrayList<>(hostExceptions());
-        if (!all.removeIf(h -> h.host.equalsIgnoreCase(host) && h.port == port)) {
+        if (!all.removeIf(h -> h.host.equalsIgnoreCase(host) && h.port == port && (scope == null || h.scope.equals(scope)))) {
             return false;
         }
         writeHostExceptions(all);
@@ -298,7 +343,7 @@ public final class TrustStore {
     private void writeHostExceptions(List<HostException> all) throws IOException {
         List<Map<String, Object>> json = new ArrayList<>();
         for (HostException h : all) {
-            json.add(Map.of("host", h.host, "port", h.port, "leafId", h.leafId, "addedBy", h.addedBy, "addedAt", h.addedAt.toString()));
+            json.add(Map.of("host", h.host, "port", h.port, "leafId", h.leafId, "addedBy", h.addedBy, "addedAt", h.addedAt.toString(), "scope", h.scope));
         }
         DataDir.write(dir.resolve("host-exceptions.json"), Json.pretty(json).getBytes(StandardCharsets.UTF_8));
     }
@@ -355,7 +400,7 @@ public final class TrustStore {
                 inScope.add(e);
             }
         }
-        List<HostException> exceptions = hostExceptions();
+        List<HostException> exceptions = hostExceptions().stream().filter(h -> h.inScope(directoryId, subject)).toList();
         return new Checker(host, port, directoryId, inScope, exceptions, alerting);
     }
 
