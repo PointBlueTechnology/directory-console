@@ -117,6 +117,8 @@ final class Idm {
                     case "GET driversets/{guid}/activation" -> result(ex, Operate.driversetActivation(engine, env(d, target(l, guid, true))));
                     case "GET driversets/{guid}/servers" -> result(ex, Operate.driversetServers(engine, env(d, target(l, guid, true))));
                     case "GET drivers/{guid}/servers" -> Http.json(ex, 200, runningServers(s, l, engine, d, target(l, guid, false)));
+                    // the same choices for a driver set: every driver operation runs on one of these servers
+                    case "GET driversets/{guid}/server-choices" -> Http.json(ex, 200, runningServers(s, l, engine, d, target(l, guid, true)));
                     case "GET driversets/{guid}/jobs" -> result(ex, Operate.jobList(engine, env(d, target(l, guid, true)), null));
                     case "GET driversets/{guid}/log-level" -> result(ex, Operate.logLevelShow(engine, env(d, target(l, guid, true)), null));
                     case "GET drivers/{guid}" -> {
@@ -129,6 +131,13 @@ final class Idm {
                     case "POST drivers/{guid}/start", "POST drivers/{guid}/stop", "POST drivers/{guid}/restart" -> {
                         Target t = target(l, guid, false);
                         String action = p[4];
+                        if (!action.equals("stop")) {
+                            // the engine does not start a disabled driver: say why rather than report its failure
+                            Object option = Json.asMap(parse(Operate.driverStatus(engine, env(d, t), t.name(), tree(d)))).get("startOption");
+                            if (String.valueOf(option).toLowerCase(java.util.Locale.ROOT).contains("disabled")) {
+                                throw new Http.Problem(409, "driver-disabled", t.name() + " is disabled and cannot start; set its start option to Automatic or Manual first");
+                            }
+                        }
                         acted(ex, s, "idm.driver." + action, guid, t, Operate.lifecycle(engine, env(d, t), t.name(), action, WAIT_SECONDS, true, confirm, tree(d)));
                     }
                     case "PUT drivers/{guid}/start-option" -> {

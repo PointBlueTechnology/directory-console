@@ -9,7 +9,7 @@ import { type Comparison, type Job, type ServerChoice, idm } from '../api';
 import { useServerSignIn } from '../components/ServerSignIn';
 import { useSession } from '../session';
 import { useHeading } from '../heading';
-import { linkProps } from '../router';
+import { linkProps, useLocation } from '../router';
 import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../components/IdmParts';
@@ -23,7 +23,8 @@ const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' 
 export function DriverPage({ guid }: { guid: string }) {
   const { me } = useSession();
   // the server whose engine and replica the page works on: undefined is the connected server
-  const [server, setServer] = useState<string | undefined>(undefined);
+  const { query } = useLocation();
+  const [server, setServer] = useState<string | undefined>(query.get('server') ?? undefined);
   const [servers, setServers] = useState<ServerChoice[]>([]);
   const api = useMemo(() => idm(me.directory, server), [me.directory, server]);
   const signIn = useServerSignIn();
@@ -64,7 +65,7 @@ export function DriverPage({ guid }: { guid: string }) {
         )}
       </Flex>
       <div className="dc-subtle dc-mono">{status.dn}</div>
-      {servers.length > 1 && <p className="dc-subtle">Start option, state and named passwords are kept by each server; the page shows and changes {(servers.find((x) => x.guid === server) ?? servers.find((x) => x.connected))?.name}'s.</p>}
+      {servers.length > 1 && <p className="dc-subtle">Each server runs its own copy of this driver: state, starting and stopping, the start option, jobs, the cache and named passwords all apply to {(servers.find((x) => x.guid === server) ?? servers.find((x) => x.connected))?.name} only.</p>}
       <Card className="dc-tab-body">
         <CardBody>
           <Tabs activeKey={tab} onSelect={(_e, k) => setTab(k)} aria-label="Driver" mountOnEnter unmountOnExit>
@@ -131,12 +132,24 @@ function Overview({ api, guid, status, onChanged }: { api: Idm; guid: string; st
               <FlexItem><Button variant="danger" isDisabled={busy} onClick={() => sure.ask(`Stop ${status.name}?`, 'Events for this driver queue in its cache until it starts again.', 'Stop',
                 () => act('Stop', (c) => api.lifecycle(guid, 'stop', c)))}>Stop</Button></FlexItem>
             </>
-          ) : <FlexItem><Button variant="primary" isDisabled={busy} onClick={() => act('Start', (c) => api.lifecycle(guid, 'start', c))}>Start</Button></FlexItem>}
+          ) : current === 'disabled'
+            ? <FlexItem><Button variant="primary" isAriaDisabled title="A disabled driver cannot start: choose Automatic or Manual first">Start</Button></FlexItem>
+            : <FlexItem><Button variant="primary" isDisabled={busy} onClick={() => act('Start', (c) => api.lifecycle(guid, 'start', c))}>Start</Button></FlexItem>}
           <FlexItem>
             <ToggleGroup aria-label="Start option">
               {(['auto', 'manual', 'disabled'] as const).map((o) => (
                 <ToggleGroupItem key={o} text={o === 'auto' ? 'Automatic' : o === 'manual' ? 'Manual' : 'Disabled'} isSelected={current === o} isDisabled={busy}
-                  onChange={() => current !== o && act('Start option', (c) => api.startOption(guid, o, c))} />
+                  onChange={() => {
+                    if (current === o) {
+                      return;
+                    }
+                    const change = () => act('Start option', (c) => api.startOption(guid, o, c));
+                    if (o === 'disabled') {
+                      sure.ask(`Disable ${status.name}?`, 'While a driver is disabled its events are not queued: changes made in the meantime never reach it, and it cannot be started until its start option is Automatic or Manual again. Stopping it keeps queueing events.', 'Disable', change);
+                    } else {
+                      change();
+                    }
+                  }} />
               ))}
             </ToggleGroup>
           </FlexItem>

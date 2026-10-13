@@ -58,6 +58,7 @@ public final class LiveReadCheck {
                 show("servers holding the driver set's replica", call("GET", t + "/objects/" + ds.body().get("guid") + "/servers", null, h));
                 show("Identity Manager", call("GET", t + "/idm", null, h));
                 show("driver set servers", call("GET", t + "/idm/driversets/" + ds.body().get("guid") + "/servers", null, h));
+                show("driver set server choices", call("GET", t + "/idm/driversets/" + ds.body().get("guid") + "/server-choices", null, h));
                 LiveSetupCheck.Reply set = call("GET", t + "/idm/driversets/" + ds.body().get("guid"), null, h);
                 List<?> drivers = (List<?>) set.body().get("drivers");
                 show("drivers", set);

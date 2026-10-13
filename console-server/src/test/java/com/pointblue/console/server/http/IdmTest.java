@@ -141,6 +141,13 @@ public class IdmTest {
         assertTrue(engine.actions.contains("start cn=LDAP\\, primary,cn=Driver Set,o=system"));
         assertEquals(200, call("PUT", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/start-option", Map.of("option", "auto"), h).status());
         assertEquals(Vault.START_AUTO, engine.driverStartOption("cn=LDAP\\, primary,cn=Driver Set,o=system"));
+        // a disabled driver cannot start (and queues no events meanwhile): refused, with the reason
+        assertEquals(200, call("PUT", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/start-option", Map.of("option", "disabled"), h).status());
+        call("POST", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/stop", Map.of(), h);
+        Reply disabled = call("POST", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/start", Map.of(), h);
+        assertEquals(String.valueOf(disabled.body()), 409, disabled.status());
+        assertEquals("driver-disabled", disabled.body().get("title"));
+        assertEquals(200, call("PUT", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/start-option", Map.of("option", "auto"), h).status());
         assertEquals(404, call("GET", "/api/v2/trees/acme/idm/drivers/" + set, null, h).status());
 
         assertEquals(204, call("POST", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/passwords",
