@@ -48,8 +48,14 @@ public class SecurityTest {
         edir = new FakeEdir(
             "dn: cn=admin,o=system\nobjectClass: inetOrgPerson\ncn: admin\nsn: a\nuserPassword: admin-pw",
             "dn: cn=console,o=system\nobjectClass: inetOrgPerson\ncn: console\nsn: c\nuserPassword: console-pw",
-            "dn: cn=Security,o=system\nobjectClass: sASSecurity\ncn: Security",
+            "dn: cn=Security,o=system\nobjectClass: sASSecurity\ncn: Security\nsASLoginPolicyDN: cn=Login Policy,cn=Security,o=system",
+            "dn: cn=Login Policy,cn=Security,o=system\nobjectClass: sASLoginPolicy\ncn: Login Policy\nsasDefaultLoginSequence: NDS\nsASLoginPolicyUpdate: 6\n"
+                + "sASLoginSequence: NDS;Password;NDS\nsASLoginSequence: Challenge Response;Password;Challenge Response",
+            "dn: cn=Authorized Login Methods,cn=Security,o=system\nobjectClass: sASLoginMethodContainer\ncn: Authorized Login Methods",
+            "dn: cn=NDS,cn=Authorized Login Methods,cn=Security,o=system\nobjectClass: sASNMASLoginMethod\ncn: NDS",
+            "dn: cn=Challenge Response,cn=Authorized Login Methods,cn=Security,o=system\nobjectClass: sASNMASLoginMethod\ncn: Challenge Response",
             "dn: ou=Sales,o=acme\nobjectClass: organizationalUnit\nou: Sales",
+            "dn: cn=lee,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: lee\nsn: Lee\nsasDefaultLoginSequence: Challenge Response",
             "dn: cn=pat,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: pat\nsn: Lee\nmail: pat@acme.example\nsASLoginSecret: c2VjcmV0\nnspmDistributionPassword: x",
             "dn: ou=servers,o=system\nobjectClass: organizationalUnit\nou: servers",
             "dn: cn=edir1,ou=servers,o=system\nobjectClass: ncpServer\ncn: edir1",
@@ -226,5 +232,45 @@ public class SecurityTest {
         assertEquals("smime", Json.asMap(items.get(0)).get("name"));
         assertTrue(String.valueOf(Json.asMap(items.get(0)).get("notAfter")).matches("\\d{4}-.*Z"));
         assertEquals("a duplicate name is eDirectory's refusal", 409, call("POST", t + "/objects/" + pat + "/certificates", Map.of("name", "smime"), h).status());
+    }
+
+    @Test
+    public void loginSequencesAreAddedChangedAndRemovedWithoutTouchingTheOthers() throws Exception {
+        String t = "/api/v2/trees/acme/security/login-policy";
+        Map<String, Object> before = call("GET", t, null, h).body();
+        assertEquals(2, ((List<?>) before.get("sequences")).size());
+
+        Reply made = call("POST", t + "/sequences", Map.of("name", "Two factor", "methods", List.of("NDS", "Challenge Response")), h);
+        assertEquals(String.valueOf(made.body()), 201, made.status());
+        Map<String, Object> two = Json.asMap(((List<?>) made.body().get("sequences")).get(2));
+        assertEquals("Two factor", two.get("name"));
+        assertEquals(List.of("NDS", "Challenge Response"), two.get("methods"));
+        assertEquals(false, two.get("any"));
+        com.unboundid.ldap.sdk.Entry lp = edir.entry("cn=Login Policy,cn=Security,o=system");
+        assertTrue(java.util.Arrays.asList(lp.getAttributeValues("sASLoginSequence")).contains("Two factor;Password;NDS;Challenge Response"));
+        assertEquals("the policy's change counter moves", "7", lp.getAttributeValue("sASLoginPolicyUpdate"));
+
+        assertEquals(409, call("POST", t + "/sequences", Map.of("name", "Two factor", "methods", List.of("NDS")), h).status());
+        assertEquals(400, call("POST", t + "/sequences", Map.of("name", "x;y", "methods", List.of("NDS")), h).status());
+        assertEquals("only installed methods", 400, call("POST", t + "/sequences", Map.of("name", "z", "methods", List.of("Smart Card")), h).status());
+
+        Reply changed = call("PATCH", t + "/sequences/Two%20factor", Map.of("methods", List.of("Challenge Response", "NDS"), "any", true), h);
+        assertEquals(String.valueOf(changed.body()), 200, changed.status());
+        lp = edir.entry("cn=Login Policy,cn=Security,o=system");
+        assertTrue(java.util.Arrays.asList(lp.getAttributeValues("sASLoginSequence")).contains("Two factor;Password;Challenge Response|NDS"));
+        assertEquals("the others untouched", 3, lp.getAttributeValues("sASLoginSequence").length);
+
+        assertEquals("the default", 409, call("DELETE", t + "/sequences/NDS", null, h).status());
+        Reply named = call("DELETE", t + "/sequences/Challenge%20Response", null, h);
+        assertEquals("a sequence objects name", 409, named.status());
+        assertEquals(1, Json.asInt(named.body().get("count"), 0));
+        Map<String, String> counted = new HashMap<>(h);
+        counted.put("X-Confirm-Count", "1");
+        assertEquals(200, call("PATCH", t + "/sequences/Challenge%20Response", Map.of("methods", List.of("Challenge Response")), counted).status());
+
+        assertEquals(200, call("DELETE", t + "/sequences/Two%20factor", null, h).status());
+        assertEquals(404, call("DELETE", t + "/sequences/Two%20factor", null, h).status());
+        lp = edir.entry("cn=Login Policy,cn=Security,o=system");
+        assertEquals(List.of("NDS;Password;NDS", "Challenge Response;Password;Challenge Response"), List.of(lp.getAttributeValues("sASLoginSequence")));
     }
 }

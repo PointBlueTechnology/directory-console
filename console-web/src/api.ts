@@ -707,8 +707,17 @@ export interface ChallengeSet extends Ref {
 export interface LoginPolicy {
   defaultSequence: string | null;
   passwordPolicy: Ref | null;
-  sequences: { name: string; grade: string | null; methods: string[] }[];
+  /** {@code any}: any one of the methods will do; else every method, in turn. */
+  sequences: { name: string; grade: string | null; methods: string[]; any: boolean }[];
+  /** The sequences people may use; null when the policy does not restrict them. */
+  authorized?: string[] | null;
   methods: (Ref & { description?: string; vendor?: string; postLogin: boolean })[];
+}
+
+export interface SequenceRequest {
+  name?: string;
+  methods: string[];
+  any: boolean;
 }
 
 /** Security services for one directory. {@code confirm}: the directory's name, typed for a production directory. */
@@ -739,6 +748,13 @@ export function security(id: string) {
       request<ChallengeSet>('PATCH', `${base}/challenge-sets/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
     deleteChallengeSet: (guid: string, confirm?: string) => request<void>('DELETE', `${base}/challenge-sets/${guidPath(guid)}`, undefined, h(confirm)),
     loginPolicy: () => get<LoginPolicy>('/login-policy'),
+    createSequence: (body: SequenceRequest, confirm?: string) =>
+      request<LoginPolicy>('POST', `${base}/login-policy/sequences`, body, h(confirm)).then((r) => r.data),
+    /** {@code count}: how many objects name the sequence, confirmed when the console asked. */
+    updateSequence: (name: string, body: SequenceRequest, confirm?: string, count?: number) =>
+      request<LoginPolicy>('PATCH', `${base}/login-policy/sequences/${encodeURIComponent(name)}`, body, h(confirm, count ? { 'X-Confirm-Count': String(count) } : {})).then((r) => r.data),
+    deleteSequence: (name: string, confirm?: string, count?: number) =>
+      request<LoginPolicy>('DELETE', `${base}/login-policy/sequences/${encodeURIComponent(name)}`, undefined, h(confirm, count ? { 'X-Confirm-Count': String(count) } : {})).then((r) => r.data),
     /** A server certificate (key material object) on a server, from the tree CA. */
     createServerCertificate: (serverGuid: string, body: CertificateRequest, confirm?: string) =>
       request<ServerCertificate>('POST', `${base}/pki/servers/${guidPath(serverGuid)}/certificates`, body, h(confirm)).then((r) => r.data),

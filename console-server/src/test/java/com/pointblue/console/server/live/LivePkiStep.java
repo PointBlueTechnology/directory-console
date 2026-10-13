@@ -83,6 +83,10 @@ public final class LivePkiStep {
                             + "; nextIssue " + c.get("nextIssue") + " / nextUpdate " + c.get("nextUpdate"));
                     }
                 }
+                // only the sequence named here (a test one) is created or deleted; the others are left alone
+                case "seq-create" -> show(call("POST", t + "/security/login-policy/sequences",
+                    Map.of("name", args[3], "methods", List.of("NDS", "Challenge Response")), h));
+                case "seq-delete" -> show(call("DELETE", t + "/security/login-policy/sequences/" + URLEncoder.encode(args[3], "UTF-8").replace("+", "%20"), null, h));
                 case "user-list" -> show(call("GET", t + "/security/objects/" + guid(t, h, args[3]) + "/certificates", null, h));
                 default -> throw new IllegalArgumentException("unknown step " + op);
             }

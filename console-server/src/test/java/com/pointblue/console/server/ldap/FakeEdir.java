@@ -213,6 +213,11 @@ public final class FakeEdir implements AutoCloseable {
         server.add(e);
     }
 
+    /** An entry as the fake holds it, read without a client request; null when there is none. */
+    public com.unboundid.ldap.sdk.Entry entry(String dn) throws com.unboundid.ldap.sdk.LDAPException {
+        return server.getEntry(dn);
+    }
+
     public int port() {
         return server.getListenPort();
     }

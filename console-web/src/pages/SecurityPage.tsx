@@ -4,13 +4,14 @@ import {
   Form, FormGroup, Label, LabelGroup, Modal, ModalBody, ModalFooter, ModalHeader, PageSection, Spinner, Tab, Tabs, TabTitleText, TextInput, Title,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type Certificate, type EdirServer, type LoginPolicy, type PasswordPolicySummary, type Pki, edir, pem, security } from '../api';
+import { ApiError, type Certificate, type EdirServer, type SequenceRequest, type LoginPolicy, type PasswordPolicySummary, type Pki, edir, pem, security } from '../api';
 import { useSession } from '../session';
 import { linkProps, navigate } from '../router';
 import { useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { NewCertificateModal } from '../components/NewCertificate';
+import { SequenceModal } from '../components/SequenceModal';
 
 const DAY = 86_400_000;
 export const WARN_DAYS = 60;
@@ -319,12 +320,39 @@ function NameModal({ title, onClose, onCreate }: { title: string; onClose: () =>
 }
 
 function LoginMethodsView() {
-  const { me } = useSession();
+  const { me, canAt } = useSession();
   const api = useMemo(() => security(me.directory), [me.directory]);
   const [lp, setLp] = useState<LoginPolicy | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [opError, setOpError] = useState<unknown>(null);
+  const [editing, setEditing] = useState<null | { sequence?: LoginPolicy['sequences'][number] }>(null);
+  const confirmed = useConfirmed();
+  const sure = useAreYouSure();
+  const editor = canAt('editor', '');
   const load = useCallback(() => { api.loginPolicy().then(setLp).catch(setError); }, [api]);
   useEffect(load, [load]);
+  /**
+   * Run a change; when objects name the sequence the console says how many, and the change goes ahead
+   * only once that count is confirmed.
+   */
+  const withCount = (name: string, op: (confirm: string | undefined, count?: number) => Promise<LoginPolicy>) =>
+    confirmed.run((c) => op(c)).catch((x) => {
+      if (x instanceof ApiError && x.code === 'confirm-count') {
+        const count = Number(x.problem.count);
+        return new Promise<LoginPolicy>((resolve, reject) => sure.ask(`${count} ${count === 1 ? 'object uses' : 'objects use'} ${name}`,
+          `They name ${name} as their login sequence. Changing it changes how they log in.`, 'Go ahead',
+          () => confirmed.run((c) => op(c, count)).then(resolve, reject)));
+      }
+      throw x;
+    });
+  const save = (body: SequenceRequest) => {
+    const seq = editing?.sequence;
+    return (seq ? withCount(seq.name, (c, n) => api.updateSequence(seq.name, body, c, n)) : confirmed.run((c) => api.createSequence(body, c))).then(setLp);
+  };
+  const remove = (name: string) => sure.ask(`Delete ${name}?`, 'People can no longer log in with it.', 'Delete', () => {
+    setOpError(null);
+    withCount(name, (c, n) => api.deleteSequence(name, c, n)).then(setLp, setOpError);
+  });
   if (!lp) {
     return error ? <ProblemAlert error={error} /> : <Spinner aria-label="Loading" />;
   }
@@ -337,11 +365,27 @@ function LoginMethodsView() {
       </DescriptionList>
       <Flex className="dc-tab-body" direction={{ default: 'column' }}>
         <FlexItem>
-          <Title headingLevel="h2" size="md">Login sequences</Title>
+          <Flex><FlexItem grow={{ default: 'grow' }}><Title headingLevel="h2" size="md">Login sequences</Title></FlexItem>
+            {editor && <FlexItem><Button variant="secondary" onClick={() => setEditing({})}>New sequence</Button></FlexItem>}</Flex>
+          <ProblemAlert error={opError} />
           <Table aria-label="Login sequences" variant="compact">
-            <Thead><Tr><Th>Sequence</Th><Th>Grade</Th><Th>Methods, in order</Th></Tr></Thead>
+            <Thead><Tr><Th>Sequence</Th><Th>Grade</Th><Th>Methods</Th><Th screenReaderText="Actions" /></Tr></Thead>
             <Tbody>
-              {lp.sequences.map((q) => <Tr key={q.name}><Td dataLabel="Sequence">{q.name}</Td><Td dataLabel="Grade">{q.grade ?? '—'}</Td><Td dataLabel="Methods">{q.methods.join(' → ')}</Td></Tr>)}
+              {lp.sequences.map((q) => (
+                <Tr key={q.name}>
+                  <Td dataLabel="Sequence">{q.name}{q.name === lp.defaultSequence && <Label isCompact className="dc-gap-left">default</Label>}
+                    {lp.authorized && !lp.authorized.includes(q.name) && <Label isCompact color="grey" className="dc-gap-left">not authorized</Label>}</Td>
+                  <Td dataLabel="Grade">{q.grade ?? '—'}</Td>
+                  <Td dataLabel="Methods">{q.methods.join(q.any ? ' or ' : ' → ')}</Td>
+                  <Td isActionCell>
+                    {editor && <>
+                      <Button variant="link" isInline onClick={() => setEditing({ sequence: q })}>Change</Button>
+                      <Button variant="link" isInline isDanger className="dc-gap-left" isAriaDisabled={q.name === lp.defaultSequence}
+                        title={q.name === lp.defaultSequence ? 'The default sequence; choose another default first' : undefined} onClick={() => remove(q.name)}>Delete</Button>
+                    </>}
+                  </Td>
+                </Tr>
+              ))}
             </Tbody>
           </Table>
         </FlexItem>
@@ -355,6 +399,9 @@ function LoginMethodsView() {
           </Table>
         </FlexItem>
       </Flex>
+      {editing && <SequenceModal policy={lp} editing={editing.sequence} onSave={save} onClose={() => setEditing(null)} />}
+      {confirmed.dialog}
+      {sure.dialog}
     </div>
   );
 }

@@ -82,6 +82,7 @@ final class Security {
         String route = method + " " + String.join("/", Arrays.copyOfRange(p, 2, p.length))
             .replaceAll("^(password-policies|challenge-sets|objects)/[0-9a-f]{32}", "$1/{guid}")
             .replaceAll("^pki/(servers|server-certificates)/[0-9a-f]{32}", "pki/$1/{guid}")
+            .replaceAll("^login-policy/sequences/[^/]+$", "login-policy/sequences/{name}")
             .replaceAll("assignments/[0-9a-f]{32}$", "assignments/{target}");
         String guid = p.length > 3 && p[2].equals("pki") ? (p.length > 4 ? p[4] : null) : p.length > 3 ? p[3] : null;
         if (!method.equals("GET")) {
@@ -113,6 +114,9 @@ final class Security {
                 case "PATCH challenge-sets/{guid}" -> updateChallengeSet(ex, l, s, guid);
                 case "DELETE challenge-sets/{guid}" -> deleteChallengeSet(ex, l, s, guid);
                 case "GET login-policy" -> Http.json(ex, 200, loginPolicy(l));
+                case "POST login-policy/sequences" -> changeSequence(ex, l, s, null);
+                case "PATCH login-policy/sequences/{name}" -> changeSequence(ex, l, s, java.net.URLDecoder.decode(p[4], java.nio.charset.StandardCharsets.UTF_8));
+                case "DELETE login-policy/sequences/{name}" -> deleteSequence(ex, l, s, java.net.URLDecoder.decode(p[4], java.nio.charset.StandardCharsets.UTF_8));
                 case "POST pki/servers/{guid}/certificates" -> createServerCertificate(ex, l, s, guid);
                 case "DELETE pki/server-certificates/{guid}" -> deleteServerCertificate(ex, l, s, guid);
                 case "GET objects/{guid}/certificates" -> Http.json(ex, 200, Map.of("items", userCertificates(l, guid)));
@@ -283,6 +287,147 @@ final class Security {
             }
         }
         return l.dsaName();
+    }
+
+    // ---- login sequences (6b) ----------------------------------------------------------------------
+
+    private String loginPolicyDn(Ldap l) throws NamingException {
+        Ldap.Entry sec = securityContainer(l);
+        return sec == null || sec.first("sASLoginPolicyDN") == null ? "cn=Login Policy,cn=Security" : sec.first("sASLoginPolicyDN");
+    }
+
+    /** How many objects name this sequence as their default or among their authorized ones. */
+    private int sequenceUsers(Ldap l, String name) throws NamingException {
+        String f = "(|(sasDefaultLoginSequence={0})(sasAuthorizedLoginSequences={0}))";
+        return l.search("", f, new Object[] {name}, SearchControls.SUBTREE_SCOPE, new String[] {"1.1"}, 1000).size();
+    }
+
+    /**
+     * A sequence that is the default, or that objects name, changes how people log in: the request says
+     * how many it reaches ({@code X-Confirm-Count}) or is refused with that count.
+     */
+    private void confirmReach(HttpExchange ex, Ldap l, Ldap.Entry lp, String name) throws NamingException {
+        if (name.equals(lp.first("sasDefaultLoginSequence"))) {
+            throw new Http.Problem(409, "default-sequence", name + " is the tree's default login sequence; choose another default first");
+        }
+        int users = sequenceUsers(l, name);
+        if (users > 0 && !String.valueOf(users).equals(ex.getRequestHeaders().getFirst("X-Confirm-Count"))) {
+            throw new Http.Problem(409, "confirm-count", users + " objects name " + name + " as their login sequence; confirm the count to change it",
+                Map.of("count", users));
+        }
+    }
+
+    /** {@code POST login-policy/sequences} (a new one) or {@code PATCH …/{name}}: {name, methods, any}. */
+    private void changeSequence(HttpExchange ex, Ldap l, Sessions.Session s, String existing) throws IOException, NamingException {
+        Map<String, Object> b = Http.body(ex);
+        String name = existing != null ? existing : Http.string(b, "name", true).trim();
+        if (name.isEmpty() || name.length() > 64 || name.contains(";") || name.contains("|")) {
+            throw new IllegalArgumentException("a sequence name is 1-64 characters without ; or |");
+        }
+        if (!(b.get("methods") instanceof List<?> raw) || raw.isEmpty()) {
+            throw new IllegalArgumentException("methods lists the login methods in order");
+        }
+        List<String> methods = raw.stream().map(String::valueOf).map(String::trim).toList();
+        boolean any = Boolean.TRUE.equals(b.get("any"));
+        List<String> installed = new ArrayList<>();
+        for (Object o : (List<?>) loginPolicy(l).get("methods")) {
+            installed.add(String.valueOf(Json.asMap(o).get("name")));
+        }
+        for (String m : methods) {
+            if (!installed.contains(m)) {
+                throw new IllegalArgumentException("no installed login method is named " + m);
+            }
+            if (m.contains(";") || m.contains("|")) {
+                throw new IllegalArgumentException("a method name with ; or | cannot be in a sequence");
+            }
+        }
+        if (methods.stream().distinct().count() != methods.size()) {
+            throw new IllegalArgumentException("each method once");
+        }
+        String lpDn = loginPolicyDn(l);
+        Ldap.Entry lp = l.read(lpDn, "sASLoginSequence", "sASLoginPolicyUpdate", "sasDefaultLoginSequence", "sasAuthorizedLoginSequences");
+        if (lp == null) {
+            throw new Http.Problem(404, "no-login-policy", "this tree has no Login Policy");
+        }
+        String old = null;
+        for (Object v : lp.attributes().getOrDefault("sasloginsequence", List.of())) {
+            if (sequence(String.valueOf(v)).get("name").equals(name)) {
+                old = String.valueOf(v);
+            }
+        }
+        if (existing == null && old != null) {
+            throw new Http.Problem(409, "exists", "there is already a sequence named " + name);
+        }
+        if (existing != null && old == null) {
+            throw new Http.Problem(404, "not-found", "no sequence is named " + name);
+        }
+        if (existing != null) {
+            confirmReach(ex, l, lp, name);
+        }
+        String value = sequenceValue(name, methods, any);
+        List<ModificationItem> mods = new ArrayList<>();
+        if (old != null) {
+            mods.add(new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute("sASLoginSequence", old)));
+        }
+        mods.add(new ModificationItem(DirContext.ADD_ATTRIBUTE, new BasicAttribute("sASLoginSequence", value)));
+        // a policy with an authorized list only lets listed sequences be used: a new one joins it
+        if (existing == null && lp.attributes().containsKey("sasauthorizedloginsequences") && !Boolean.FALSE.equals(b.get("authorized"))) {
+            mods.add(new ModificationItem(DirContext.ADD_ATTRIBUTE, new BasicAttribute("sasAuthorizedLoginSequences", name)));
+        }
+        mods.add(updateCounter(lp));
+        Map<String, Object> detail = new LinkedHashMap<>(Map.of("name", name, "value", value));
+        if (old != null) {
+            detail.put("was", old);
+        }
+        try {
+            l.modify(lpDn, mods);
+        } catch (NamingException x) {
+            audit(s, existing == null ? "login-sequence.create" : "login-sequence.modify", null, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, existing == null ? "login-sequence.create" : "login-sequence.modify", null, detail, null);
+        Http.json(ex, existing == null ? 201 : 200, loginPolicy(l));
+    }
+
+    /** {@code DELETE login-policy/sequences/{name}}. */
+    private void deleteSequence(HttpExchange ex, Ldap l, Sessions.Session s, String name) throws IOException, NamingException {
+        String lpDn = loginPolicyDn(l);
+        Ldap.Entry lp = l.read(lpDn, "sASLoginSequence", "sASLoginPolicyUpdate", "sasDefaultLoginSequence", "sasAuthorizedLoginSequences");
+        String old = null;
+        for (Object v : lp == null ? List.of() : lp.attributes().getOrDefault("sasloginsequence", List.of())) {
+            if (sequence(String.valueOf(v)).get("name").equals(name)) {
+                old = String.valueOf(v);
+            }
+        }
+        if (old == null) {
+            throw new Http.Problem(404, "not-found", "no sequence is named " + name);
+        }
+        confirmReach(ex, l, lp, name);
+        List<ModificationItem> mods = new ArrayList<>();
+        mods.add(new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute("sASLoginSequence", old)));
+        if (lp.attributes().getOrDefault("sasauthorizedloginsequences", List.of()).stream().anyMatch(v -> name.equals(String.valueOf(v)))) {
+            mods.add(new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute("sasAuthorizedLoginSequences", name)));
+        }
+        mods.add(updateCounter(lp));
+        try {
+            l.modify(lpDn, mods);
+        } catch (NamingException x) {
+            audit(s, "login-sequence.delete", null, Map.of("name", name, "was", old), Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "login-sequence.delete", null, Map.of("name", name, "was", old), null);
+        Http.json(ex, 200, loginPolicy(l));
+    }
+
+    /** sASLoginPolicyUpdate counts changes; servers reread the policy when it moves (Identity Console adds 1 each time). */
+    private static ModificationItem updateCounter(Ldap.Entry lp) {
+        int n;
+        try {
+            n = Integer.parseInt(String.valueOf(lp.first("sASLoginPolicyUpdate")));
+        } catch (NumberFormatException e) {
+            n = 0;
+        }
+        return new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute("sASLoginPolicyUpdate", String.valueOf(n + 1)));
     }
 
     /** The Security container (eDirectory keeps it at the tree root as cn=Security) with its pointers to the CA and the Login Policy. */
@@ -1101,23 +1246,41 @@ final class Security {
 
     // ---- NMAS ---------------------------------------------------------------------------------------------
 
-    /** The Login Policy's sequences ("name;grade;methods", as stored), the default, and the installed login methods. */
+    /**
+     * A login sequence as eDirectory keeps it: {@code name;grade;method;method…} when every method runs
+     * in turn, {@code name;grade;method|method…} when any one will do (Identity Console 26.1's encoding;
+     * a new sequence's grade is "Password").
+     */
+    static Map<String, Object> sequence(String value) {
+        String[] parts = value.split(";", -1);
+        Map<String, Object> q = new LinkedHashMap<>();
+        q.put("name", parts[0]);
+        q.put("grade", parts.length > 1 ? parts[1] : null);
+        List<String> rest = parts.length > 2 ? List.of(parts).subList(2, parts.length) : List.of();
+        boolean any = rest.size() == 1 && rest.get(0).contains("|");
+        q.put("methods", any ? List.of(rest.get(0).split("\\|")) : rest.stream().filter(x -> !x.isEmpty()).toList());
+        q.put("any", any);
+        return q;
+    }
+
+    static String sequenceValue(String name, List<String> methods, boolean any) {
+        return name + ";Password;" + String.join(any ? "|" : ";", methods);
+    }
+
+    /** The Login Policy's sequences, the default, the authorized list (null: all are), and the installed login methods. */
     private Map<String, Object> loginPolicy(Ldap l) throws NamingException {
         Map<String, Object> m = new LinkedHashMap<>();
         Ldap.Entry sec = securityContainer(l);
         String lpDn = sec == null || sec.first("sASLoginPolicyDN") == null ? "cn=Login Policy,cn=Security" : sec.first("sASLoginPolicyDN");
         String root = sec == null ? "cn=Security" : sec.dn();
-        Ldap.Entry lp = l.read(lpDn, "sASLoginSequence", "sasDefaultLoginSequence", "nspmPasswordPolicyDN");
+        Ldap.Entry lp = l.read(lpDn, "sASLoginSequence", "sasDefaultLoginSequence", "nspmPasswordPolicyDN", "sasAuthorizedLoginSequences");
         List<Map<String, Object>> seqs = new ArrayList<>();
         if (lp != null) {
             for (Object v : lp.attributes().getOrDefault("sasloginsequence", List.of())) {
-                String[] parts = String.valueOf(v).split(";", 3);
-                Map<String, Object> q = new LinkedHashMap<>();
-                q.put("name", parts[0]);
-                q.put("grade", parts.length > 1 ? parts[1] : null);
-                q.put("methods", parts.length > 2 ? List.of(parts[2].split(",")) : List.of());
-                seqs.add(q);
+                seqs.add(sequence(String.valueOf(v)));
             }
+            m.put("authorized", lp.attributes().containsKey("sasauthorizedloginsequences")
+                ? lp.attributes().get("sasauthorizedloginsequences").stream().map(String::valueOf).toList() : null);
             String d = lp.first("sasDefaultLoginSequence");
             m.put("defaultSequence", d == null || d.equals("<no default>") ? null : d);
             m.put("passwordPolicy", refOf(l, lp.first("nspmPasswordPolicyDN")));
