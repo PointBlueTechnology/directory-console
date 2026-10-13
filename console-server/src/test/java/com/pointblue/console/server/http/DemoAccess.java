@@ -64,4 +64,18 @@ public final class DemoAccess {
     public static void trust(Server server, java.security.cert.X509Certificate cert, String scope, String by) throws Exception {
         server.trust.add(cert, com.pointblue.console.server.tls.TrustStore.Kind.CA, scope, by, "upload");
     }
+
+    /**
+     * A changed pin at {@code host:port}: pins a certificate that address never presents, then refuses
+     * one connection from it, as a renewed or substituted server certificate would be.
+     */
+    public static void pinAlert(Server server, String directory, String host, int port, java.security.cert.X509Certificate[] presented) throws Exception {
+        java.security.cert.X509Certificate stale = new com.pointblue.console.server.tls.TestPki("OLD_TREE").server("edir2", java.util.List.of(host)).cert();
+        server.trust.add(stale, com.pointblue.console.server.tls.TrustStore.Kind.PINNED_SERVER, "directory:" + directory, "cn=admin,o=system", "probe", host + ":" + port);
+        try {
+            server.trust.trustManager(host, port, directory, null).checkServerTrusted(presented, "EC");
+        } catch (java.security.cert.CertificateException expected) {
+            // refused as pin-changed: the alert is kept
+        }
+    }
 }

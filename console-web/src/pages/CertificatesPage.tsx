@@ -5,7 +5,7 @@ import {
 } from '@patternfly/react-core';
 import { PlusIcon, SyncIcon, UploadIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type Directory, type HostExceptionInfo, type Probe, type TrustedCertificate, daysUntil, session, trust } from '../api';
+import { type Directory, type HostExceptionInfo, type Probe, type TrustAlert, type TrustState, type TrustedCertificate, daysUntil, session, trust } from '../api';
 import { useSession } from '../session';
 import { HeadingLevel, useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
@@ -24,9 +24,10 @@ export function CertificatesPage() {
   const { me } = useSession();
   const [directories, setDirectories] = useState<Directory[]>([]);
   const [live, setLive] = useState<Live[] | null>(null);
-  const [store, setStore] = useState<{ certificates: TrustedCertificate[]; hostExceptions: HostExceptionInfo[] } | null>(null);
+  const [store, setStore] = useState<TrustState | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [reviewing, setReviewing] = useState<Live | null>(null);
+  const [alertProbe, setAlertProbe] = useState<{ probe: Probe; directory: string; name: string } | null>(null);
   const [adding, setAdding] = useState<'probe' | 'upload' | null>(null);
 
   const loadStore = useCallback(() => trust.list().then(setStore).catch(setError), []);
@@ -45,6 +46,12 @@ export function CertificatesPage() {
   }, []);
   useEffect(() => { void loadStore(); void check(); }, [loadStore, check]);
   const changed = () => { void loadStore(); void check(); };
+  // the address is trusted now (its new certificate, a CA, a host exception): its alert is done with
+  const resolved = () => {
+    const p = alertProbe?.probe;
+    setAlertProbe(null);
+    (p ? trust.dismissAlert(p.host, p.port).catch(() => undefined) : Promise.resolve()).then(changed);
+  };
 
   // which directories' live chains include a certificate: removing it would cut them off
   const usedBy = (sha256: string) => (live ?? []).filter((l) => l.probe?.chain.some((c) => c.sha256 === sha256)).map((l) => l.directory.name);
@@ -55,6 +62,12 @@ export function CertificatesPage() {
       <p className="dc-subtle">The certificates the console trusts when it connects to eDirectory. The JDK's own store is never changed.</p>
       <ProblemAlert error={error} onRetry={changed} />
       <HeadingLevel.Provider value="h2">
+        {store && store.alerts.length > 0 && (
+          <AlertsSection alerts={store.alerts} directories={directories} onReview={(a) => {
+            const dir = a.directory ?? me.directory;
+            trust.probe(a.host, a.port, dir).then((probe) => setAlertProbe({ probe, directory: dir, name: `${a.host}:${a.port}` }), setError);
+          }} onChanged={changed} />
+        )}
         <DirectoriesSection live={live} me={me.directory} onReview={setReviewing} onCheck={() => void check()} />
         <CertificatesSection store={store} directories={directories} usedBy={usedBy} onAdd={setAdding} onChanged={changed} />
         <HostExceptionsSection store={store} onChanged={changed} />
@@ -62,6 +75,12 @@ export function CertificatesPage() {
       {reviewing?.probe && (
         <TrustCertificateModal probe={reviewing.probe} directory={reviewing.directory.id} name={reviewing.directory.name}
           onDone={() => { setReviewing(null); changed(); }} onCancel={() => { setReviewing(null); changed(); }} />
+      )}
+      {alertProbe && (
+        alertProbe.probe.status === 'trusted'
+          ? <AlreadyTrusted probe={alertProbe.probe} onClose={resolved} />
+          : <TrustCertificateModal probe={alertProbe.probe} directory={alertProbe.directory} name={alertProbe.name}
+            onDone={resolved} onCancel={() => { setAlertProbe(null); changed(); }} />
       )}
       {adding === 'probe' && <ProbeModal directories={directories} initial={me.directory} onClose={() => { setAdding(null); changed(); }} />}
       {adding === 'upload' && <UploadModal directories={directories} initial={me.directory} onClose={(done) => { setAdding(null); if (done) changed(); }} />}
@@ -212,6 +231,58 @@ function HostExceptionsSection({ store, onChanged }: { store: { hostExceptions: 
   );
 }
 
+/**
+ * Pinned addresses that presented another certificate on a real connection: renewed, or not the
+ * expected server. Review probes the address again and shows what it presents now.
+ */
+function AlertsSection({ alerts, directories, onReview, onChanged }: {
+  alerts: TrustAlert[]; directories: Directory[]; onReview: (a: TrustAlert) => void; onChanged: () => void;
+}) {
+  const H = useHeading();
+  const sure = useAreYouSure();
+  const [error, setError] = useState<unknown>(null);
+  const dismiss = (a: TrustAlert) => sure.ask('Dismiss this alert?',
+    `Connections to ${a.host}:${a.port} stay refused until its new certificate is trusted. Dismiss only once you know why it changed.`, 'Dismiss',
+    () => { setError(null); trust.dismissAlert(a.host, a.port).then(onChanged, setError); });
+  return (
+    <section className="dc-tab-body" aria-labelledby="certs-alerts">
+      <H id="certs-alerts" className="pf-v6-c-title pf-m-lg">Changed certificates</H>
+      <Alert variant="danger" isInline component="h3" title="A pinned server presented a different certificate">
+        Connections to these addresses are refused. If the server's certificate was renewed, review it and trust the new one; if you do not know why it changed, find out before you do.
+      </Alert>
+      <ProblemAlert error={error} />
+      <Table aria-label="Changed certificates" variant="compact">
+        <Thead><Tr><Th>Address</Th><Th>Directory</Th><Th>Now presents</Th><Th>Seen</Th><Th screenReaderText="Actions" /></Tr></Thead>
+        <Tbody>
+          {alerts.map((a) => (
+            <Tr key={`${a.host}:${a.port}:${a.presentedId}`}>
+              <Td dataLabel="Address"><span className="dc-mono">{a.host}:{a.port}</span></Td>
+              <Td dataLabel="Directory">{directories.find((d) => d.id === a.directory)?.name ?? a.directory ?? ''}</Td>
+              <Td dataLabel="Now presents" modifier="breakWord">{a.presentedSubject}<br /><span className="dc-mono dc-subtle">{a.presentedSha256}</span></Td>
+              <Td dataLabel="Seen">{a.count} {a.count === 1 ? 'time' : 'times'}, last {new Date(a.lastSeen).toLocaleString()}</Td>
+              <Td isActionCell>
+                <Button variant="secondary" size="sm" onClick={() => onReview(a)}>Review</Button>{' '}
+                <Button variant="link" size="sm" onClick={() => dismiss(a)}>Dismiss</Button>
+              </Td>
+            </Tr>
+          ))}
+        </Tbody>
+      </Table>
+      {sure.dialog}
+    </section>
+  );
+}
+
+function AlreadyTrusted({ probe, onClose }: { probe: Probe; onClose: () => void }) {
+  return (
+    <Modal variant="small" isOpen onClose={onClose} aria-labelledby="probe-ok-title">
+      <ModalHeader title={`${probe.host}:${probe.port} is trusted already`} labelId="probe-ok-title" />
+      <ModalBody><CertificateDetails cert={probe.chain[0]} /></ModalBody>
+      <ModalFooter><Button variant="primary" onClick={onClose}>Close</Button></ModalFooter>
+    </Modal>
+  );
+}
+
 /** Probe any LDAPS address and trust what it presents, for one directory or every directory. */
 function ProbeModal({ directories, initial, onClose }: { directories: Directory[]; initial: string; onClose: () => void }) {
   const [host, setHost] = useState('');
@@ -223,13 +294,7 @@ function ProbeModal({ directories, initial, onClose }: { directories: Directory[
   const portNumber = Number(port);
   if (probe) {
     if (probe.status === 'trusted') {
-      return (
-        <Modal variant="small" isOpen onClose={onClose} aria-labelledby="probe-ok-title">
-          <ModalHeader title={`${probe.host}:${probe.port} is trusted already`} labelId="probe-ok-title" />
-          <ModalBody><CertificateDetails cert={probe.chain[0]} /></ModalBody>
-          <ModalFooter><Button variant="primary" onClick={onClose}>Close</Button></ModalFooter>
-        </Modal>
-      );
+      return <AlreadyTrusted probe={probe} onClose={onClose} />;
     }
     return <TrustCertificateModal probe={probe} directory={directory} name="the server" onDone={onClose} onCancel={onClose} />;
   }

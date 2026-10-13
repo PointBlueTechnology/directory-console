@@ -185,22 +185,26 @@ function route(path: string) {
   return <NotFound />;
 }
 
-/** Administrators are told of trusted certificates expired or expiring within 30 days (DESIGN 6.5). */
+/** Administrators are told of changed pinned certificates, and of trusted ones expired or expiring within 30 days (DESIGN 6.3, 6.5). */
 function ExpiryBanner() {
-  const [soon, setSoon] = useState<{ expired: number; expiring: number } | null>(null);
+  const [soon, setSoon] = useState<{ expired: number; expiring: number; changed: number } | null>(null);
   useEffect(() => {
     trust.list().then((t) => {
       const days = t.certificates.map((c) => daysUntil(c.notAfter));
-      setSoon({ expired: days.filter((d) => d < 0).length, expiring: days.filter((d) => d >= 0 && d <= 30).length });
+      setSoon({ expired: days.filter((d) => d < 0).length, expiring: days.filter((d) => d >= 0 && d <= 30).length, changed: t.alerts.length });
     }).catch(() => setSoon(null));
   }, []);
-  if (!soon || (soon.expired === 0 && soon.expiring === 0)) {
+  if (!soon || (soon.expired === 0 && soon.expiring === 0 && soon.changed === 0)) {
     return null;
   }
-  const parts = [soon.expired && `${soon.expired} expired`, soon.expiring && `${soon.expiring} expiring within 30 days`].filter(Boolean).join(', ');
+  const parts = [
+    soon.changed && `${soon.changed} pinned ${soon.changed === 1 ? 'certificate has' : 'certificates have'} changed`,
+    soon.expired && `${soon.expired} expired`,
+    soon.expiring && `${soon.expiring} expiring within 30 days`,
+  ].filter(Boolean).join(', ');
   return (
     <PageSection padding={{ default: 'noPadding' }}>
-      <Alert variant={soon.expired ? 'danger' : 'warning'} isInline component="h2" title={`Trusted certificates: ${parts}`}
+      <Alert variant={soon.changed || soon.expired ? 'danger' : 'warning'} isInline component="h2" title={`Certificates: ${parts}`}
         actionLinks={<AlertActionLink onClick={() => navigate('/certificates')}>Review certificates</AlertActionLink>} />
     </PageSection>
   );

@@ -795,9 +795,31 @@ export interface HostExceptionInfo {
   addedAt: string;
 }
 
+/** A pinned address that presented another certificate on a real connection. */
+export interface TrustAlert {
+  host: string;
+  port: number;
+  directory?: string;
+  /** The fingerprints (lower-case hex) pinned there. */
+  pinned: string[];
+  presentedId: string;
+  presentedSha256: string;
+  presentedSubject: string;
+  firstSeen: string;
+  lastSeen: string;
+  count: number;
+}
+
+export interface TrustState {
+  certificates: TrustedCertificate[];
+  hostExceptions: HostExceptionInfo[];
+  alerts: TrustAlert[];
+}
+
 /** The console's trust store (administrators; changes need a recent sign-in). */
 export const trust = {
-  list: () => request<{ certificates: TrustedCertificate[]; hostExceptions: HostExceptionInfo[] }>('GET', '/api/v2/trust/certificates').then((r) => r.data),
+  list: () => request<TrustState>('GET', '/api/v2/trust/certificates').then((r) => ({ ...r.data, alerts: r.data.alerts ?? [] })),
+  dismissAlert: (host: string, port: number) => request<void>('DELETE', '/api/v2/trust/alerts', { host, port }).then(() => undefined),
   /** Probe host:port; with a directory, judged as that directory's connections are (its trusted CAs too). */
   probe: (host: string, port: number, directory?: string) =>
     request<Probe>('POST', '/api/v2/trust/probe', { host, port, directory }).then((r) => r.data),

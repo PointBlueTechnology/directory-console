@@ -76,6 +76,15 @@ public final class Server {
         this.config = new ConfigStore(data, SecretBox.open(data.keys().resolve("config.key")));
         this.audit = new AuditLog(data);
         this.trust = new TrustStore(data);
+        // a pinned address that presents another certificate: kept as an alert for admins, and audited once
+        this.trust.onAlert(a -> {
+            try {
+                audit.log(AuditLog.Actor.SYSTEM, "trust.pin-changed", a.host() + ":" + a.port(),
+                    Map.of("presented", a.presentedSha256(), "subject", a.presentedSubject(), "directory", a.directoryId() == null ? "" : a.directoryId()), "alert");
+            } catch (IOException | RuntimeException e) {
+                // the alert is kept either way
+            }
+        });
         URI pub = URI.create(publicUrl);
         List<String> names = new ArrayList<>(List.of(pub.getHost(), "localhost", "127.0.0.1"));
         String hostname = System.getenv("HOSTNAME");
@@ -259,6 +268,7 @@ public final class Server {
             case "POST /api/v2/trust/certificates" -> trustAdd(ex);
             case "POST /api/v2/trust/host-exceptions" -> hostException(ex);
             case "DELETE /api/v2/trust/host-exceptions" -> hostExceptionRemove(ex);
+            case "DELETE /api/v2/trust/alerts" -> alertDismiss(ex);
             case "GET /api/v2/config" -> {
                 session(ex, Role.ADMIN);
                 Http.json(ex, 200, config.redacted());
@@ -400,7 +410,10 @@ public final class Server {
                     default -> 503;
                 };
                 Map<String, Object> extra = r.untrusted() == null ? Map.of()
-                    : Map.of("reason", r.untrusted().reason.name().toLowerCase(Locale.ROOT), "hint", "an administrator can probe the directory and trust its certificate");
+                    : Map.of("reason", r.untrusted().reason.name().toLowerCase(Locale.ROOT).replace('_', '-'),
+                        "hint", r.untrusted().reason == TrustStore.Reason.PIN_CHANGED
+                            ? "the directory's certificate changed; administrators have been alerted and must review it"
+                            : "an administrator can probe the directory and trust its certificate");
                 throw new Http.Problem(status, r.code(), r.message(), extra);
             }
         }
@@ -656,7 +669,11 @@ public final class Server {
             exceptions.add(Map.of("host", h.host(), "port", h.port(), "leafId", h.leafId(), "sha256", h.leafId().toUpperCase(Locale.ROOT).replaceAll("(..)(?!$)", "$1:"),
                 "addedBy", h.addedBy(), "addedAt", h.addedAt().toString()));
         }
-        Http.json(ex, 200, Map.of("certificates", out, "hostExceptions", exceptions));
+        List<Map<String, Object>> alerts = new ArrayList<>();
+        for (TrustStore.Alert a : trust.alerts()) {
+            alerts.add(a.json());
+        }
+        Http.json(ex, 200, Map.of("certificates", out, "hostExceptions", exceptions, "alerts", alerts));
     }
 
     private void trustProbe(HttpExchange ex) throws IOException {
@@ -724,6 +741,7 @@ public final class Server {
         String scope = b.get("scope") == null ? "global" : Http.string(b, "scope", true);
         X509Certificate cert;
         String how;
+        String pinnedAt = null;
         if (b.get("pem") != null) {
             try {
                 List<X509Certificate> certs = Certs.parse(Http.string(b, "pem", true).getBytes(StandardCharsets.US_ASCII));
@@ -742,6 +760,7 @@ public final class Server {
                 throw new Http.Problem(400, "bad-field", "index is 0-" + (r.chain().size() - 1));
             }
             cert = r.chain().get(index);
+            pinnedAt = r.host() + ":" + r.port();
             if (!TrustStore.confirmed(cert, Http.string(b, "confirm", false))) {
                 throw new Http.Problem(400, "confirmation-mismatch", "type the last 8 hex digits of the certificate's SHA-256 fingerprint to trust it");
             }
@@ -753,7 +772,7 @@ public final class Server {
             : (kindText.equals("pinned-server") ? TrustStore.Kind.PINNED_SERVER : TrustStore.Kind.CA);
         TrustStore.Entry e;
         try {
-            e = trust.add(cert, kind, scope, s.principal.dn(), how);
+            e = trust.add(cert, kind, scope, s.principal.dn(), how, pinnedAt);
         } catch (IllegalArgumentException bad) {
             throw new Http.Problem(400, "bad-field", bad.getMessage());
         }
@@ -800,6 +819,20 @@ public final class Server {
         audit.log(who(s), "trust.host-exception.remove", host + ":" + port, Map.of(), removed ? "ok" : "not-found");
         if (!removed) {
             throw new Http.Problem(404, "not-found", "no host exception for " + host + ":" + port);
+        }
+        Http.json(ex, 204, Map.of());
+    }
+
+    /** {@code {host, port}}: an administrator has looked at a changed pinned certificate and dismisses the alert. */
+    private void alertDismiss(HttpExchange ex) throws IOException {
+        Sessions.Session s = session(ex, Role.ADMIN);
+        Map<String, Object> b = Http.body(ex);
+        String host = Http.string(b, "host", true);
+        int port = Http.integer(b, "port", 636);
+        boolean dismissed = trust.dismissAlerts(host, port);
+        audit.log(who(s), "trust.alert.dismiss", host + ":" + port, Map.of(), dismissed ? "ok" : "not-found");
+        if (!dismissed) {
+            throw new Http.Problem(404, "not-found", "no alert for " + host + ":" + port);
         }
         Http.json(ex, 204, Map.of());
     }

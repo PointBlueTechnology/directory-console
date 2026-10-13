@@ -135,6 +135,48 @@ public class TlsAndTrustTest {
     }
 
     @Test
+    public void aChangedPinRaisesAnAlertOnceUntilItIsTrustedOrDismissed() throws Exception {
+        TrustStore ts = new TrustStore(new DataDir(tmp.newFolder().toPath()));
+        List<TrustStore.Alert> heard = new java.util.ArrayList<>();
+        ts.onAlert(heard::add);
+        TestPki pki = new TestPki("T");
+        X509Certificate leaf = pki.server("edir1", List.of("edir1")).cert();
+        ts.add(leaf, TrustStore.Kind.PINNED_SERVER, "directory:prod", "admin", "probe", "edir1:636");
+        X509Certificate renewed = pki.server("edir1", List.of("edir1")).cert();
+        X509Certificate[] chain = {renewed, pki.ca};
+
+        assertEquals("a probe does not alert", TrustStore.Reason.PIN_CHANGED, ts.evaluate(chain, "edir1", 636, "prod", null).reason());
+        assertTrue(ts.alerts().isEmpty());
+        for (int i = 0; i < 3; i++) {
+            TrustStore.Untrusted u = assertThrows(TrustStore.Untrusted.class,
+                () -> ts.trustManager("edir1", 636, "prod", null).checkServerTrusted(chain, "RSA"));
+            assertEquals(TrustStore.Reason.PIN_CHANGED, u.reason);
+        }
+        assertEquals("told once", 1, heard.size());
+        TrustStore.Alert a = ts.alerts().get(0);
+        assertEquals(3, a.count());
+        assertEquals("prod", a.directoryId());
+        assertEquals(List.of(Certs.id(leaf)), a.pinned());
+        assertEquals(Certs.id(renewed), a.presentedId());
+
+        assertEquals("a pin taken at another address does not make this one a changed pin", TrustStore.Reason.UNTRUSTED,
+            ts.evaluate(new X509Certificate[] {pki.server("edir2", List.of("edir2")).cert(), pki.ca}, "edir2", 636, "prod", null).reason());
+
+        ts.add(renewed, TrustStore.Kind.PINNED_SERVER, "directory:prod", "admin", "probe", "edir1:636");
+        assertTrue("trusting the new certificate resolves the alert", ts.alerts().isEmpty());
+        assertEquals("and replaces the old pin at that address", List.of(Certs.id(renewed)),
+            ts.entries().stream().filter(e -> e.kind() == TrustStore.Kind.PINNED_SERVER).map(TrustStore.Entry::id).toList());
+        assertTrue(ts.evaluate(chain, "edir1", 636, "prod", null).trusted());
+
+        X509Certificate third = pki.server("edir1", List.of("edir1")).cert();
+        assertThrows(TrustStore.Untrusted.class, () -> ts.trustManager("edir1", 636, "prod", null).checkServerTrusted(new X509Certificate[] {third, pki.ca}, "RSA"));
+        assertEquals(1, ts.alerts().size());
+        assertTrue(ts.dismissAlerts("EDIR1", 636));
+        assertTrue(ts.alerts().isEmpty());
+        assertFalse(ts.dismissAlerts("edir1", 636));
+    }
+
+    @Test
     public void personalTrustAppliesOnlyToThatPerson() throws Exception {
         TrustStore ts = new TrustStore(new DataDir(tmp.newFolder().toPath()));
         TestPki pki = new TestPki("T");

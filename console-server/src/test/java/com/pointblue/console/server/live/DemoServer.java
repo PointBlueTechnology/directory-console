@@ -122,6 +122,9 @@ public final class DemoServer {
         DemoAccess.serverAddresses(server, Map.of("cn=edir2,ou=servers,o=system", "localhost:" + edir.port()));
         // a partner tree's CA, trusted for every directory and expiring soon: the certificate list and banner warn
         DemoAccess.trust(server, new com.pointblue.console.server.tls.TestPki("PARTNER_TREE", java.time.Duration.ofDays(21)).ca, "global", "cn=admin,o=system");
+        // a server at another address whose pinned certificate changed: the Certificates page shows the alert
+        DemoAccess.pinAlert(server, "acme", "edir3.acme.example", 636,
+            new java.security.cert.X509Certificate[] {new com.pointblue.console.server.tls.TestPki("ROGUE_TREE").server("edir3", List.of("edir3.acme.example")).cert()});
         System.out.println("\nDemo console ready at " + base + " (data " + data + "). Ctrl-C to stop.");
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();

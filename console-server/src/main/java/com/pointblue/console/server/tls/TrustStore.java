@@ -33,12 +33,22 @@ import javax.net.ssl.X509TrustManager;
  * {@code directory:<id>} or {@code user:<subject>}. Host names are always verified; a host exception
  * accepts one exact {@code host:port} for one exact leaf fingerprint, so it stops matching when the
  * certificate changes. Nothing here trusts everything.
+ *
+ * <p>A server certificate pinned from a probe remembers the address it was taken at. When that
+ * address later presents another certificate, the connection is refused as {@code pin-changed} and an
+ * alert is kept ({@code trust/alerts.json}) until an administrator trusts the new certificate or
+ * dismisses it.
  */
 public final class TrustStore {
 
     public enum Kind { CA, PINNED_SERVER }
 
-    public record Entry(String id, X509Certificate cert, Kind kind, String scope, String addedBy, Instant addedAt, String how) {
+    /** {@code pinnedAt}: for a pinned server certificate taken from a probe, its {@code host:port}; else null. */
+    public record Entry(String id, X509Certificate cert, Kind kind, String scope, String addedBy, Instant addedAt, String how, String pinnedAt) {
+        public Entry(String id, X509Certificate cert, Kind kind, String scope, String addedBy, Instant addedAt, String how) {
+            this(id, cert, kind, scope, addedBy, addedAt, how, null);
+        }
+
         public Map<String, Object> json() {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", id);
@@ -54,8 +64,46 @@ public final class TrustStore {
             m.put("addedBy", addedBy);
             m.put("addedAt", addedAt.toString());
             m.put("how", how);
+            if (pinnedAt != null) {
+                m.put("pinnedAt", pinnedAt);
+            }
             return m;
         }
+    }
+
+    /**
+     * A pinned address that presented another certificate: {@code pinned} the ids pinned there,
+     * {@code presented} what it showed, seen {@code count} times on real connections.
+     */
+    public record Alert(String host, int port, String directoryId, List<String> pinned, String presentedId, String presentedSha256,
+                        String presentedSubject, Instant firstSeen, Instant lastSeen, int count) {
+        public Map<String, Object> json() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("host", host);
+            m.put("port", port);
+            if (directoryId != null) {
+                m.put("directory", directoryId);
+            }
+            m.put("pinned", pinned);
+            m.put("presentedId", presentedId);
+            m.put("presentedSha256", presentedSha256);
+            m.put("presentedSubject", presentedSubject);
+            m.put("firstSeen", firstSeen.toString());
+            m.put("lastSeen", lastSeen.toString());
+            m.put("count", count);
+            return m;
+        }
+    }
+
+    /** Told once per new alert (an address, a presented certificate): the audit log. */
+    public interface AlertListener {
+        void raised(Alert a);
+    }
+
+    private volatile AlertListener listener = a -> { };
+
+    public void onAlert(AlertListener l) {
+        this.listener = l;
     }
 
     public record HostException(String host, int port, String leafId, String addedBy, Instant addedAt) {
@@ -105,7 +153,8 @@ public final class TrustStore {
                     throw new IOException("trust entry " + id + " holds a different certificate");
                 }
                 out.add(new Entry(id, c, Kind.valueOf(Json.asString(m.get("kind")).toUpperCase(Locale.ROOT).replace('-', '_')),
-                    Json.asString(m.get("scope")), Json.asString(m.get("addedBy")), Instant.parse(Json.asString(m.get("addedAt"))), Json.asString(m.get("how"))));
+                    Json.asString(m.get("scope")), Json.asString(m.get("addedBy")), Instant.parse(Json.asString(m.get("addedAt"))), Json.asString(m.get("how")),
+                    m.get("pinnedAt") == null ? null : Json.asString(m.get("pinnedAt"))));
             }
         }
         return out;
@@ -113,11 +162,98 @@ public final class TrustStore {
 
     /** Add (or re-scope) a trusted certificate. */
     public synchronized Entry add(X509Certificate cert, Kind kind, String scope, String by, String how) throws IOException {
+        return add(cert, kind, scope, by, how, null);
+    }
+
+    /**
+     * Add (or re-scope) a trusted certificate; a pinned server certificate taken at {@code pinnedAt}
+     * ({@code host:port}) replaces what was pinned at that address before, and resolves its alerts.
+     */
+    public synchronized Entry add(X509Certificate cert, Kind kind, String scope, String by, String how, String pinnedAt) throws IOException {
         checkScope(scope);
-        Entry e = new Entry(Certs.id(cert), cert, kind, scope, by, Instant.now(), how);
+        Entry e = new Entry(Certs.id(cert), cert, kind, scope, by, Instant.now(), how, kind == Kind.PINNED_SERVER ? pinnedAt : null);
+        if (e.pinnedAt != null) {
+            for (Entry old : entries()) {
+                if (old.kind == Kind.PINNED_SERVER && e.pinnedAt.equalsIgnoreCase(old.pinnedAt) && old.scope.equals(scope) && !old.id.equals(e.id)) {
+                    remove(old.id);
+                }
+            }
+        }
         DataDir.write(dir.resolve(e.id + ".pem"), Certs.pem(cert).getBytes(StandardCharsets.US_ASCII));
         DataDir.write(dir.resolve(e.id + ".json"), Json.pretty(e.json()).getBytes(StandardCharsets.UTF_8));
+        List<Alert> alerts = new ArrayList<>(alerts());
+        if (alerts.removeIf(a -> a.presentedId.equals(e.id))) {
+            writeAlerts(alerts);
+        }
         return e;
+    }
+
+    // ---- alerts ---------------------------------------------------------------------------------
+
+    public synchronized List<Alert> alerts() throws IOException {
+        Path f = dir.resolve("alerts.json");
+        List<Alert> out = new ArrayList<>();
+        if (Files.exists(f)) {
+            for (Object o : Json.asList(Json.parse(Files.readString(f, StandardCharsets.UTF_8)))) {
+                Map<String, Object> m = Json.asMap(o);
+                List<String> pinned = new ArrayList<>();
+                for (Object p : Json.asList(m.get("pinned"))) {
+                    pinned.add(String.valueOf(p));
+                }
+                out.add(new Alert(Json.asString(m.get("host")), Json.asInt(m.get("port"), 0), m.get("directory") == null ? null : Json.asString(m.get("directory")),
+                    pinned, Json.asString(m.get("presentedId")), Json.asString(m.get("presentedSha256")), Json.asString(m.get("presentedSubject")),
+                    Instant.parse(Json.asString(m.get("firstSeen"))), Instant.parse(Json.asString(m.get("lastSeen"))), Json.asInt(m.get("count"), 1)));
+            }
+        }
+        return out;
+    }
+
+    /** Dismiss the alerts for {@code host:port}; false when there are none. */
+    public synchronized boolean dismissAlerts(String host, int port) throws IOException {
+        List<Alert> all = new ArrayList<>(alerts());
+        if (!all.removeIf(a -> a.host.equalsIgnoreCase(host) && a.port == port)) {
+            return false;
+        }
+        writeAlerts(all);
+        return true;
+    }
+
+    private void writeAlerts(List<Alert> all) throws IOException {
+        List<Map<String, Object>> json = new ArrayList<>();
+        for (Alert a : all) {
+            json.add(a.json());
+        }
+        DataDir.write(dir.resolve("alerts.json"), Json.pretty(json).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void raise(String host, int port, String directoryId, List<String> pinned, X509Certificate leaf) {
+        Alert raised = null;
+        synchronized (this) {
+            try {
+                List<Alert> all = new ArrayList<>(alerts());
+                String id = Certs.id(leaf);
+                Instant now = Instant.now();
+                boolean found = false;
+                for (int i = 0; i < all.size(); i++) {
+                    Alert a = all.get(i);
+                    if (a.host.equalsIgnoreCase(host) && a.port == port && a.presentedId.equals(id)) {
+                        all.set(i, new Alert(a.host, a.port, a.directoryId, a.pinned, a.presentedId, a.presentedSha256, a.presentedSubject, a.firstSeen, now, a.count + 1));
+                        found = true;
+                    }
+                }
+                if (!found) {
+                    raised = new Alert(host.toLowerCase(Locale.ROOT), port, directoryId, pinned, id, Certs.sha256(leaf),
+                        leaf.getSubjectX500Principal().getName(), now, now, 1);
+                    all.add(raised);
+                }
+                writeAlerts(all);
+            } catch (IOException e) {
+                // the connection is refused either way; an unwritable alert must not hide that
+            }
+        }
+        if (raised != null) {
+            listener.raised(raised);
+        }
     }
 
     public synchronized boolean remove(String id) throws IOException {
@@ -197,7 +333,7 @@ public final class TrustStore {
      */
     public Evaluation evaluate(X509Certificate[] chain, String host, int port, String directoryId, String subject) throws IOException {
         try {
-            trustManager(host, port, directoryId, subject).checkServerTrusted(chain, "UNKNOWN");
+            checker(host, port, directoryId, subject, false).checkServerTrusted(chain, "UNKNOWN");
             return new Evaluation(true, null, Certs.matches(chain[0], host), "trusted");
         } catch (Untrusted u) {
             return new Evaluation(false, u.reason, Certs.matches(chain[0], host), u.getMessage());
@@ -208,6 +344,11 @@ public final class TrustStore {
 
     /** The trust manager for one connection. Entries are read when it is made. */
     public X509ExtendedTrustManager trustManager(String host, int port, String directoryId, String subject) throws IOException {
+        return checker(host, port, directoryId, subject, true);
+    }
+
+    /** {@code alerting}: a real connection, whose refusal for a changed pin raises an alert (a probe's does not). */
+    private Checker checker(String host, int port, String directoryId, String subject, boolean alerting) throws IOException {
         List<Entry> inScope = new ArrayList<>();
         for (Entry e : entries()) {
             if (e.scope.equals("global") || e.scope.equals("directory:" + directoryId) || e.scope.equals("user:" + subject)) {
@@ -215,20 +356,24 @@ public final class TrustStore {
             }
         }
         List<HostException> exceptions = hostExceptions();
-        return new Checker(host, port, inScope, exceptions);
+        return new Checker(host, port, directoryId, inScope, exceptions, alerting);
     }
 
     private final class Checker extends X509ExtendedTrustManager {
         private final String host;
         private final int port;
+        private final String directoryId;
         private final List<Entry> entries;
         private final List<HostException> exceptions;
+        private final boolean alerting;
 
-        Checker(String host, int port, List<Entry> entries, List<HostException> exceptions) {
+        Checker(String host, int port, String directoryId, List<Entry> entries, List<HostException> exceptions, boolean alerting) {
             this.host = host;
             this.port = port;
+            this.directoryId = directoryId;
             this.entries = entries;
             this.exceptions = exceptions;
+            this.alerting = alerting;
         }
 
         @Override
@@ -255,10 +400,18 @@ public final class TrustStore {
                     }
                 }
                 if (!chainTrusted) {
-                    boolean hadPin = entries.stream().anyMatch(e -> e.kind == Kind.PINNED_SERVER);
-                    throw hadPin
-                        ? new Untrusted(Reason.PIN_CHANGED, "the server's certificate is not the one pinned for this directory: it changed, or this is not the expected server", chain)
-                        : new Untrusted(Reason.UNTRUSTED, "the server's certificate is not trusted: probe it and trust the tree CA, or import the CA certificate", chain);
+                    // a pin taken at this address (or, from before addresses were kept, any pin in scope)
+                    String here = host + ":" + port;
+                    List<String> pins = entries.stream()
+                        .filter(e -> e.kind == Kind.PINNED_SERVER && (e.pinnedAt == null || e.pinnedAt.equalsIgnoreCase(here))).map(Entry::id).toList();
+                    if (pins.isEmpty()) {
+                        throw new Untrusted(Reason.UNTRUSTED, "the server's certificate is not trusted: probe it and trust the tree CA, or import the CA certificate", chain);
+                    }
+                    if (alerting) {
+                        raise(host, port, directoryId, pins, leaf);
+                    }
+                    throw new Untrusted(Reason.PIN_CHANGED, "the server's certificate is not the one pinned for this address: it changed, or this is not the expected server."
+                        + " Administrators have been alerted", chain);
                 }
             }
             if (!Certs.matches(leaf, host)) {

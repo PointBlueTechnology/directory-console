@@ -172,6 +172,8 @@ public class ServerTest {
         assertEquals(204, call("DELETE", "/api/v2/trust/host-exceptions", where, w).status());
         assertEquals(404, call("DELETE", "/api/v2/trust/host-exceptions", where, w).status());
         assertEquals(List.of(), call("GET", "/api/v2/trust/certificates", null, session).body().get("hostExceptions"));
+        assertEquals(List.of(), call("GET", "/api/v2/trust/certificates", null, session).body().get("alerts"));
+        assertEquals("no alert to dismiss", 404, call("DELETE", "/api/v2/trust/alerts", where, w).status());
         Map<String, Object> listed = Json.asMap(((List<?>) call("GET", "/api/v2/trust/certificates", null, session).body().get("certificates")).get(0));
         assertTrue(listed.containsKey("notBefore") && listed.containsKey("names") && listed.containsKey("selfSigned"));
         assertEquals("another site's page", 403, call("POST", "/api/v2/trust/probe", Map.of("directory", "prod"),

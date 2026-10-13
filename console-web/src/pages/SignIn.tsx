@@ -155,7 +155,9 @@ function message(e: ApiError): string {
     case 'too-many-attempts':
       return 'Too many failed sign-ins. Wait a few minutes and try again.';
     case 'untrusted-certificate':
-      return 'The directory\'s certificate is not trusted. An administrator can probe the directory and trust it.';
+      return e.problem.reason === 'pin-changed'
+        ? 'The directory presented a different certificate from the one the console was told to trust. Administrators have been alerted; sign in again once they have reviewed it.'
+        : 'The directory\'s certificate is not trusted. An administrator can probe the directory and trust it.';
     default:
       return e.message;
   }
