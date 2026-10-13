@@ -31,17 +31,27 @@ public final class Schema {
 
     public record ObjectClass(String oid, List<String> names, List<String> superiors, String kind,
                               List<String> must, List<String> may, boolean container, List<String> containment,
-                              List<String> naming) {
+                              List<String> naming, List<String> ndsFlags, String ndsName) {
         public String name() {
             return names.isEmpty() ? oid : names.get(0);
+        }
+
+        /** Not part of eDirectory's base schema ({@code X-NDS_NONREMOVABLE}), so it may be deleted when unused. */
+        public boolean removable() {
+            return !ndsFlags.contains("X-NDS_NONREMOVABLE");
         }
     }
 
     /** {@code perReplica}: eDirectory never synchronizes it ({@code X-NDS_NEVER_SYNC}); each server keeps its own value. */
     public record AttributeType(String oid, List<String> names, String syntax, boolean singleValue,
-                                boolean readOnly, boolean operational, String ndsName, boolean perReplica) {
+                                boolean readOnly, boolean operational, String ndsName, boolean perReplica, List<String> ndsFlags) {
         public String name() {
             return names.isEmpty() ? oid : names.get(0);
+        }
+
+        /** Not part of eDirectory's base schema ({@code X-NDS_NONREMOVABLE}). */
+        public boolean removable() {
+            return !ndsFlags.contains("X-NDS_NONREMOVABLE");
         }
 
         public boolean binary() {
@@ -64,7 +74,7 @@ public final class Schema {
             AttributeType a = new AttributeType(p.get("").get(0), p.getOrDefault("NAME", List.of()),
                 first(p, "SYNTAX") == null ? null : first(p, "SYNTAX").replaceAll("\\{\\d+}$", ""),
                 p.containsKey("SINGLE-VALUE"), p.containsKey("NO-USER-MODIFICATION"),
-                first(p, "USAGE") != null && !first(p, "USAGE").equals("userApplications"), first(p, "X-NDS_NAME"), flag(p, "X-NDS_NEVER_SYNC"));
+                first(p, "USAGE") != null && !first(p, "USAGE").equals("userApplications"), first(p, "X-NDS_NAME"), flag(p, "X-NDS_NEVER_SYNC"), flags(p));
             attributes.put(a.oid(), a);
             a.names().forEach(n -> attributeByName.put(n.toLowerCase(Locale.ROOT), a));
             attributeByName.put(a.oid(), a);
@@ -75,7 +85,7 @@ public final class Schema {
             boolean container = kind.equals("structural") && !flag(p, "X-NDS_NOT_CONTAINER") && !p.containsKey("X-NDS_AMBIGUOUS_CONTAINMENT");
             ObjectClass c = new ObjectClass(p.get("").get(0), p.getOrDefault("NAME", List.of()), p.getOrDefault("SUP", List.of()), kind,
                 p.getOrDefault("MUST", List.of()), p.getOrDefault("MAY", List.of()), container,
-                p.getOrDefault("X-NDS_CONTAINMENT", List.of()), p.getOrDefault("X-NDS_NAMING", List.of()));
+                p.getOrDefault("X-NDS_CONTAINMENT", List.of()), p.getOrDefault("X-NDS_NAMING", List.of()), flags(p), first(p, "X-NDS_NAME"));
             classes.put(c.oid(), c);
             c.names().forEach(n -> classByName.put(n.toLowerCase(Locale.ROOT), c));
             classByName.put(c.oid(), c);
@@ -228,6 +238,17 @@ public final class Schema {
     private static String first(Map<String, List<String>> p, String k) {
         List<String> v = p.get(k);
         return v == null || v.isEmpty() ? null : v.get(0);
+    }
+
+    /** The {@code X-NDS_*} extensions set to '1' (eDirectory's attribute and class flags). */
+    private static List<String> flags(Map<String, List<String>> p) {
+        List<String> out = new ArrayList<>();
+        for (String k : p.keySet()) {
+            if (k.startsWith("X-NDS_") && flag(p, k)) {
+                out.add(k);
+            }
+        }
+        return List.copyOf(out);
     }
 
     private static boolean flag(Map<String, List<String>> p, String k) {

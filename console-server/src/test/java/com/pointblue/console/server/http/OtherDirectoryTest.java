@@ -110,6 +110,17 @@ public class OtherDirectoryTest {
     }
 
     @Test
+    public void trustedProxiesAreSavedNormalizedAndRefusedWhenNotAddresses() throws Exception {
+        Map<String, String> a = admin();
+        assertEquals(List.of(), call("GET", "/api/v2/console/settings", null, a).body().get("trustedProxies"));
+        assertEquals(400, call("PUT", "/api/v2/console/settings", Map.of("trustedProxies", List.of("proxy.example.com")), a).status());
+        Reply r = call("PUT", "/api/v2/console/settings", Map.of("trustedProxies", List.of(" 10.0.0.5", "10.0.0.5", "10.20.0.0/16")), a);
+        assertEquals(200, r.status());
+        assertEquals(List.of("10.0.0.5", "10.20.0.0/16"), r.body().get("trustedProxies"));
+        assertEquals("the other setting is left alone", false, r.body().get("otherDirectories"));
+    }
+
+    @Test
     public void aPersonSignsInToADirectoryTheyEnterAndKeepsTheCertificateTheyAccepted() throws Exception {
         assertEquals(false, call("GET", "/api/v2/sign-in/options", null, Map.of()).body().get("otherDirectories"));
         assertEquals("off until an administrator allows it", 403, call("POST", "/api/v2/session/other", other("cn=Pat Lee,o=system", "pat-pw", null), Map.of()).status());

@@ -21,6 +21,15 @@ public class ObjectModelTest {
         return new Schema(classes, attrs);
     }
 
+    @Test
+    public void baseSchemaIsNotRemovableAndFlagsAreKept() {
+        Schema s = schema();
+        assertFalse("X-NDS_NONREMOVABLE", s.objectClass("Top").removable());
+        assertTrue(s.objectClass("Top").ndsFlags().contains("X-NDS_AMBIGUOUS_NAMING"));
+        assertTrue(s.objectClass("dynamicGroup").removable());
+        assertEquals("User", s.objectClass("inetOrgPerson").ndsName());
+    }
+
     // ---- names ----
 
     @Test

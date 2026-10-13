@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button, Card, CardBody, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm,
-  Flex, FlexItem, Label, LabelGroup, PageSection, SearchInput, Spinner, Title, ToggleGroup, ToggleGroupItem,
+  Flex, FlexItem, Label, LabelGroup, PageSection, SearchInput, Spinner, Title, ToggleGroup, ToggleGroupItem, Tooltip,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Tr } from '@patternfly/react-table';
 import { type Edir, type SchemaAttribute, type SchemaClass, edir } from '../api';
@@ -55,7 +55,7 @@ export function SchemaPage({ kind = 'classes', name }: { kind?: 'classes' | 'att
     });
 
   const f = filter.toLowerCase();
-  const shownClasses = useMemo(() => (classes ?? []).filter((c) => c.names.some((n) => n.toLowerCase().includes(f))), [classes, f]);
+  const shownClasses = useMemo(() => (classes ?? []).filter((c) => c.names.some((n) => n.toLowerCase().includes(f)) || (c.ndsName ?? '').toLowerCase().includes(f)), [classes, f]);
   const shownAttributes = useMemo(() => (attributes ?? []).filter((a) => a.names.some((n) => n.toLowerCase().includes(f)) || (a.ndsName ?? '').toLowerCase().includes(f)), [attributes, f]);
 
   return (
@@ -99,7 +99,7 @@ export function SchemaPage({ kind = 'classes', name }: { kind?: 'classes' | 'att
             {!name && <Title headingLevel="h2">Choose a {kind === 'classes' ? 'class' : 'attribute'}</Title>}
             {name && kind === 'classes' && <ClassDetails key={`${name}-${version}`} name={name} admin={admin} api={api} run={run} onChanged={() => changed()} onDelete={() => remove('class', name)} />}
             {name && kind === 'attributes' && attributes && <AttributeDetails a={attributes.find((a) => a.names.some((n) => n.toLowerCase() === name.toLowerCase()))}
-              onDelete={admin ? () => remove('attribute', name) : undefined} />}
+              classes={classes ?? []} onDelete={admin ? () => remove('attribute', name) : undefined} />}
           </CardBody>
         </Card>
       </div>
@@ -134,10 +134,12 @@ function ClassDetails({ name, admin, api, run, onChanged, onDelete }: {
       <LabelGroup>
         <Label color="blue">{c.kind}</Label>
         <Label>{c.container ? 'container' : 'leaf'}</Label>
+        <FlagLabels flags={c.ndsFlags} />
       </LabelGroup>
       <DescriptionList isHorizontal className="dc-tab-body">
         <Item term="OID" value={<span className="dc-mono">{c.oid}</span>} />
         {c.names.length > 1 && <Item term="Also called" value={c.names.slice(1).join(', ')} />}
+        {c.ndsName && <Item term="eDirectory name" value={c.ndsName} />}
         <Item term="Inherits from" value={<Links kind="classes" names={c.superiors} />} />
         <Item term="Named by" value={c.naming.join(', ') || '—'} />
         <Item term="Can be created in" value={<Links kind="classes" names={c.containment} />} />
@@ -147,7 +149,7 @@ function ClassDetails({ name, admin, api, run, onChanged, onDelete }: {
       {admin && (
         <div className="dc-tab-body">
           <Button variant="secondary" onClick={() => setAdding(true)}>Add optional attributes</Button>{' '}
-          <Button variant="link" isDanger onClick={onDelete}>Delete the class</Button>
+          <DeleteButton what="class" removable={c.removable !== false} onDelete={onDelete} />
         </div>
       )}
       {adding && <AddOptionalModal api={api} run={run} cls={c.name} onClose={() => setAdding(false)} onDone={() => { setAdding(false); onChanged(); }} />}
@@ -155,7 +157,43 @@ function ClassDetails({ name, admin, api, run, onChanged, onDelete }: {
   );
 }
 
-function AttributeDetails({ a, onDelete }: { a?: SchemaAttribute; onDelete?: () => void }) {
+/** eDirectory's attribute and class flags, as its tools name them; NOT_CONTAINER and NEVER_SYNC are shown elsewhere. */
+const FLAGS: Record<string, string> = {
+  'X-NDS_NONREMOVABLE': 'base schema',
+  'X-NDS_PUBLIC_READ': 'public read',
+  'X-NDS_SERVER_READ': 'server read',
+  'X-NDS_PER_REPLICA': 'per replica',
+  'X-NDS_HIDDEN': 'hidden',
+  'X-NDS_NAME_VALUE_ACCESS': 'write managed',
+  'X-NDS_SCHED_SYNC_NEVER': 'never schedules synchronization',
+  'X-NDS_NOT_SCHED_SYNC_IMMEDIATE': 'not synchronized immediately',
+  'X-NDS_FILTERED_REQUIRED': 'always in filtered replicas',
+  'X-NDS_READ_FILTERED': 'read filtered',
+  'X-NDS_OPERATIONAL': 'operational',
+  'X-NDS_FILTERED_OPERATIONAL': 'filtered operational',
+  'X-NDS_AMBIGUOUS_NAMING': 'ambiguous naming',
+};
+const SHOWN_ELSEWHERE = new Set(['X-NDS_NOT_CONTAINER', 'X-NDS_NEVER_SYNC', 'X-NDS_AMBIGUOUS_CONTAINMENT']);
+
+function FlagLabels({ flags }: { flags?: string[] }) {
+  return <>{(flags ?? []).filter((f) => !SHOWN_ELSEWHERE.has(f)).map((f) => (
+    <Label key={f} color={f === 'X-NDS_NONREMOVABLE' ? 'grey' : undefined}>{FLAGS[f] ?? f.replace(/^X-NDS_/, '').toLowerCase().replace(/_/g, ' ')}</Label>
+  ))}</>;
+}
+
+/** eDirectory refuses to delete base schema: say so rather than offer it. */
+function DeleteButton({ what, removable, onDelete }: { what: 'class' | 'attribute'; removable: boolean; onDelete: () => void }) {
+  if (removable) {
+    return <Button variant="link" isDanger onClick={onDelete}>Delete the {what}</Button>;
+  }
+  return (
+    <Tooltip content={`The ${what} is part of eDirectory's base schema, which cannot be deleted.`}>
+      <Button variant="link" isDanger isAriaDisabled>Delete the {what}</Button>
+    </Tooltip>
+  );
+}
+
+function AttributeDetails({ a, classes, onDelete }: { a?: SchemaAttribute; classes: SchemaClass[]; onDelete?: () => void }) {
   if (!a) {
     return <Title headingLevel="h2">No such attribute</Title>;
   }
@@ -167,14 +205,18 @@ function AttributeDetails({ a, onDelete }: { a?: SchemaAttribute; onDelete?: () 
         {a.readOnly && <Label color="orange">maintained by the directory</Label>}
         {a.operational && <Label>operational</Label>}
         {a.binary && <Label>binary</Label>}
+        {a.perReplica && <Label>never synchronized</Label>}
+        <FlagLabels flags={a.ndsFlags} />
       </LabelGroup>
       <DescriptionList isHorizontal className="dc-tab-body">
         <Item term="OID" value={<span className="dc-mono">{a.oid}</span>} />
         {a.names.length > 1 && <Item term="Also called" value={a.names.slice(1).join(', ')} />}
         {a.ndsName && <Item term="eDirectory name" value={a.ndsName} />}
         <Item term="Syntax" value={<>{SYNTAXES[a.syntax] ?? 'Other'} <span className="dc-mono dc-subtle">{a.syntax}</span></>} />
+        <Item term="Required by" value={<Links kind="classes" names={usedBy(classes, a, 'must')} />} />
+        <Item term="Optional for" value={<Links kind="classes" names={usedBy(classes, a, 'may')} />} />
       </DescriptionList>
-      {onDelete && <div className="dc-tab-body"><Button variant="link" isDanger onClick={onDelete}>Delete the attribute</Button></div>}
+      {onDelete && <div className="dc-tab-body"><DeleteButton what="attribute" removable={a.removable !== false} onDelete={onDelete} /></div>}
     </>
   );
 }
@@ -199,4 +241,10 @@ function Links({ kind, names }: { kind: 'classes' | 'attributes'; names: string[
       ))}
     </>
   );
+}
+
+/** The classes that name this attribute themselves (not through a superior class). */
+function usedBy(classes: SchemaClass[], a: SchemaAttribute, list: 'must' | 'may'): string[] {
+  const names = new Set(a.names.map((n) => n.toLowerCase()));
+  return classes.filter((c) => c[list].some((n) => names.has(n.toLowerCase()))).map((c) => c.name);
 }

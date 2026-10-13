@@ -145,7 +145,7 @@ function Overview({ api, guid, status, onChanged }: { api: Idm; guid: string; st
                     }
                     const change = () => act('Start option', (c) => api.startOption(guid, o, c));
                     if (o === 'disabled') {
-                      sure.ask(`Disable ${status.name}?`, 'While a driver is disabled its events are not queued: changes made in the meantime never reach it, and it cannot be started until its start option is Automatic or Manual again. Stopping it keeps queueing events.', 'Disable', change);
+                      sure.ask(`Disable ${status.name}?`, 'Disabling a driver deletes its cache: events already queued for it are discarded, changes made while it is disabled never reach it, and it cannot be started until its start option is Automatic or Manual again. Stopping it instead keeps queueing events.', 'Disable', change);
                     } else {
                       change();
                     }

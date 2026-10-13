@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ActionGroup, Button, Card, CardBody, EmptyState, EmptyStateBody, Form, FormGroup, FormHelperText, FormSelect,
-  FormSelectOption, HelperText, HelperTextItem, PageSection, Pagination, Spinner, Switch, TextArea, TextInput, Title,
+  FormSelectOption, FormSelectOptionGroup, HelperText, HelperTextItem, PageSection, Pagination, Spinner, Switch, TextArea, TextInput, Title,
   ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
 import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
@@ -38,7 +38,7 @@ export function Search() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    tree.classes().then((c) => setClasses(c.filter((x) => x.kind === 'structural').sort((a, b) => a.name.localeCompare(b.name)))).catch(() => undefined);
+    tree.classes().then((c) => setClasses(c.filter((x) => x.kind !== 'abstract').sort((a, b) => a.name.localeCompare(b.name)))).catch(() => undefined);
     tree.attributes().then((a) => setAttributes(a.filter((x) => !x.binary).sort((x, y) => x.name.localeCompare(y.name)))).catch(() => undefined);
   }, [tree]);
 
@@ -106,7 +106,13 @@ export function Search() {
                   <FormGroup label="Class" fieldId="class">
                     <FormSelect id="class" value={objectClass} onChange={(_e, v) => setObjectClass(v)}>
                       <FormSelectOption value="" label="Any class" />
-                      {classes.map((c) => <FormSelectOption key={c.name} value={c.name} label={c.name} />)}
+                      <FormSelectOptionGroup label="Object classes">
+                        {classes.filter((c) => c.kind === 'structural').map((c) => <FormSelectOption key={c.name} value={c.name} label={c.name} />)}
+                      </FormSelectOptionGroup>
+                      {/* an auxiliary class is in an object's objectClass once added to it, so it can be searched on */}
+                      <FormSelectOptionGroup label="Auxiliary classes">
+                        {classes.filter((c) => c.kind === 'auxiliary').map((c) => <FormSelectOption key={c.name} value={c.name} label={c.name} />)}
+                      </FormSelectOptionGroup>
                     </FormSelect>
                   </FormGroup>
                   <FormGroup label="Where" fieldId="cond-0-attr">

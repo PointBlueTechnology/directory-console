@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,23 +67,68 @@ final class OtherDirectory {
             case "POST /api/v2/session/other" -> signIn(ex);
             case "GET /api/v2/console/settings" -> {
                 server.session(ex, Role.ADMIN);
-                Http.json(ex, 200, Map.of("otherDirectories", enabled()));
+                Http.json(ex, 200, settings());
             }
             case "PUT /api/v2/console/settings" -> {
                 Sessions.Session s = server.session(ex, Role.ADMIN);
                 server.stepUp(s);
-                boolean on = Boolean.TRUE.equals(Http.body(ex).get("otherDirectories"));
+                Map<String, Object> b = Http.body(ex);
+                // either setting, or both; what is left out stays as it is
+                Boolean on = b.containsKey("otherDirectories") ? Boolean.TRUE.equals(b.get("otherDirectories")) : null;
+                List<String> proxies = null;
+                if (b.get("trustedProxies") instanceof List<?> l) {
+                    proxies = new ArrayList<>();
+                    for (Object o : l) {
+                        try {
+                            String n = Proxies.normalize(String.valueOf(o));
+                            if (!proxies.contains(n)) {
+                                proxies.add(n);
+                            }
+                        } catch (IllegalArgumentException x) {
+                            throw new Http.Problem(400, "bad-request", x.getMessage());
+                        }
+                    }
+                } else if (b.containsKey("trustedProxies")) {
+                    throw new Http.Problem(400, "bad-request", "trustedProxies is a list of addresses or CIDR ranges");
+                }
+                List<String> newProxies = proxies;
+                String what = on != null && proxies != null ? "console settings" : on != null ? "other directories " + (on ? "allowed" : "refused") : "trusted proxies";
                 try {
-                    server.config.update(server.config.version(), s.principal.dn(), "other directories " + (on ? "allowed" : "refused"), doc ->
-                        doc.put("userDirectories", new LinkedHashMap<>(Map.of("enabled", on))));
+                    server.config.update(server.config.version(), s.principal.dn(), what, doc -> {
+                        if (on != null) {
+                            doc.put("userDirectories", new LinkedHashMap<>(Map.of("enabled", on)));
+                        }
+                        if (newProxies != null) {
+                            doc.put("trustedProxies", List.copyOf(newProxies));
+                        }
+                    });
                 } catch (ConfigStore.Conflict c) {
                     throw new Http.Problem(409, "conflict", "the configuration changed meanwhile; try again");
                 }
-                server.audit.log(Server.who(s), "settings.other-directories", "console", Map.of("enabled", on), "ok");
-                Http.json(ex, 200, Map.of("otherDirectories", on));
+                if (on != null) {
+                    server.audit.log(Server.who(s), "settings.other-directories", "console", Map.of("enabled", on), "ok");
+                }
+                if (newProxies != null) {
+                    server.audit.log(Server.who(s), "settings.trusted-proxies", "console", Map.of("proxies", newProxies), "ok");
+                }
+                Http.json(ex, 200, settings());
             }
             default -> throw new Http.Problem(405, "method-not-allowed", method + " " + path);
         }
+    }
+
+    private Map<String, Object> settings() {
+        return Map.of("otherDirectories", enabled(), "trustedProxies", trustedProxies());
+    }
+
+    /** Reverse proxies whose X-Forwarded-For is believed (addresses or CIDR ranges, normalized when saved). */
+    List<String> trustedProxies() {
+        Object t = server.config.read().get("trustedProxies");
+        List<String> out = new ArrayList<>();
+        if (t instanceof List<?> l) {
+            l.forEach(o -> out.add(String.valueOf(o)));
+        }
+        return out;
     }
 
     boolean enabled() {
@@ -110,7 +156,7 @@ final class OtherDirectory {
             throw new Http.Problem(403, "not-allowed", "signing in to other directories is not allowed here");
         }
         Map<String, Object> b = Http.body(ex);
-        String client = Http.client(ex);
+        String client = server.client(ex);
         String host = Http.string(b, "host", true).trim();
         int port = Http.integer(b, "port", 636);
         String dn = Http.string(b, "name", true).trim();

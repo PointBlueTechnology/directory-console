@@ -54,6 +54,9 @@ export function SettingsPage() {
             <Tab eventKey="other" title={<TabTitleText>Other directories</TabTitleText>}>
               <OtherDirectoriesSection />
             </Tab>
+            <Tab eventKey="proxy" title={<TabTitleText>Reverse proxy</TabTitleText>}>
+              <ProxySection />
+            </Tab>
           </Tabs>
         </HeadingLevel.Provider>
       )}
@@ -90,6 +93,53 @@ function OtherDirectoriesSection() {
       {on === null && !error && <Spinner size="md" aria-label="Loading" />}
       {on !== null && (
         <Checkbox id="other-directories" label="Let people sign in to directories they enter themselves" isChecked={on} onChange={(_e, v) => change(v)} />
+      )}
+      <Outcome error={error} notice={notice} />
+      {dialog}
+    </div>
+  );
+}
+
+/**
+ * Console-wide: the reverse proxies whose X-Forwarded-For header is believed. Audit entries and
+ * sign-in throttling then see the person's address rather than the proxy's. A request from any other
+ * address keeps its own, so nobody can choose the address they are recorded under.
+ */
+function ProxySection() {
+  const { run, dialog } = useStepUp();
+  const [saved, setSaved] = useState<string[] | null>(null);
+  const [text, setText] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    consoleSettings.get().then((v) => { setSaved(v.trustedProxies); setText(v.trustedProxies.join('\n')); }, setError);
+  }, []);
+  const entries = text.split(/[\s,]+/).filter(Boolean);
+  const save = () => {
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    run(() => consoleSettings.put({ trustedProxies: entries })).then((r) => {
+      setSaved(r.trustedProxies);
+      setText(r.trustedProxies.join('\n'));
+      setNotice(r.trustedProxies.length ? 'X-Forwarded-For is now believed from these addresses.' : 'Every request is recorded under its own address.');
+    }, setError).finally(() => setBusy(false));
+  };
+  return (
+    <div className="dc-tab-body">
+      <p>When the console is reached through a reverse proxy or load balancer, list its addresses here. Requests from them are recorded under the client address the proxy reports in X-Forwarded-For; requests from anywhere else keep their own address, whatever header they send.</p>
+      {saved === null && !error && <Spinner size="md" aria-label="Loading" />}
+      {saved !== null && (
+        <Form onSubmit={(e) => { e.preventDefault(); save(); }}>
+          <FormGroup label="Trusted proxies" fieldId="proxies">
+            <TextArea id="proxies" className="dc-mono" rows={4} value={text} onChange={(_e, v) => setText(v)} placeholder={'10.0.0.5\n10.20.0.0/16'} />
+            <FormHelperText><HelperText><HelperTextItem>IP addresses or CIDR ranges, one per line. Empty: no proxy is trusted.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+          <ActionGroup>
+            <Button type="submit" isLoading={busy} isDisabled={busy || entries.join('\n') === saved.join('\n')}>Save</Button>
+          </ActionGroup>
+        </Form>
       )}
       <Outcome error={error} notice={notice} />
       {dialog}

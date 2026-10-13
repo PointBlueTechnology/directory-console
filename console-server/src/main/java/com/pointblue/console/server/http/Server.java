@@ -226,7 +226,7 @@ public final class Server {
             if (!path.startsWith("/api/v2/setup")) {
                 throw new Http.Problem(503, "setup-required", "Directory Console is not configured yet; finish setup with the token in the container log");
             }
-            if (!b.check(ex.getRequestHeaders().getFirst("X-Setup-Token"), Http.client(ex))) {
+            if (!b.check(ex.getRequestHeaders().getFirst("X-Setup-Token"), client(ex))) {
                 throw new Http.Problem(401, "setup-token", "a valid X-Setup-Token header is required");
             }
             setup.handle(ex, path, method);
@@ -320,6 +320,11 @@ public final class Server {
     }
 
     /** The audit actor for a session. */
+    /** The client's address: the socket's, or what a trusted reverse proxy reports (console setting trustedProxies). */
+    String client(HttpExchange ex) {
+        return Proxies.client(other.trustedProxies(), Http.client(ex), ex.getRequestHeaders().get("X-Forwarded-For"));
+    }
+
     static AuditLog.Actor who(Sessions.Session s) {
         return new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via());
     }
@@ -370,7 +375,7 @@ public final class Server {
 
     private void signIn(HttpExchange ex) throws IOException {
         Map<String, Object> b = Http.body(ex);
-        String client = Http.client(ex);
+        String client = client(ex);
         String dirId = Http.string(b, "directory", true);
         String name = Http.string(b, "name", false);
         String choice = Http.string(b, "choice", false);
@@ -438,7 +443,7 @@ public final class Server {
     /** Sign in again on the same session (direct sign-in): a bind with the password, which is not kept. */
     private void stepUpSignIn(HttpExchange ex) throws IOException {
         Sessions.Session s = session(ex, null);
-        String client = Http.client(ex);
+        String client = client(ex);
         if (!failedByClient.allowed(client)) {
             throw new Http.Problem(429, "too-many-attempts", "too many failed sign-ins; wait a few minutes");
         }
@@ -540,7 +545,7 @@ public final class Server {
     /** {@code {"server": guid, "password"}}: a direct sign-in's connection to another server, as the same person. */
     private void serverSignIn(HttpExchange ex) throws IOException {
         Sessions.Session s = session(ex, null);
-        String client = Http.client(ex);
+        String client = client(ex);
         if (!failedByClient.allowed(client)) {
             throw new Http.Problem(429, "too-many-attempts", "too many failed sign-ins; wait a few minutes");
         }
@@ -605,14 +610,14 @@ public final class Server {
         if (d == null || d.oidc() == null) {
             throw new Http.Problem(404, "no-sso", "single sign-on is not configured for that directory");
         }
-        if (!failedByClient.allowed(Http.client(ex))) {
+        if (!failedByClient.allowed(client(ex))) {
             throw new Http.Problem(429, "too-many-attempts", "too many failed sign-ins; wait a few minutes");
         }
         com.pointblue.console.auth.OidcClient.Start start;
         try {
             start = oidc.start(d, config.secret(d.oidcSecretPath()), safeNext(q.get("next")));
         } catch (IOException e) {
-            audit.log(new AuditLog.Actor("(sso)", null, "oidc"), "sign-in", d.id(), Map.of("client", Http.client(ex), "code", "provider"), "refused");
+            audit.log(new AuditLog.Actor("(sso)", null, "oidc"), "sign-in", d.id(), Map.of("client", client(ex), "code", "provider"), "refused");
             redirect(ex, "/?sso-error=provider");
             return;
         }
@@ -622,7 +627,7 @@ public final class Server {
 
     private void oidcCallback(HttpExchange ex) throws IOException {
         Map<String, String> q = Http.query(ex);
-        String client = Http.client(ex);
+        String client = client(ex);
         ex.getResponseHeaders().add("Set-Cookie", OIDC_COOKIE + "=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0");
         String state = q.get("state");
         String cookie = Http.cookie(ex, OIDC_COOKIE);

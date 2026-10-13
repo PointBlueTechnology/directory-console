@@ -133,7 +133,7 @@ public final class Http {
         return out;
     }
 
-    /** The client's address (the socket's; a trusted proxy's X-Forwarded-For is a later setting). */
+    /** The socket's address; Server.client applies trusted proxies' X-Forwarded-For. */
     public static String client(HttpExchange ex) {
         return ex.getRemoteAddress().getAddress().getHostAddress();
     }

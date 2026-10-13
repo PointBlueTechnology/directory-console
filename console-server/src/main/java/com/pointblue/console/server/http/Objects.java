@@ -241,6 +241,11 @@ final class Objects {
         m.put("naming", schema.naming(c.name()));
         m.put("must", c.must());
         m.put("may", c.may());
+        m.put("removable", c.removable());
+        m.put("ndsFlags", c.ndsFlags());
+        if (c.ndsName() != null) {
+            m.put("ndsName", c.ndsName());
+        }
         return m;
     }
 
@@ -266,6 +271,8 @@ final class Objects {
         m.put("operational", a.operational());
         m.put("binary", a.binary());
         m.put("perReplica", a.perReplica());
+        m.put("removable", a.removable());
+        m.put("ndsFlags", a.ndsFlags());
         if (a.ndsName() != null) {
             m.put("ndsName", a.ndsName());
         }

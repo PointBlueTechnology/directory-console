@@ -126,6 +126,12 @@ export interface SchemaClass {
   may: string[];
   allMust?: string[];
   allMay?: string[];
+  /** The class's eDirectory (NDAP) name when it differs from the LDAP name. */
+  ndsName?: string;
+  /** False for eDirectory's base schema (X-NDS_NONREMOVABLE). */
+  removable?: boolean;
+  /** eDirectory's X-NDS_* flags that are set. */
+  ndsFlags?: string[];
 }
 
 export interface SchemaAttribute {
@@ -140,6 +146,10 @@ export interface SchemaAttribute {
   operational: boolean;
   binary: boolean;
   ndsName?: string;
+  /** False for eDirectory's base schema (X-NDS_NONREMOVABLE). */
+  removable?: boolean;
+  /** eDirectory's X-NDS_* flags that are set. */
+  ndsFlags?: string[];
 }
 
 export interface Rights {
@@ -154,6 +164,8 @@ export interface Account {
   lockedByIntruder: boolean | null;
   intruderAttempts: number | null;
   intruderResetTime: string | null;
+  /** Where the last failed login counted towards lockout came from. */
+  intruderAddress?: string | null;
   loginExpires: string | null;
   maxConnections: number | null;
   lastLogin: string | null;
@@ -947,7 +959,15 @@ export function daysUntil(iso: string, now = Date.now()): number {
 }
 
 /** Console-wide settings (administrators; a change needs a recent sign-in). */
+/** Console-wide settings (not per directory). */
+export interface ConsoleSettings {
+  otherDirectories: boolean;
+  /** Reverse proxies whose X-Forwarded-For is believed: addresses or CIDR ranges. */
+  trustedProxies: string[];
+}
+
 export const consoleSettings = {
-  get: () => request<{ otherDirectories: boolean }>('GET', '/api/v2/console/settings').then((r) => r.data),
-  put: (v: { otherDirectories: boolean }) => request<{ otherDirectories: boolean }>('PUT', '/api/v2/console/settings', v).then((r) => r.data),
+  get: () => request<ConsoleSettings>('GET', '/api/v2/console/settings').then((r) => r.data),
+  /** Either setting, or both; what is left out stays as it is. */
+  put: (v: Partial<ConsoleSettings>) => request<ConsoleSettings>('PUT', '/api/v2/console/settings', v).then((r) => r.data),
 };
