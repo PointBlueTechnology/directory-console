@@ -663,6 +663,8 @@ export interface Certificate {
 
 export interface Ref { guid?: string | null; dn: string; name: string }
 
+export type ServerCertificate = Ref & { server: { dn: string; name: string } | null; usedBy?: string[]; certificate: Certificate | null; chain?: Certificate[] };
+
 export interface Pki {
   ca: (Ref & { host?: string; defaultRsaKeySize?: string; defaultLifeYears?: string; certificates: Certificate[] }) | null;
   serverCertificates: (Ref & { server: { dn: string; name: string } | null; usedBy: string[]; certificate: Certificate | null; chain: Certificate[] })[];
@@ -737,7 +739,41 @@ export function security(id: string) {
       request<ChallengeSet>('PATCH', `${base}/challenge-sets/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
     deleteChallengeSet: (guid: string, confirm?: string) => request<void>('DELETE', `${base}/challenge-sets/${guidPath(guid)}`, undefined, h(confirm)),
     loginPolicy: () => get<LoginPolicy>('/login-policy'),
+    /** A server certificate (key material object) on a server, from the tree CA. */
+    createServerCertificate: (serverGuid: string, body: CertificateRequest, confirm?: string) =>
+      request<ServerCertificate>('POST', `${base}/pki/servers/${guidPath(serverGuid)}/certificates`, body, h(confirm)).then((r) => r.data),
+    /** Refused while an LDAP server or SAS service uses it. */
+    deleteServerCertificate: (guid: string, confirm?: string) =>
+      request<void>('DELETE', `${base}/pki/server-certificates/${guidPath(guid)}`, undefined, h(confirm)),
+    userCertificates: (guid: string) => get<{ items: UserCertificate[] }>(`/objects/${guidPath(guid)}/certificates`).then((r) => r.items),
+    createUserCertificate: (guid: string, body: CertificateRequest, confirm?: string) =>
+      request<{ items: UserCertificate[] }>('POST', `${base}/objects/${guidPath(guid)}/certificates`, body, h(confirm)).then((r) => r.data.items),
   };
+}
+
+/** A new certificate: names are dns:host, ip:address, email:address or uri:… */
+export interface CertificateRequest {
+  name: string;
+  algorithm: 'rsa' | 'ec256' | 'ec384';
+  rsaBits?: number;
+  signature: 'sha256' | 'sha384' | 'sha512';
+  validityYears: number;
+  subject?: string;
+  names?: string[];
+  exportable?: boolean;
+  email?: string;
+}
+
+export interface UserCertificate {
+  name: string;
+  subject: string;
+  issuer: string;
+  serial: string;
+  notBefore: string;
+  notAfter: string;
+  keySize?: number;
+  /** Base64 DER. */
+  certificate?: string;
 }
 
 export type SecurityApi = ReturnType<typeof security>;

@@ -13,6 +13,7 @@ import { ProblemAlert } from './Problem';
 import { ValueView } from './ValueView';
 import { AttributeModal, AuxClassModal, DeleteModal, MoveModal, PasswordModal, RenameModal } from './Edit';
 import { AccountTab } from './AccountTab';
+import { UserCertificatesTab } from './UserCertificatesTab';
 import { GroupMembersTab, UserGroupsTab } from './MembershipTab';
 import { RightsTab } from './RightsTab';
 import { ReplicasTab } from './ReplicasTab';
@@ -185,6 +186,11 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
         {user && (
           <Tab eventKey="account" title={<TabTitleText>Account</TabTitleText>}>
             <AccountTab obj={obj} onChanged={refreshed} />
+          </Tab>
+        )}
+        {user && me.roles.length > 0 && (
+          <Tab eventKey="certificates" title={<TabTitleText>Certificates</TabTitleText>}>
+            <UserCertificatesTab obj={obj} />
           </Tab>
         )}
         {user && (

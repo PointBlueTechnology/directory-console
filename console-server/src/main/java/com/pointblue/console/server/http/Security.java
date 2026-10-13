@@ -5,6 +5,8 @@ import com.pointblue.console.server.auth.Role;
 import com.pointblue.console.server.auth.Sessions;
 import com.pointblue.console.server.ldap.Ldap;
 import com.pointblue.console.server.ldap.Names;
+import com.pointblue.console.server.ldap.Pki;
+import com.pointblue.console.server.ldap.Servers;
 import com.pointblue.dirxml.dev.json.Json;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.ByteArrayInputStream;
@@ -79,8 +81,9 @@ final class Security {
         Ldap l = s.ldap();
         String route = method + " " + String.join("/", Arrays.copyOfRange(p, 2, p.length))
             .replaceAll("^(password-policies|challenge-sets|objects)/[0-9a-f]{32}", "$1/{guid}")
+            .replaceAll("^pki/(servers|server-certificates)/[0-9a-f]{32}", "pki/$1/{guid}")
             .replaceAll("assignments/[0-9a-f]{32}$", "assignments/{target}");
-        String guid = p.length > 3 ? p[3] : null;
+        String guid = p.length > 3 && p[2].equals("pki") ? (p.length > 4 ? p[4] : null) : p.length > 3 ? p[3] : null;
         if (!method.equals("GET")) {
             if (!s.principal.may(Role.EDITOR, "")) {
                 throw new Http.Problem(403, "forbidden", "security settings need an editor role for the whole tree");
@@ -110,6 +113,10 @@ final class Security {
                 case "PATCH challenge-sets/{guid}" -> updateChallengeSet(ex, l, s, guid);
                 case "DELETE challenge-sets/{guid}" -> deleteChallengeSet(ex, l, s, guid);
                 case "GET login-policy" -> Http.json(ex, 200, loginPolicy(l));
+                case "POST pki/servers/{guid}/certificates" -> createServerCertificate(ex, l, s, guid);
+                case "DELETE pki/server-certificates/{guid}" -> deleteServerCertificate(ex, l, s, guid);
+                case "GET objects/{guid}/certificates" -> Http.json(ex, 200, Map.of("items", userCertificates(l, guid)));
+                case "POST objects/{guid}/certificates" -> createUserCertificate(ex, l, s, guid);
                 default -> throw new Http.Problem(404, "not-found", method + " " + path);
             }
         } catch (NamingException e) {
@@ -117,6 +124,171 @@ final class Security {
         } catch (IllegalArgumentException e) {
             throw new Http.Problem(400, "bad-request", e.getMessage());
         }
+    }
+
+    // ---- PKI operations (6b) ----------------------------------------------------------------------
+
+    /** The request's certificate: name, key (rsa with 2048-4096 bits, or ec256/ec384), signature, years, subject, names. */
+    private static Pki.Spec spec(Map<String, Object> b, String defaultSubject, boolean exportableByDefault) {
+        String name = Http.string(b, "name", true).trim();
+        if (!name.matches("[A-Za-z0-9 _.-]{1,64}")) {
+            throw new IllegalArgumentException("a certificate name is 1-64 letters, digits, spaces, dots, dashes or underscores");
+        }
+        String algorithm = b.get("algorithm") == null ? "rsa" : Http.string(b, "algorithm", true);
+        if (!List.of("rsa", "ec256", "ec384").contains(algorithm)) {
+            throw new IllegalArgumentException("algorithm is rsa, ec256 or ec384");
+        }
+        int bits = Http.integer(b, "rsaBits", 2048);
+        if (algorithm.equals("rsa") && !List.of(2048, 3072, 4096).contains(bits)) {
+            throw new IllegalArgumentException("an RSA key is 2048, 3072 or 4096 bits");
+        }
+        String signature = b.get("signature") == null ? "sha256" : Http.string(b, "signature", true);
+        if (!List.of("sha256", "sha384", "sha512").contains(signature)) {
+            throw new IllegalArgumentException("signature is sha256, sha384 or sha512");
+        }
+        int years = Http.integer(b, "validityYears", 2);
+        if (years < 1 || years > 10) {
+            throw new IllegalArgumentException("validity is 1 to 10 years");
+        }
+        String subject = b.get("subject") == null || String.valueOf(b.get("subject")).isBlank() ? defaultSubject : Http.string(b, "subject", true).trim();
+        Names.parse(subject);
+        List<String> names = new ArrayList<>();
+        if (b.get("names") instanceof List<?> list) {
+            if (list.size() > 20) {
+                throw new IllegalArgumentException("at most 20 alternative names");
+            }
+            for (Object o : list) {
+                String n = String.valueOf(o).trim();
+                if (!n.matches("(dns:[A-Za-z0-9*.-]{1,253}|ip:[0-9A-Fa-f.:]{2,45}|email:[^\\s@]+@[^\\s@]+|uri:\\S{1,500})")) {
+                    throw new IllegalArgumentException("an alternative name is dns:host, ip:address, email:address or uri:…; not " + n);
+                }
+                names.add(n);
+            }
+        }
+        boolean exportable = b.get("exportable") == null ? exportableByDefault : Boolean.TRUE.equals(b.get("exportable"));
+        String email = b.get("email") == null ? null : String.valueOf(b.get("email")).trim();
+        return new Pki.Spec(name, algorithm, bits, signature, years, subject, names, exportable, email);
+    }
+
+    /** {@code POST pki/servers/{guid}/certificates}: a server certificate (key material object) on that server, from the tree CA. */
+    private void createServerCertificate(HttpExchange ex, Ldap l, Sessions.Session s, String serverGuid) throws IOException, NamingException {
+        Ldap.Entry srv = Servers.find(l, serverGuid);
+        if (srv == null) {
+            throw new Http.Problem(404, "no-such-server", "no eDirectory server has GUID " + serverGuid);
+        }
+        String serverName = String.valueOf(srv.first("cn"));
+        Map<String, Object> b = Http.body(ex);
+        Pki.Spec spec = spec(b, "cn=" + serverName, true);
+        String kmo = Names.child(Names.parent(srv.dn()), "cn", spec.name() + " - " + serverName);
+        if (l.read(kmo, "cn") != null) {
+            throw new Http.Problem(409, "exists", "the server already has a certificate named " + spec.name());
+        }
+        Map<String, Object> detail = new LinkedHashMap<>(Map.of("server", srv.dn(), "name", spec.name(), "algorithm", spec.algorithm(), "years", spec.validityYears()));
+        try {
+            Pki.createServerCertificate(l, srv.dn(), spec);
+        } catch (Pki.Refused r) {
+            detail.put("code", r.code);
+            audit(s, "pki.server-certificate.create", null, detail, null);
+            throw new Http.Problem(409, "pki-refused", r.getMessage(), Map.of("code", r.code));
+        }
+        Ldap.Entry made = l.read(kmo, KMO);
+        audit(s, "pki.server-certificate.create", made == null ? kmo : Names.guidHex(made.first("GUID")), detail, null);
+        Map<String, Object> out = made == null ? Map.of("dn", kmo) : kmoJson(made);
+        Http.json(ex, 201, out);
+    }
+
+    private Map<String, Object> kmoJson(Ldap.Entry k) {
+        Map<String, Object> m = ref(k);
+        m.put("server", k.first("hostServer") == null ? null : Map.of("dn", k.first("hostServer"), "name", String.valueOf(Names.identity(k.first("hostServer")).get("name"))));
+        m.put("certificate", cert(bytes(k, "nDSPKIPublicKeyCertificate")));
+        return m;
+    }
+
+    /**
+     * {@code DELETE pki/server-certificates/{guid}}: a server certificate's key material object. Refused
+     * while an LDAP server or SAS service uses it: the server would have no certificate to offer.
+     */
+    private void deleteServerCertificate(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Ldap.Entry k = server.objects.byGuid(l, guid, "objectClass", "cn", "hostServer");
+        if (k == null || k.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("nDSPKIKeyMaterial"))) {
+            throw new Http.Problem(404, "not-found", "no server certificate has GUID " + guid);
+        }
+        List<String> users = new ArrayList<>();
+        for (Ldap.Entry ls : l.search("", "(objectClass=ldapServer)", null, SearchControls.SUBTREE_SCOPE, new String[] {"cn", "ldapKeyMaterialName", "ldapHostServer"}, 200)) {
+            String name = ls.first("ldapKeyMaterialName");
+            String host = ls.first("ldapHostServer");
+            if (name != null && host != null && Names.same(k.dn(), Names.child(Names.parent(host), "cn", name + " - " + Names.identity(host).get("name")))) {
+                users.add(String.valueOf(ls.first("cn")));
+            }
+        }
+        for (Ldap.Entry sas : l.search("", "(objectClass=sASService)", null, SearchControls.SUBTREE_SCOPE, new String[] {"cn", "nDSPKIKeyMaterialDN"}, 200)) {
+            for (Object dn : sas.attributes().getOrDefault("ndspkikeymaterialdn", List.of())) {
+                if (Names.same(k.dn(), String.valueOf(dn))) {
+                    users.add(String.valueOf(sas.first("cn")));
+                }
+            }
+        }
+        if (!users.isEmpty()) {
+            throw new Http.Problem(409, "in-use", k.first("cn") + " is in use by " + String.join(", ", users) + "; choose another certificate there first",
+                Map.of("usedBy", users));
+        }
+        try {
+            l.delete(k.dn());
+        } catch (NamingException x) {
+            audit(s, "pki.server-certificate.delete", guid, Map.of("dn", k.dn()), Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "pki.server-certificate.delete", guid, Map.of("dn", k.dn()), null);
+        Http.json(ex, 204, Map.of());
+    }
+
+    /** {@code GET objects/{guid}/certificates}: the certificates eDirectory holds for a user. */
+    private List<Map<String, Object>> userCertificates(Ldap l, String guid) throws NamingException {
+        Ldap.Entry u = server.objects.byGuid(l, guid, "cn");
+        if (u == null) {
+            throw new Http.Problem(404, "not-found", "no object has GUID " + guid);
+        }
+        try {
+            return Pki.userCertificates(l, u.dn());
+        } catch (Pki.Refused r) {
+            throw new Http.Problem(409, "pki-refused", r.getMessage(), Map.of("code", r.code));
+        }
+    }
+
+    /** {@code POST objects/{guid}/certificates}: a user certificate from the tree CA, made on the CA's host server. */
+    private void createUserCertificate(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Ldap.Entry u = server.objects.byGuid(l, guid, "cn", "mail");
+        if (u == null) {
+            throw new Http.Problem(404, "not-found", "no object has GUID " + guid);
+        }
+        Map<String, Object> b = Http.body(ex);
+        Pki.Spec spec = spec(b, u.dn(), false);
+        if (spec.email() == null && u.first("mail") != null) {
+            spec = new Pki.Spec(spec.name(), spec.algorithm(), spec.rsaBits(), spec.signature(), spec.validityYears(), spec.subject(), spec.names(), spec.exportable(), u.first("mail"));
+        }
+        String host = caHost(l);
+        Map<String, Object> detail = new LinkedHashMap<>(Map.of("user", u.dn(), "name", spec.name(), "algorithm", spec.algorithm(), "years", spec.validityYears()));
+        try {
+            Pki.createUserCertificate(l, host, u.dn(), spec);
+        } catch (Pki.Refused r) {
+            detail.put("code", r.code);
+            audit(s, "pki.user-certificate.create", guid, detail, null);
+            throw new Http.Problem(409, "pki-refused", r.getMessage(), Map.of("code", r.code));
+        }
+        audit(s, "pki.user-certificate.create", guid, detail, null);
+        Http.json(ex, 201, Map.of("items", userCertificates(l, guid)));
+    }
+
+    /** The Organizational CA's host server (which makes user certificates), else the server this connection is on. */
+    private String caHost(Ldap l) throws NamingException {
+        Ldap.Entry sec = securityContainer(l);
+        if (sec != null && sec.first("nDSPKITreeCADN") != null) {
+            Ldap.Entry ca = l.read(sec.first("nDSPKITreeCADN"), "hostServer");
+            if (ca != null && ca.first("hostServer") != null) {
+                return ca.first("hostServer");
+            }
+        }
+        return l.dsaName();
     }
 
     /** The Security container (eDirectory keeps it at the tree root as cn=Security) with its pointers to the CA and the Login Policy. */

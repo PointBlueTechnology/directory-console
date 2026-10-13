@@ -4,12 +4,13 @@ import {
   Form, FormGroup, Label, LabelGroup, Modal, ModalBody, ModalFooter, ModalHeader, PageSection, Spinner, Tab, Tabs, TabTitleText, TextInput, Title,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type Certificate, type LoginPolicy, type PasswordPolicySummary, type Pki, pem, security } from '../api';
+import { type Certificate, type EdirServer, type LoginPolicy, type PasswordPolicySummary, type Pki, edir, pem, security } from '../api';
 import { useSession } from '../session';
 import { linkProps, navigate } from '../router';
 import { useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
-import { useConfirmed } from '../components/Confirm';
+import { useAreYouSure, useConfirmed } from '../components/Confirm';
+import { NewCertificateModal } from '../components/NewCertificate';
 
 const DAY = 86_400_000;
 export const WARN_DAYS = 60;
@@ -59,12 +60,27 @@ export function SecurityPage({ tab = 'certificates' }: { tab?: string }) {
 }
 
 function CertificatesView() {
-  const { me } = useSession();
+  const { me, canAt } = useSession();
   const api = useMemo(() => security(me.directory), [me.directory]);
   const [pki, setPki] = useState<Pki | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [servers, setServers] = useState<EdirServer[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [opError, setOpError] = useState<unknown>(null);
+  const confirmed = useConfirmed();
+  const sure = useAreYouSure();
   const level = useHeading();
-  useEffect(() => { api.pki().then(setPki).catch(setError); }, [api]);
+  // making and deleting certificates changes the whole tree's PKI: an editor of the whole tree
+  const editor = canAt('editor', '');
+  const load = useCallback(() => { api.pki().then(setPki).catch(setError); }, [api]);
+  useEffect(load, [load]);
+  useEffect(() => { if (editor) { edir(me.directory).servers().then(setServers).catch(() => setServers([])); } }, [editor, me.directory]);
+  const remove = (k: Pki['serverCertificates'][number]) => sure.ask(`Delete ${k.name}?`,
+    `The key pair and certificate go with it; nothing can bring them back. Clients that trust it by this certificate (not the tree CA) will stop trusting ${k.server?.name ?? 'the server'}.`,
+    'Delete', () => {
+      setOpError(null);
+      confirmed.run((c) => api.deleteServerCertificate(k.guid!, c)).then(load, setOpError);
+    });
   if (!pki) {
     return error ? <ProblemAlert error={error} /> : <Spinner aria-label="Reading the tree's certificates" />;
   }
@@ -116,8 +132,11 @@ function CertificatesView() {
       </Card>
 
       <Card className="dc-tab-body">
-        <CardTitle><Title headingLevel="h2" size="lg">Server certificates</Title></CardTitle>
+        <CardTitle><Flex><FlexItem grow={{ default: 'grow' }}><Title headingLevel="h2" size="lg">Server certificates</Title></FlexItem>
+          {editor && pki.ca && <FlexItem><Button variant="secondary" onClick={() => setCreating(true)} isDisabled={servers.length === 0}>New server certificate</Button></FlexItem>}
+        </Flex></CardTitle>
         <CardBody>
+          <ProblemAlert error={opError} />
           <Table aria-label="Server certificates" variant="compact">
             <Thead><Tr><Th>Certificate</Th><Th>Server</Th><Th>Used by</Th><Th>Key</Th><Th>Names</Th><Th>Valid until</Th><Th screenReaderText="Download" /></Tr></Thead>
             <Tbody>
@@ -132,12 +151,23 @@ function CertificatesView() {
                   <Td isActionCell>
                     {k.certificate?.der && <Button variant="link" isInline onClick={() => download(fileName(`${k.name}.pem`),
                       [k.certificate!, ...k.chain].map((c) => pem(c.der)).join(''))}>Download</Button>}
+                    {editor && k.guid && (
+                      <Button variant="link" isInline isDanger isAriaDisabled={k.usedBy.length > 0} className="dc-gap-left"
+                        title={k.usedBy.length > 0 ? `In use by ${k.usedBy.join(', ')}` : undefined} onClick={() => remove(k)}>Delete</Button>
+                    )}
                   </Td>
                 </Tr>
               ))}
             </Tbody>
           </Table>
-          <p className="dc-subtle">Downloads hold the public certificate and its chain. Private keys never leave the directory.</p>
+          <p className="dc-subtle">Downloads hold the public certificate and its chain. Private keys never leave the directory. A certificate an LDAP server or SAS service uses cannot be deleted.</p>
+          {creating && (
+            <NewCertificateModal kind="server" servers={servers.map((x) => ({ guid: x.guid, name: x.name }))}
+              onCreate={(body, server) => confirmed.run((c) => api.createServerCertificate(server!, body, c)).then(load)}
+              onClose={() => setCreating(false)} />
+          )}
+          {confirmed.dialog}
+          {sure.dialog}
         </CardBody>
       </Card>
 

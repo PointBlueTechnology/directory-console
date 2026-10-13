@@ -50,7 +50,10 @@ public class SecurityTest {
             "dn: cn=console,o=system\nobjectClass: inetOrgPerson\ncn: console\nsn: c\nuserPassword: console-pw",
             "dn: cn=Security,o=system\nobjectClass: sASSecurity\ncn: Security",
             "dn: ou=Sales,o=acme\nobjectClass: organizationalUnit\nou: Sales",
-            "dn: cn=pat,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: pat\nsn: Lee\nsASLoginSecret: c2VjcmV0\nnspmDistributionPassword: x");
+            "dn: cn=pat,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: pat\nsn: Lee\nmail: pat@acme.example\nsASLoginSecret: c2VjcmV0\nnspmDistributionPassword: x",
+            "dn: ou=servers,o=system\nobjectClass: organizationalUnit\nou: servers",
+            "dn: cn=edir1,ou=servers,o=system\nobjectClass: ncpServer\ncn: edir1",
+            "dn: cn=LDAP Server - edir1,ou=servers,o=system\nobjectClass: ldapServer\ncn: LDAP Server - edir1\nldapHostServer: cn=edir1,ou=servers,o=system\nldapKeyMaterialName: ldap3");
         // eDirectory's Security container is at the tree root; the fake's naming contexts are o=acme and o=system
         Path data = tmp.newFolder("data").toPath();
         server = new Server(new DataDir(data), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
@@ -162,5 +165,66 @@ public class SecurityTest {
         assertEquals(204, call("DELETE", "/api/v2/trees/acme/security/password-policies/" + policy, null, h).status());
         assertEquals(400, call("POST", "/api/v2/trees/acme/security/password-policies", Map.of("name", "Bad", "rules", Map.of("teleport", 1)), h).status());
         assertNull("a refused create leaves nothing behind", edir.server.getEntry("cn=Bad,cn=Password Policies,cn=Security,o=system"));
+    }
+
+    private String guidOf(String dn) throws Exception {
+        return (String) call("GET", "/api/v2/trees/acme/objects?dn=" + java.net.URLEncoder.encode(dn, "UTF-8"), null, h).body().get("guid");
+    }
+
+    @Test
+    public void serverAndUserCertificatesThroughThePkiOperations() throws Exception {
+        String t = "/api/v2/trees/acme/security";
+        String edir1 = guidOf("cn=edir1,ou=servers,o=system");
+        Reply made = call("POST", t + "/pki/servers/" + edir1 + "/certificates",
+            Map.of("name", "web1", "algorithm", "rsa", "rsaBits", 2048, "validityYears", 2, "names", List.of("dns:edir1.acme.example", "ip:192.0.2.10")), h);
+        assertEquals(String.valueOf(made.body()), 201, made.status());
+        assertEquals("web1 - edir1", made.body().get("name"));
+        Map<String, Object> req = edir.pkiOps.requests.get(edir.pkiOps.requests.size() - 1);
+        assertEquals("createCertificate", req.get("verb"));
+        assertEquals("cn=edir1.ou=servers.o=system", req.get("serverDN"));
+        assertEquals("RSA, SHA-256", 8, Json.asInt(req.get("signatureAlgorithm"), 0));
+        assertEquals("digital signature and key encipherment", 0xA000, Json.asInt(req.get("keyUsage"), 0));
+        assertEquals("cn=edir1", req.get("subjectDN"));
+        assertEquals(2, ((List<?>) req.get("subjectAltNames")).size());
+        assertTrue("the certificate is read back", made.body().get("certificate") instanceof Map);
+
+        assertEquals("one name per server", 409, call("POST", t + "/pki/servers/" + edir1 + "/certificates", Map.of("name", "web1"), h).status());
+        assertEquals(400, call("POST", t + "/pki/servers/" + edir1 + "/certificates", Map.of("name", "web2", "algorithm", "dsa"), h).status());
+        assertEquals(400, call("POST", t + "/pki/servers/" + edir1 + "/certificates", Map.of("name", "web2", "names", List.of("ftp:x")), h).status());
+        edir.pkiOps.refuseNext = -1212;
+        Reply refused = call("POST", t + "/pki/servers/" + edir1 + "/certificates", Map.of("name", "web2", "algorithm", "ec384"), h);
+        assertEquals(409, refused.status());
+        assertEquals("pki-refused", refused.body().get("title"));
+        assertEquals(-1212, Json.asInt(refused.body().get("code"), 0));
+        Map<String, Object> ec = edir.pkiOps.requests.get(edir.pkiOps.requests.size() - 1);
+        assertEquals("ECDSA P-384", 4, Json.asInt(ec.get("keyAlgorithm"), 0));
+        assertEquals("ECDSA with SHA-256", 64, Json.asInt(ec.get("signatureAlgorithm"), 0));
+
+        // the LDAP server uses ldap3: that certificate cannot be deleted; web1 can
+        assertEquals(201, call("POST", t + "/pki/servers/" + edir1 + "/certificates", Map.of("name", "ldap3"), h).status());
+        Reply inUse = call("DELETE", t + "/pki/server-certificates/" + guidOf("cn=ldap3 - edir1,ou=servers,o=system"), null, h);
+        assertEquals(409, inUse.status());
+        assertEquals(List.of("LDAP Server - edir1"), inUse.body().get("usedBy"));
+        String web1 = (String) made.body().get("guid");
+        assertEquals(204, call("DELETE", t + "/pki/server-certificates/" + web1, null, h).status());
+        assertEquals(404, call("DELETE", t + "/pki/server-certificates/" + web1, null, h).status());
+        assertEquals("only a key material object", 404, call("DELETE", t + "/pki/server-certificates/" + edir1, null, h).status());
+
+        String pat = guidOf("cn=pat,ou=Sales,o=acme");
+        assertEquals(List.of(), call("GET", t + "/objects/" + pat + "/certificates", null, h).body().get("items"));
+        Reply user = call("POST", t + "/objects/" + pat + "/certificates", Map.of("name", "smime", "algorithm", "ec256"), h);
+        assertEquals(String.valueOf(user.body()), 201, user.status());
+        // the create, not the list that follows it
+        Map<String, Object> ureq = edir.pkiOps.requests.stream().filter(r -> "createCertificate".equals(r.get("verb")) && r.containsKey("userDN"))
+            .reduce((a, b) -> b).orElseThrow();
+        assertEquals("cn=pat.ou=Sales.o=acme", ureq.get("userDN"));
+        assertEquals("the user's mail address", "pat@acme.example", ureq.get("emailAddress"));
+        assertEquals("user authentication and e-mail protection", 0x14, Json.asInt(ureq.get("extendedKeyUsage"), 0));
+        assertEquals(0, Json.asInt(ureq.get("allowExportPrivateKey"), -1));
+        List<?> items = (List<?>) user.body().get("items");
+        assertEquals(1, items.size());
+        assertEquals("smime", Json.asMap(items.get(0)).get("name"));
+        assertTrue(String.valueOf(Json.asMap(items.get(0)).get("notAfter")).matches("\\d{4}-.*Z"));
+        assertEquals("a duplicate name is eDirectory's refusal", 409, call("POST", t + "/objects/" + pat + "/certificates", Map.of("name", "smime"), h).status());
     }
 }

@@ -50,9 +50,12 @@ public final class FakeEdir implements AutoCloseable {
     public volatile String lastProxied;
     /** Partitions and replicas (empty until a test or the demo adds some). */
     public final FakePartitions partitions = new FakePartitions();
+    /** PKI extended operations: server certificates as key material objects, user certificates in memory. */
+    public final FakePki pkiOps;
 
     public FakeEdir(String... ldif) throws Exception {
         pki = new TestPki("ACME_TREE");
+        pkiOps = new FakePki(pki);
         // names only the address the console uses: reaching it as "localhost" is a host-name mismatch, as behind NAT
         TestPki.Server cert = pki.server("edir1", List.of("127.0.0.1"));
         KeyStore ks = KeyStore.getInstance("PKCS12");
@@ -133,6 +136,7 @@ public final class FakeEdir implements AutoCloseable {
             }
         });
         cfg.addExtendedOperationHandler(partitions);
+        cfg.addExtendedOperationHandler(pkiOps);
         server = new InMemoryDirectoryServer(cfg);
         this.random = random;
         this.revision = revision;

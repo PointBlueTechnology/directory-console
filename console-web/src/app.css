@@ -130,3 +130,7 @@
   background: var(--pf-t--global--background--color--secondary--default);
   padding: var(--pf-t--global--spacer--sm);
 }
+
+.dc-gap-left {
+  margin-inline-start: var(--pf-t--global--spacer--sm);
+}
