@@ -206,7 +206,8 @@ final class Security {
 
     /**
      * {@code DELETE pki/server-certificates/{guid}}: a server certificate's key material object. Refused
-     * while an LDAP server or SAS service uses it: the server would have no certificate to offer.
+     * while an LDAP server uses it: the server would have no certificate to offer. (The SAS Service's list
+     * of its server's key material objects is not a use; eDirectory drops the reference with the object.)
      */
     private void deleteServerCertificate(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
         Ldap.Entry k = server.objects.byGuid(l, guid, "objectClass", "cn", "hostServer");
@@ -219,13 +220,6 @@ final class Security {
             String host = ls.first("ldapHostServer");
             if (name != null && host != null && Names.same(k.dn(), Names.child(Names.parent(host), "cn", name + " - " + Names.identity(host).get("name")))) {
                 users.add(String.valueOf(ls.first("cn")));
-            }
-        }
-        for (Ldap.Entry sas : l.search("", "(objectClass=sASService)", null, SearchControls.SUBTREE_SCOPE, new String[] {"cn", "nDSPKIKeyMaterialDN"}, 200)) {
-            for (Object dn : sas.attributes().getOrDefault("ndspkikeymaterialdn", List.of())) {
-                if (Names.same(k.dn(), String.valueOf(dn))) {
-                    users.add(String.valueOf(sas.first("cn")));
-                }
             }
         }
         if (!users.isEmpty()) {
@@ -376,11 +370,8 @@ final class Security {
                 usedBy.computeIfAbsent(kmoKey(kmo + " - " + Names.identity(host).get("name"), Names.parent(host)), k -> new ArrayList<>()).add(String.valueOf(ls.first("cn")));
             }
         }
-        for (Ldap.Entry sas : l.search("", "(objectClass=sASService)", null, SearchControls.SUBTREE_SCOPE, new String[] {"cn", "nDSPKIKeyMaterialDN"}, 200)) {
-            for (Object dn : sas.attributes().getOrDefault("ndspkikeymaterialdn", List.of())) {
-                usedBy.computeIfAbsent(Names.canonical(String.valueOf(dn)), k -> new ArrayList<>()).add(String.valueOf(sas.first("cn")));
-            }
-        }
+        // a server's SAS Service lists every key material object on that server (eDirectory adds each new
+        // one itself, ig4 2026-10-13): that is not a use, and is not shown as one
         List<Map<String, Object>> kmos = new ArrayList<>();
         for (Ldap.Entry k : l.search("", "(objectClass=nDSPKIKeyMaterial)", null, SearchControls.SUBTREE_SCOPE, KMO, 2000)) {
             Map<String, Object> m = ref(k);

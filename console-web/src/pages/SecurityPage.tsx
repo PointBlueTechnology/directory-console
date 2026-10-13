@@ -160,7 +160,7 @@ function CertificatesView() {
               ))}
             </Tbody>
           </Table>
-          <p className="dc-subtle">Downloads hold the public certificate and its chain. Private keys never leave the directory. A certificate an LDAP server or SAS service uses cannot be deleted.</p>
+          <p className="dc-subtle">Downloads hold the public certificate and its chain. Private keys never leave the directory. A certificate an LDAP server uses cannot be deleted.</p>
           {creating && (
             <NewCertificateModal kind="server" servers={servers.map((x) => ({ guid: x.guid, name: x.name }))}
               onCreate={(body, server) => confirmed.run((c) => api.createServerCertificate(server!, body, c)).then(load)}

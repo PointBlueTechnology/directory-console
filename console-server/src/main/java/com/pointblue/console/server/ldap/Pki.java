@@ -178,14 +178,28 @@ public final class Pki {
                 m.put("subject", c.get("subjectDN"));
                 m.put("issuer", c.get("issuerName"));
                 m.put("serial", c.get("serialNumber"));
-                m.put("notBefore", epoch(c.get("effectiveDate")));
-                m.put("notAfter", epoch(c.get("expiryDate")));
+                // the JSON's dates were six hours ahead of the certificate's on ig4 (CDT, 2026-10-13): read the certificate's own
+                java.security.cert.X509Certificate x = parse(c.get("certificate"));
+                m.put("notBefore", x != null ? x.getNotBefore().toInstant().toString() : epoch(c.get("effectiveDate")));
+                m.put("notAfter", x != null ? x.getNotAfter().toInstant().toString() : epoch(c.get("expiryDate")));
                 m.put("keySize", c.get("keySize"));
                 m.put("certificate", c.get("certificate"));
                 out.add(m);
             }
         }
         return out;
+    }
+
+    private static java.security.cert.X509Certificate parse(Object base64) {
+        if (base64 == null) {
+            return null;
+        }
+        try {
+            return (java.security.cert.X509Certificate) java.security.cert.CertificateFactory.getInstance("X.509")
+                .generateCertificate(new java.io.ByteArrayInputStream(java.util.Base64.getMimeDecoder().decode(String.valueOf(base64))));
+        } catch (java.security.cert.CertificateException | IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private static String epoch(Object seconds) {
