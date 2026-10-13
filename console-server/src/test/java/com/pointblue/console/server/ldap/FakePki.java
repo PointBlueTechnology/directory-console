@@ -34,6 +34,8 @@ public final class FakePki extends InMemoryExtendedOperationHandler {
     /** user DN (lower case) → certificate name → certificate. */
     public final Map<String, Map<String, X509Certificate>> userCertificates = new ConcurrentHashMap<>();
     public volatile int refuseNext;
+    /** What was revoked: "server|user DN (dotted) / certificate name / reason". */
+    public final List<String> revoked = java.util.Collections.synchronizedList(new ArrayList<>());
 
     FakePki(TestPki pki) {
         this.pki = pki;
@@ -94,6 +96,14 @@ public final class FakePki extends InMemoryExtendedOperationHandler {
             return switch (oid.substring(P.length()) + " " + verb) {
                 case "105 createCertificate" -> createServer(handler, id, response, payload);
                 case "107 createCertificate" -> createUser(handler, id, response, payload);
+                case "105 revokeCertificate", "107 revokeCertificate" -> {
+                    String who = String.valueOf(payload.getOrDefault("serverDN", payload.get("userDN")));
+                    if (payload.get("crlConfigurationDN") == null) {
+                        yield json(id, response, Map.of("code", -1214, "message", "pki error: bad request syntax"));
+                    }
+                    revoked.add(who + " / " + payload.get("certificateName") + " / " + payload.get("reasonCode"));
+                    yield new ExtendedResult(id, ResultCode.SUCCESS, null, null, null, response, null, null);
+                }
                 case "107 getCertificates" -> json(id, response, Map.of("certificates", listUser(String.valueOf(payload.get("userDN")))));
                 default -> new ExtendedResult(id, ResultCode.PROTOCOL_ERROR, "Could not decode LDAP Extension packet", null, null, null, null, null);
             };

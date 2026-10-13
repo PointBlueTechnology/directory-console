@@ -156,7 +156,12 @@ public final class DemoServer {
         String s2 = b64.encodeToString(edir.pki.server("edir2", List.of("127.0.0.2", "edir2.acme.example")).cert().getEncoded());
         edir.add("dn: " + sec, "objectClass: sASSecurity", "cn: Security", "nDSPKITreeCADN: cn=ACME_TREE CA," + sec, "sASLoginPolicyDN: cn=Login Policy," + sec);
         edir.add("dn: cn=ACME_TREE CA," + sec, "objectClass: nDSPKICertificateAuthority", "cn: ACME_TREE CA", "hostServer: cn=edir1,ou=servers,o=system",
-            "ndspkiDefaultRSAKeySize: 4096", "ndspkiDefaultCertificateLife: 10", "nDSPKIPublicKeyCertificate:: " + ca, "nDSPKIPrivateKey:: " + b64.encodeToString("wrapped-key".getBytes()));
+            "ndspkiDefaultRSAKeySize: 4096", "ndspkiDefaultCertificateLife: 10", "nDSPKIPublicKeyCertificate:: " + ca, "nDSPKIPrivateKey:: " + b64.encodeToString("wrapped-key".getBytes()),
+            "ndspkiCRLConfigurationDNList: cn=One - Configuration," + sec + "#0#", "ndspkiCRLECConfigurationDNList: cn=One - Configuration EC," + sec + "#0#");
+        String nextIssue = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss'Z'").withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.now().plus(java.time.Duration.ofDays(14)));
+        for (String c : new String[] {"One - Configuration", "One - Configuration EC"}) {
+            edir.add("dn: cn=" + c + "," + sec, "objectClass: ndspkiCRLConfiguration", "cn: " + c, "ndspkiNextIssueTime: " + nextIssue);
+        }
         edir.add("dn: cn=SSL CertificateDNS - edir1,ou=servers,o=system", "objectClass: nDSPKIKeyMaterial", "cn: SSL CertificateDNS - edir1",
             "hostServer: cn=edir1,ou=servers,o=system", "nDSPKIPublicKeyCertificate:: " + s1, "nDSPKIPrivateKey:: " + b64.encodeToString("wrapped".getBytes()));
         edir.add("dn: cn=SSL CertificateDNS - edir2,ou=servers,o=system", "objectClass: nDSPKIKeyMaterial", "cn: SSL CertificateDNS - edir2",

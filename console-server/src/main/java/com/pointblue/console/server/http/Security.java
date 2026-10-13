@@ -83,6 +83,7 @@ final class Security {
             .replaceAll("^(password-policies|challenge-sets|objects)/[0-9a-f]{32}", "$1/{guid}")
             .replaceAll("^pki/(servers|server-certificates)/[0-9a-f]{32}", "pki/$1/{guid}")
             .replaceAll("^login-policy/sequences/[^/]+$", "login-policy/sequences/{name}")
+            .replaceAll("^objects/\\{guid\\}/certificates/[^/]+/revoke$", "objects/{guid}/certificates/{name}/revoke")
             .replaceAll("assignments/[0-9a-f]{32}$", "assignments/{target}");
         String guid = p.length > 3 && p[2].equals("pki") ? (p.length > 4 ? p[4] : null) : p.length > 3 ? p[3] : null;
         if (!method.equals("GET")) {
@@ -119,6 +120,9 @@ final class Security {
                 case "DELETE login-policy/sequences/{name}" -> deleteSequence(ex, l, s, java.net.URLDecoder.decode(p[4], java.nio.charset.StandardCharsets.UTF_8));
                 case "POST pki/servers/{guid}/certificates" -> createServerCertificate(ex, l, s, guid);
                 case "DELETE pki/server-certificates/{guid}" -> deleteServerCertificate(ex, l, s, guid);
+                case "POST pki/server-certificates/{guid}/revoke" -> revokeServerCertificate(ex, l, s, guid);
+                case "POST objects/{guid}/certificates/{name}/revoke" ->
+                    revokeUserCertificate(ex, l, s, guid, java.net.URLDecoder.decode(p[5], java.nio.charset.StandardCharsets.UTF_8));
                 case "GET objects/{guid}/certificates" -> Http.json(ex, 200, Map.of("items", userCertificates(l, guid)));
                 case "POST objects/{guid}/certificates" -> createUserCertificate(ex, l, s, guid);
                 default -> throw new Http.Problem(404, "not-found", method + " " + path);
@@ -275,6 +279,112 @@ final class Security {
         }
         audit(s, "pki.user-certificate.create", guid, detail, null);
         Http.json(ex, 201, Map.of("items", userCertificates(l, guid)));
+    }
+
+    /** The revocation: an RFC 5280 reason code and an optional comment. */
+    private record Revocation(int reason, String comment) {
+        static Revocation of(Map<String, Object> b) {
+            int reason = Http.integer(b, "reason", 0);
+            if (!Pki.REASONS.contains(reason)) {
+                throw new IllegalArgumentException("reason is an RFC 5280 code: 0 unspecified, 1 key compromise, 2 CA compromise, 3 affiliation changed,"
+                    + " 4 superseded, 5 cessation of operation, 6 certificate hold, 9 privilege withdrawn, 10 AA compromise");
+            }
+            String c = b.get("comment") == null ? null : String.valueOf(b.get("comment")).trim();
+            if (c != null && c.length() > 256) {
+                throw new IllegalArgumentException("a comment is at most 256 characters");
+            }
+            return new Revocation(reason, c);
+        }
+    }
+
+    /**
+     * The CA's CRL configuration for a certificate with this key: its RSA list for RSA keys, its EC list
+     * for EC keys (values {@code dn#n#}), and when the CRL is next issued.
+     */
+    private Map<String, String> crlFor(Ldap l, boolean ec) throws NamingException {
+        Ldap.Entry sec = securityContainer(l);
+        String caDn = sec == null ? null : sec.first("nDSPKITreeCADN");
+        Ldap.Entry ca = caDn == null ? null : l.read(caDn, "ndspkiCRLConfigurationDNList", "ndspkiCRLECConfigurationDNList");
+        String v = ca == null ? null : ca.first(ec ? "ndspkiCRLECConfigurationDNList" : "ndspkiCRLConfigurationDNList");
+        if (v == null) {
+            throw new Http.Problem(409, "no-crl", "the Organizational CA has no " + (ec ? "EC " : "") + "CRL configuration to revoke on");
+        }
+        String dn = v.split("#")[0];
+        Ldap.Entry cfg = l.read(dn, "ndspkiNextIssueTime");
+        Map<String, String> out = new LinkedHashMap<>();
+        out.put("dn", dn);
+        out.put("nextIssue", cfg == null ? null : iso(cfg.first("ndspkiNextIssueTime")));
+        return out;
+    }
+
+    private static boolean ecKey(byte[] der) {
+        try {
+            X509Certificate c = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(new ByteArrayInputStream(der));
+            return c.getPublicKey() instanceof ECPublicKey;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** {@code POST pki/server-certificates/{guid}/revoke}: {reason, comment}. */
+    private void revokeServerCertificate(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Ldap.Entry k = server.objects.byGuid(l, guid, "objectClass", "cn", "hostServer", "nDSPKIPublicKeyCertificate");
+        if (k == null || k.first("hostServer") == null
+            || k.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("nDSPKIKeyMaterial"))) {
+            throw new Http.Problem(404, "not-found", "no server certificate has GUID " + guid);
+        }
+        Revocation r = Revocation.of(Http.body(ex));
+        String host = k.first("hostServer");
+        String suffix = " - " + Names.identity(host).get("name");
+        String cn = String.valueOf(k.first("cn"));
+        String name = cn.endsWith(suffix) ? cn.substring(0, cn.length() - suffix.length()) : cn;
+        byte[] der = bytes(k, "nDSPKIPublicKeyCertificate");
+        Map<String, String> crl = crlFor(l, der != null && ecKey(der));
+        Map<String, Object> detail = new LinkedHashMap<>(Map.of("dn", k.dn(), "reason", r.reason(), "crl", crl.get("dn")));
+        try {
+            Pki.revokeServerCertificate(l, host, name, crl.get("dn"), r.reason(), r.comment());
+        } catch (Pki.Refused x) {
+            detail.put("code", x.code);
+            audit(s, "pki.server-certificate.revoke", guid, detail, null);
+            throw new Http.Problem(409, "pki-refused", x.getMessage(), Map.of("code", x.code));
+        }
+        audit(s, "pki.server-certificate.revoke", guid, detail, null);
+        Http.json(ex, 200, revoked(crl));
+    }
+
+    /** {@code POST objects/{guid}/certificates/{name}/revoke}: {reason, comment}. */
+    private void revokeUserCertificate(HttpExchange ex, Ldap l, Sessions.Session s, String guid, String name) throws IOException, NamingException {
+        Ldap.Entry u = server.objects.byGuid(l, guid, "cn");
+        Revocation r = Revocation.of(Http.body(ex));
+        Map<String, Object> cert;
+        try {
+            cert = Pki.userCertificates(l, u.dn()).stream().filter(c -> name.equals(c.get("name"))).findFirst().orElse(null);
+        } catch (Pki.Refused x) {
+            throw new Http.Problem(409, "pki-refused", x.getMessage(), Map.of("code", x.code));
+        }
+        if (cert == null) {
+            throw new Http.Problem(404, "not-found", u.first("cn") + " has no certificate named " + name);
+        }
+        byte[] der = cert.get("certificate") == null ? null : java.util.Base64.getMimeDecoder().decode(String.valueOf(cert.get("certificate")));
+        Map<String, String> crl = crlFor(l, der != null && ecKey(der));
+        Map<String, Object> detail = new LinkedHashMap<>(Map.of("user", u.dn(), "name", name, "reason", r.reason(), "crl", crl.get("dn")));
+        try {
+            Pki.revokeUserCertificate(l, u.dn(), name, crl.get("dn"), r.reason(), r.comment());
+        } catch (Pki.Refused x) {
+            detail.put("code", x.code);
+            audit(s, "pki.user-certificate.revoke", guid, detail, null);
+            throw new Http.Problem(409, "pki-refused", x.getMessage(), Map.of("code", x.code));
+        }
+        audit(s, "pki.user-certificate.revoke", guid, detail, null);
+        Http.json(ex, 200, revoked(crl));
+    }
+
+    private static Map<String, Object> revoked(Map<String, String> crl) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("revoked", true);
+        out.put("crlConfiguration", crl.get("dn"));
+        out.put("listedFrom", crl.get("nextIssue"));
+        return out;
     }
 
     /** The Organizational CA's host server (which makes user certificates), else the server this connection is on. */

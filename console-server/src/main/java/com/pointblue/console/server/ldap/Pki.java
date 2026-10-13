@@ -118,6 +118,43 @@ public final class Pki {
         call(l, USER_CERTIFICATES, "createCertificate", p);
     }
 
+    /** RFC 5280 revocation reasons the CA accepts (7 is unused; 8, remove from CRL, is not a revocation). */
+    public static final java.util.Set<Integer> REASONS = java.util.Set.of(0, 1, 2, 3, 4, 5, 6, 9, 10);
+
+    /**
+     * Revoke a server certificate ({@code serverDn} and the certificate's name) on the CRL configuration
+     * {@code crlConfigurationDn}. It shows in the CRL from that configuration's next issue.
+     */
+    public static void revokeServerCertificate(Ldap l, String serverDn, String name, String crlConfigurationDn, int reason, String comment)
+            throws NamingException, Refused {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("serverDN", dotted(serverDn));
+        p.put("certificateName", name);
+        revoke(l, SERVER_CERTIFICATES, p, crlConfigurationDn, reason, comment);
+    }
+
+    /** As {@link #revokeServerCertificate}, for one of a user's certificates (tried on ig4, 2026-10-13). */
+    public static void revokeUserCertificate(Ldap l, String userDn, String name, String crlConfigurationDn, int reason, String comment)
+            throws NamingException, Refused {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("userDN", dotted(userDn));
+        p.put("certificateName", name);
+        revoke(l, USER_CERTIFICATES, p, crlConfigurationDn, reason, comment);
+    }
+
+    private static void revoke(Ldap l, String oid, Map<String, Object> p, String crlConfigurationDn, int reason, String comment)
+            throws NamingException, Refused {
+        if (!REASONS.contains(reason)) {
+            throw new IllegalArgumentException("a revocation reason is one of " + new java.util.TreeSet<>(REASONS));
+        }
+        p.put("crlConfigurationDN", dotted(crlConfigurationDn));
+        p.put("reasonCode", reason);
+        if (comment != null && !comment.isBlank()) {
+            p.put("comment", comment);
+        }
+        call(l, oid, "revokeCertificate", p);
+    }
+
     /** The request fields, with Identity Console's numeric codes. */
     static Map<String, Object> payload(Spec s, boolean server) {
         Map<String, Object> p = new LinkedHashMap<>();

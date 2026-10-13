@@ -12,6 +12,7 @@ import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { NewCertificateModal } from '../components/NewCertificate';
 import { SequenceModal } from '../components/SequenceModal';
+import { RevokeModal, revokedNotice } from '../components/RevokeCertificate';
 
 const DAY = 86_400_000;
 export const WARN_DAYS = 60;
@@ -68,6 +69,8 @@ function CertificatesView() {
   const [servers, setServers] = useState<EdirServer[]>([]);
   const [creating, setCreating] = useState(false);
   const [opError, setOpError] = useState<unknown>(null);
+  const [revoking, setRevoking] = useState<Pki['serverCertificates'][number] | null>(null);
+  const [opNotice, setOpNotice] = useState<string | null>(null);
   const confirmed = useConfirmed();
   const sure = useAreYouSure();
   const level = useHeading();
@@ -138,6 +141,7 @@ function CertificatesView() {
         </Flex></CardTitle>
         <CardBody>
           <ProblemAlert error={opError} />
+          {opNotice && <Alert component={level} variant="success" isInline isPlain title={opNotice} />}
           <Table aria-label="Server certificates" variant="compact">
             <Thead><Tr><Th>Certificate</Th><Th>Server</Th><Th>Used by</Th><Th>Key</Th><Th>Names</Th><Th>Valid until</Th><Th screenReaderText="Download" /></Tr></Thead>
             <Tbody>
@@ -152,6 +156,9 @@ function CertificatesView() {
                   <Td isActionCell>
                     {k.certificate?.der && <Button variant="link" isInline onClick={() => download(fileName(`${k.name}.pem`),
                       [k.certificate!, ...k.chain].map((c) => pem(c.der)).join(''))}>Download</Button>}
+                    {editor && k.guid && k.certificate && (
+                      <Button variant="link" isInline className="dc-gap-left" onClick={() => { setOpNotice(null); setRevoking(k); }}>Revoke</Button>
+                    )}
                     {editor && k.guid && (
                       <Button variant="link" isInline isDanger isAriaDisabled={k.usedBy.length > 0} className="dc-gap-left"
                         title={k.usedBy.length > 0 ? `In use by ${k.usedBy.join(', ')}` : undefined} onClick={() => remove(k)}>Delete</Button>
@@ -166,6 +173,11 @@ function CertificatesView() {
             <NewCertificateModal kind="server" servers={servers.map((x) => ({ guid: x.guid, name: x.name }))}
               onCreate={(body, server) => confirmed.run((c) => api.createServerCertificate(server!, body, c)).then(load)}
               onClose={() => setCreating(false)} />
+          )}
+          {revoking && (
+            <RevokeModal name={revoking.name} onClose={() => setRevoking(null)}
+              onRevoke={(r) => confirmed.run((c) => api.revokeServerCertificate(revoking.guid!, r, c))}
+              onDone={(r) => setOpNotice(revokedNotice(revoking.name, r))} />
           )}
           {confirmed.dialog}
           {sure.dialog}

@@ -58,6 +58,16 @@ public final class LivePkiStep {
                         Map.of("name", args[3], "algorithm", "rsa", "rsaBits", 2048, "signature", "sha256", "validityYears", 1,
                             "names", List.of("dns:" + args[3] + ".example.test")), h));
                 }
+                case "server-revoke" -> {
+                    String guid = null;
+                    for (Object o : (List<?>) call("GET", t + "/security/pki", null, h).body().get("serverCertificates")) {
+                        Map<String, Object> k = Json.asMap(o);
+                        if (String.valueOf(k.get("name")).startsWith(args[3] + " - ")) {
+                            guid = (String) k.get("guid");
+                        }
+                    }
+                    show(call("POST", t + "/security/pki/server-certificates/" + guid + "/revoke", Map.of("reason", 5, "comment", "directory console test"), h));
+                }
                 case "server-delete" -> {
                     LiveSetupCheck.Reply pki = call("GET", t + "/security/pki", null, h);
                     String guid = null;

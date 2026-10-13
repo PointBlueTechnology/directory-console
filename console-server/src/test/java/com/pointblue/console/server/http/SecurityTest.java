@@ -48,7 +48,13 @@ public class SecurityTest {
         edir = new FakeEdir(
             "dn: cn=admin,o=system\nobjectClass: inetOrgPerson\ncn: admin\nsn: a\nuserPassword: admin-pw",
             "dn: cn=console,o=system\nobjectClass: inetOrgPerson\ncn: console\nsn: c\nuserPassword: console-pw",
-            "dn: cn=Security,o=system\nobjectClass: sASSecurity\ncn: Security\nsASLoginPolicyDN: cn=Login Policy,cn=Security,o=system",
+            "dn: cn=Security,o=system\nobjectClass: sASSecurity\ncn: Security\nsASLoginPolicyDN: cn=Login Policy,cn=Security,o=system\n"
+                + "nDSPKITreeCADN: cn=TREE CA,cn=Security,o=system",
+            "dn: cn=TREE CA,cn=Security,o=system\nobjectClass: nDSPKICertificateAuthority\ncn: TREE CA\n"
+                + "ndspkiCRLConfigurationDNList: cn=One - Configuration,cn=Security,o=system#0#\n"
+                + "ndspkiCRLECConfigurationDNList: cn=One - Configuration EC,cn=Security,o=system#0#",
+            "dn: cn=One - Configuration,cn=Security,o=system\nobjectClass: ndspkiCRLConfiguration\ncn: One - Configuration\nndspkiNextIssueTime: 20261024224900Z",
+            "dn: cn=One - Configuration EC,cn=Security,o=system\nobjectClass: ndspkiCRLConfiguration\ncn: One - Configuration EC\nndspkiNextIssueTime: 20261024224900Z",
             "dn: cn=Login Policy,cn=Security,o=system\nobjectClass: sASLoginPolicy\ncn: Login Policy\nsasDefaultLoginSequence: NDS\nsASLoginPolicyUpdate: 6\n"
                 + "sASLoginSequence: NDS;Password;NDS\nsASLoginSequence: Challenge Response;Password;Challenge Response",
             "dn: cn=Authorized Login Methods,cn=Security,o=system\nobjectClass: sASLoginMethodContainer\ncn: Authorized Login Methods",
@@ -232,6 +238,23 @@ public class SecurityTest {
         assertEquals("smime", Json.asMap(items.get(0)).get("name"));
         assertTrue(String.valueOf(Json.asMap(items.get(0)).get("notAfter")).matches("\\d{4}-.*Z"));
         assertEquals("a duplicate name is eDirectory's refusal", 409, call("POST", t + "/objects/" + pat + "/certificates", Map.of("name", "smime"), h).status());
+
+        // revocation: on the CA's CRL configuration for the certificate's key (the fake's keys are EC: its EC list)
+        assertEquals(400, call("POST", t + "/objects/" + pat + "/certificates/smime/revoke", Map.of("reason", 7), h).status());
+        assertEquals(404, call("POST", t + "/objects/" + pat + "/certificates/nope/revoke", Map.of("reason", 4), h).status());
+        Reply userRevoked = call("POST", t + "/objects/" + pat + "/certificates/smime/revoke", Map.of("reason", 1), h);
+        assertEquals(String.valueOf(userRevoked.body()), 200, userRevoked.status());
+        assertEquals("cn=One - Configuration EC,cn=Security,o=system", userRevoked.body().get("crlConfiguration"));
+        String web = (String) call("POST", t + "/pki/servers/" + edir1 + "/certificates", Map.of("name", "web9"), h).body().get("guid");
+        edir.pkiOps.revoked.clear();
+        Reply rv = call("POST", t + "/pki/server-certificates/" + web + "/revoke", Map.of("reason", 4, "comment", "replaced"), h);
+        assertEquals(String.valueOf(rv.body()), 200, rv.status());
+        assertEquals("cn=One - Configuration EC,cn=Security,o=system", rv.body().get("crlConfiguration"));
+        assertEquals("2026-10-24T22:49:00Z", rv.body().get("listedFrom"));
+        assertEquals(List.of("cn=edir1.ou=servers.o=system / web9 / 4"), edir.pkiOps.revoked);
+        Map<String, Object> rreq = edir.pkiOps.requests.get(edir.pkiOps.requests.size() - 1);
+        assertEquals("cn=One - Configuration EC.cn=Security.o=system", rreq.get("crlConfigurationDN"));
+        assertEquals("replaced", rreq.get("comment"));
     }
 
     @Test

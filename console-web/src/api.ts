@@ -407,7 +407,8 @@ export type PasswordKind = 'named' | 'remote-loader' | 'key' | 'keystore';
 export function idm(id: string, server?: string) {
   const base = `/api/v2/trees/${encodeURIComponent(id)}/idm`;
   const h = (confirm?: string): Record<string, string> => (confirm ? { 'X-Confirm-Directory': confirm } : {});
-  // a driver's per-replica values (start option, state, named passwords) belong to one server: send it along
+  // every driver operation runs on one server's engine and replica (state, start and stop, start option, jobs,
+  // cache, passwords): send the chosen server along; none is the connected server
   const at = (p: string, on = server) => (on ? `${p}${p.includes('?') ? '&' : '?'}server=${encodeURIComponent(on)}` : p);
   const get = <T>(p: string) => request<T>('GET', at(base + p)).then((r) => r.data);
   return {
@@ -436,6 +437,8 @@ export function idm(id: string, server?: string) {
     objectAssociations: (guid: string) => get<Record<string, unknown>>(`/objects/${guidPath(guid)}/associations`),
     /** The servers that run this driver's driver set. */
     driverServers: (guid: string) => request<ServerChoice[]>('GET', `${base}/drivers/${guidPath(guid)}/servers`).then((r) => r.data),
+    /** The servers that run a driver set, to choose which one the operations run on. */
+    driverSetServers: (guid: string) => request<ServerChoice[]>('GET', `${base}/driversets/${guidPath(guid)}/server-choices`).then((r) => r.data),
     /** The driver's state and start option on each of those servers. */
     compareDriver: (guid: string) => request<Comparison<{ state?: string; startOption?: string; cacheSize?: string; unprocessedSize?: string }>>(
       'GET', at(`${base}/drivers/${guidPath(guid)}`, 'all')).then((r) => r.data),
@@ -761,10 +764,27 @@ export function security(id: string) {
     /** Refused while an LDAP server or SAS service uses it. */
     deleteServerCertificate: (guid: string, confirm?: string) =>
       request<void>('DELETE', `${base}/pki/server-certificates/${guidPath(guid)}`, undefined, h(confirm)),
+    /** Revoke: an RFC 5280 reason and an optional comment; it is listed from the CRL's next issue. */
+    revokeServerCertificate: (guid: string, body: Revocation, confirm?: string) =>
+      request<RevocationResult>('POST', `${base}/pki/server-certificates/${guidPath(guid)}/revoke`, body, h(confirm)).then((r) => r.data),
+    revokeUserCertificate: (guid: string, name: string, body: Revocation, confirm?: string) =>
+      request<RevocationResult>('POST', `${base}/objects/${guidPath(guid)}/certificates/${encodeURIComponent(name)}/revoke`, body, h(confirm)).then((r) => r.data),
     userCertificates: (guid: string) => get<{ items: UserCertificate[] }>(`/objects/${guidPath(guid)}/certificates`).then((r) => r.items),
     createUserCertificate: (guid: string, body: CertificateRequest, confirm?: string) =>
       request<{ items: UserCertificate[] }>('POST', `${base}/objects/${guidPath(guid)}/certificates`, body, h(confirm)).then((r) => r.data.items),
   };
+}
+
+export interface Revocation {
+  reason: number;
+  comment?: string;
+}
+
+export interface RevocationResult {
+  revoked: boolean;
+  crlConfiguration: string;
+  /** When the CRL is next issued, and so lists the certificate. */
+  listedFrom: string | null;
 }
 
 /** A new certificate: names are dns:host, ip:address, email:address or uri:… */
