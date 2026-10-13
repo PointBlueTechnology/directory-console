@@ -4,9 +4,10 @@ import {
   FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, Modal, ModalBody,
   ModalFooter, ModalHeader, TextArea, TextInput,
 } from '@patternfly/react-core';
-import { type DirObject, type Row, type SchemaClass, ApiError } from '../api';
+import { type DirObject, type Row, type SchemaAttribute, type SchemaClass, ApiError } from '../api';
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
+import { type InputValue, ValueInput } from './ValueInput';
 
 /** Every write names its exact target before it runs (section 13). */
 export function Target({ obj, label = 'Object' }: { obj: Pick<Row, 'name' | 'dn' | 'guid'>; label?: string }) {
@@ -283,7 +284,8 @@ export function CreateModal({ parent, onClose, onCreated }: { parent: Row; onClo
   const [cls, setCls] = useState<SchemaClass | null>(null);
   const [naming, setNaming] = useState('');
   const [value, setValue] = useState('');
-  const [required, setRequired] = useState<Record<string, string>>({});
+  const [required, setRequired] = useState<Record<string, InputValue>>({});
+  const [attrTypes, setAttrTypes] = useState<SchemaAttribute[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -294,6 +296,7 @@ export function CreateModal({ parent, onClose, onCreated }: { parent: Row; onClo
         && (c.containment.length === 0 || c.containment.some((p) => here.includes(p.toLowerCase()))))
         .sort((a, b) => a.name.localeCompare(b.name)));
     }).catch(setError);
+    tree.attributes().then(setAttrTypes).catch(() => undefined);
   }, [tree, parent]);
 
   useEffect(() => {
@@ -309,7 +312,7 @@ export function CreateModal({ parent, onClose, onCreated }: { parent: Row; onClo
   }, [tree, className]);
 
   const mustFill = (cls?.allMust ?? []).filter((a) => a.toLowerCase() !== 'objectclass' && a.toLowerCase() !== naming.toLowerCase());
-  const ready = cls && value.trim() && mustFill.every((a) => (required[a] ?? '').trim());
+  const ready = cls && value.trim() && mustFill.every((a) => required[a] !== undefined);
 
   const create = async () => {
     if (!cls) {
@@ -318,8 +321,8 @@ export function CreateModal({ parent, onClose, onCreated }: { parent: Row; onClo
     setBusy(true);
     setError(null);
     try {
-      const attributes: Record<string, string[]> = {};
-      mustFill.forEach((a) => { attributes[a] = [required[a].trim()]; });
+      const attributes: Record<string, unknown[]> = {};
+      mustFill.forEach((a) => { attributes[a] = [required[a]]; });
       const r = await tree.create(parent.guid, cls.name, { type: naming, value: value.trim() }, attributes);
       onCreated(r.data);
     } catch (e) {
@@ -352,8 +355,9 @@ export function CreateModal({ parent, onClose, onCreated }: { parent: Row; onClo
                 </div>
               </FormGroup>
               {mustFill.map((a) => (
-                <FormGroup key={a} label={a} fieldId={`req-${a}`} isRequired>
-                  <TextInput id={`req-${a}`} value={required[a] ?? ''} onChange={(_e, v) => setRequired({ ...required, [a]: v })} />
+                <FormGroup key={`${cls.name}-${a}`} label={a} fieldId={`req-${a}`} isRequired>
+                  <ValueInput id={`req-${a}`} attribute={attrTypes.find((t) => t.names.some((n) => n.toLowerCase() === a.toLowerCase()))}
+                    onChange={(v) => setRequired((old) => ({ ...old, [a]: v }))} />
                 </FormGroup>
               ))}
             </>
@@ -418,31 +422,54 @@ export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClos
   );
 }
 
-/** Add or remove auxiliary classes; adding one asks for the attributes it requires. */
+/**
+ * Add or remove auxiliary classes. Adding one also adds its auxiliary superiors and asks for every
+ * attribute they require that the object lacks, each entered as its syntax needs. Removing one also
+ * removes the attributes only it allowed (eDirectory refuses the class change otherwise), after saying
+ * which.
+ */
 export function AuxClassModal({ obj, etag, onClose, onDone }: EditProps) {
   const { tree } = useSession();
-  const [aux, setAux] = useState<SchemaClass[] | null>(null);
+  const [all, setAll] = useState<SchemaClass[] | null>(null);
+  const [attrTypes, setAttrTypes] = useState<SchemaAttribute[]>([]);
   const [chosen, setChosen] = useState('');
   const [cls, setCls] = useState<SchemaClass | null>(null);
-  const [required, setRequired] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, InputValue>>({});
+  const [removing, setRemoving] = useState<{ cls: string; attributes: string[] } | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const have = obj.objectClasses.map((c) => c.toLowerCase());
+  const named = (c: SchemaClass, n: string) => c.names.some((x) => x.toLowerCase() === n.toLowerCase());
 
   useEffect(() => {
-    tree.classes().then((all) => setAux(all.filter((c) => c.kind === 'auxiliary').sort((a, b) => a.name.localeCompare(b.name)))).catch(setError);
+    tree.classes().then(setAll).catch(setError);
+    tree.attributes().then(setAttrTypes).catch(() => undefined);
   }, [tree]);
   useEffect(() => {
     setCls(null);
-    setRequired({});
+    setValues({});
     if (chosen) {
       tree.schemaClass(chosen).then(setCls).catch(setError);
     }
   }, [tree, chosen]);
 
-  const present = (aux ?? []).filter((c) => c.names.some((n) => have.includes(n.toLowerCase())));
-  const missing = (cls?.allMust ?? []).filter((a) => a.toLowerCase() !== 'objectclass' && !(a in obj.attributes)
-    && !Object.keys(obj.attributes).some((k) => k.toLowerCase() === a.toLowerCase()));
+  const aux = (all ?? []).filter((c) => c.kind === 'auxiliary').sort((a, b) => a.name.localeCompare(b.name));
+  const present = aux.filter((c) => c.names.some((n) => have.includes(n.toLowerCase())));
+  // auxiliary superiors the object lacks: they come with the class
+  const superiors: string[] = [];
+  const walk = (c: SchemaClass) => c.superiors.forEach((n) => {
+    const sup = (all ?? []).find((x) => named(x, n));
+    if (sup && sup.kind === 'auxiliary' && !have.includes(sup.name.toLowerCase()) && !superiors.includes(sup.name)) {
+      superiors.push(sup.name);
+      walk(sup);
+    }
+  });
+  if (cls) {
+    walk(cls);
+  }
+  const hasAttr = (a: string) => Object.keys(obj.attributes).some((k) => k.toLowerCase() === a.toLowerCase());
+  const missing = (cls?.allMust ?? []).filter((a) => a.toLowerCase() !== 'objectclass' && !hasAttr(a));
+  const typeOf = (a: string) => attrTypes.find((t) => t.names.some((n) => n.toLowerCase() === a.toLowerCase()));
 
   const change = async (changes: Parameters<typeof tree.modify>[2]) => {
     setBusy(true);
@@ -457,9 +484,27 @@ export function AuxClassModal({ obj, etag, onClose, onDone }: EditProps) {
     }
   };
   const add = () => change([
-    { op: 'add', attribute: 'objectClass', values: [chosen] },
-    ...missing.map((a) => ({ op: 'add' as const, attribute: a, values: [required[a].trim()] })),
+    { op: 'add', attribute: 'objectClass', values: [chosen, ...superiors] },
+    ...missing.map((a) => ({ op: 'add' as const, attribute: a, values: [values[a]] })),
   ]);
+
+  /** The attributes on the object that no other class of it allows. */
+  const askRemove = async (c: SchemaClass) => {
+    setError(null);
+    try {
+      const [gone, ...others] = await Promise.all([c.name, ...obj.objectClasses.filter((n) => !named(c, n))].map((n) => tree.schemaClass(n)));
+      const kept = new Set(others.flatMap((o) => [...(o.allMust ?? o.must), ...(o.allMay ?? o.may)]).map((a) => a.toLowerCase()));
+      const only = [...(gone.allMust ?? gone.must), ...(gone.allMay ?? gone.may)].filter((a) => !kept.has(a.toLowerCase()) && hasAttr(a));
+      const attributes = Object.keys(obj.attributes).filter((k) => only.some((a) => a.toLowerCase() === k.toLowerCase()));
+      if (attributes.length === 0) {
+        await change([{ op: 'remove', attribute: 'objectClass', values: [c.name] }]);
+      } else {
+        setRemoving({ cls: c.name, attributes });
+      }
+    } catch (e) {
+      setError(e);
+    }
+  };
 
   return (
     <Modal isOpen onClose={onClose} variant="medium" aria-labelledby="aux-title">
@@ -473,22 +518,37 @@ export function AuxClassModal({ obj, etag, onClose, onDone }: EditProps) {
                 {present.map((c) => (
                   <li key={c.name}>
                     {c.name}{' '}
-                    <Button variant="link" isInline isDanger isDisabled={busy}
-                      onClick={() => change([{ op: 'remove', attribute: 'objectClass', values: [c.name] }])}>Remove</Button>
+                    <Button variant="link" isInline isDanger isDisabled={busy || !!removing} onClick={() => askRemove(c)}>Remove</Button>
                   </li>
                 ))}
               </ul>
             )}
           </FormGroup>
+          {removing && (
+            <Alert variant="warning" isInline title={`Removing ${removing.cls} also removes ${removing.attributes.length === 1 ? 'an attribute' : 'attributes'} only it allows`}
+              actionLinks={<>
+                <Button variant="link" isInline isDanger isLoading={busy} onClick={() => change([
+                  ...removing.attributes.map((a) => ({ op: 'remove' as const, attribute: a })),
+                  { op: 'remove', attribute: 'objectClass', values: [removing.cls] },
+                ])}>Remove the class and {removing.attributes.join(', ')}</Button>
+                <Button variant="link" isInline onClick={() => setRemoving(null)}>Keep it</Button>
+              </>}>
+              Their values are deleted: {removing.attributes.join(', ')}.
+            </Alert>
+          )}
           <FormGroup label="Add a class" fieldId="aux-add">
-            <FormSelect id="aux-add" value={chosen} onChange={(_e, v) => setChosen(v)} isDisabled={!aux}>
-              <FormSelectOption value="" label={aux ? 'Choose an auxiliary class' : 'Loading…'} isPlaceholder />
-              {(aux ?? []).filter((c) => !present.includes(c)).map((c) => <FormSelectOption key={c.name} value={c.name} label={c.name} />)}
+            <FormSelect id="aux-add" value={chosen} onChange={(_e, v) => setChosen(v)} isDisabled={!all}>
+              <FormSelectOption value="" label={all ? 'Choose an auxiliary class' : 'Loading…'} isPlaceholder />
+              {aux.filter((c) => !present.includes(c)).map((c) => <FormSelectOption key={c.name} value={c.name} label={c.name} />)}
             </FormSelect>
+            {superiors.length > 0 && (
+              <FormHelperText><HelperText><HelperTextItem>Also adds the classes it builds on: {superiors.join(', ')}.</HelperTextItem></HelperText></FormHelperText>
+            )}
           </FormGroup>
+          {cls && missing.length === 0 && <p className="dc-subtle">The object already has every attribute this class requires.</p>}
           {missing.map((a) => (
-            <FormGroup key={a} label={a} fieldId={`aux-${a}`} isRequired>
-              <TextInput id={`aux-${a}`} value={required[a] ?? ''} onChange={(_e, v) => setRequired({ ...required, [a]: v })} />
+            <FormGroup key={`${chosen}-${a}`} label={a} fieldId={`aux-${a}`} isRequired>
+              <ValueInput id={`aux-${a}`} attribute={typeOf(a)} onChange={(v) => setValues((old) => ({ ...old, [a]: v }))} />
             </FormGroup>
           ))}
           <ProblemAlert error={error} />
@@ -496,7 +556,7 @@ export function AuxClassModal({ obj, etag, onClose, onDone }: EditProps) {
       </ModalBody>
       <ModalFooter>
         <Button variant="primary" type="submit" form="aux-form" isLoading={busy}
-          isDisabled={busy || !cls || missing.some((a) => !(required[a] ?? '').trim())}>Add class</Button>
+          isDisabled={busy || !cls || missing.some((a) => values[a] === undefined)}>Add class</Button>
         <Button variant="link" onClick={onClose}>Close</Button>
       </ModalFooter>
     </Modal>

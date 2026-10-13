@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Breadcrumb, BreadcrumbItem, Button, Card, CardBody, CardTitle, EmptyState, EmptyStateBody, PageSection, Pagination,
-  SearchInput, Spinner, Title, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarItem,
+  Breadcrumb, BreadcrumbItem, Button, Card, CardBody, CardTitle, Dropdown, DropdownItem, DropdownList, EmptyState, EmptyStateBody, MenuToggle,
+  PageSection, Pagination, SearchInput, Spinner, Title, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
 import { PlusIcon } from '@patternfly/react-icons';
-import type { DirObject, Page, Row } from '../api';
+import type { DirObject, Page, Row, SchemaClass } from '../api';
 import { useSession } from '../session';
 import { navigate, useLocation } from '../router';
 import { ContainerTree } from '../components/ContainerTree';
@@ -12,6 +12,7 @@ import { ObjectDrawer } from '../components/ObjectDrawer';
 import { RowsTable } from '../components/RowsTable';
 import { ProblemAlert } from '../components/Problem';
 import { CreateModal } from '../components/Edit';
+import { NewUserGroupModal, STANDARD, canHold } from '../components/NewUserGroup';
 
 type Kind = 'all' | 'containers' | 'leaves';
 
@@ -29,7 +30,11 @@ export function Browser({ container }: { container?: string }) {
   const [highlight, setHighlight] = useState<string | null>(null);
   const [goTo, setGoTo] = useState('');
   const [error, setError] = useState<unknown>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<'object' | 'user' | 'group' | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const [classes, setClasses] = useState<SchemaClass[]>([]);
+  useEffect(() => { tree.classes().then(setClasses).catch(() => undefined); }, [tree]);
+  const holds = (k: 'user' | 'group') => !!here && canHold(classes.find((c) => c.names.some((n) => n.toLowerCase() === STANDARD[k][0].toLowerCase())), here);
 
   useEffect(() => {
     setPageNo(1);
@@ -126,7 +131,16 @@ export function Browser({ container }: { container?: string }) {
                     </ToolbarItem>
                     {here && canAt('editor', here.dn) && (
                       <ToolbarItem>
-                        <Button variant="secondary" icon={<PlusIcon />} onClick={() => setCreating(true)}>New object</Button>
+                        <Dropdown isOpen={newOpen} onOpenChange={setNewOpen} popperProps={{ appendTo: 'inline' }}
+                          toggle={(ref) => <MenuToggle ref={ref} variant="secondary" icon={<PlusIcon />} isExpanded={newOpen} onClick={() => setNewOpen(!newOpen)}>New</MenuToggle>}>
+                          <DropdownList>
+                            <DropdownItem key="user" isDisabled={!holds('user')} description={holds('user') ? undefined : 'Users cannot be created here'}
+                              onClick={() => { setNewOpen(false); setCreating('user'); }}>User</DropdownItem>
+                            <DropdownItem key="group" isDisabled={!holds('group')} description={holds('group') ? undefined : 'Groups cannot be created here'}
+                              onClick={() => { setNewOpen(false); setCreating('group'); }}>Group</DropdownItem>
+                            <DropdownItem key="object" onClick={() => { setNewOpen(false); setCreating('object'); }}>Other object…</DropdownItem>
+                          </DropdownList>
+                        </Dropdown>
                       </ToolbarItem>
                     )}
                     <ToolbarItem variant="pagination" align={{ default: 'alignEnd' }}>
@@ -149,9 +163,13 @@ export function Browser({ container }: { container?: string }) {
         </Card>
       </div>
       </ObjectDrawer>
-      {creating && here && (
-        <CreateModal parent={here} onClose={() => setCreating(false)}
-          onCreated={(o) => { setCreating(false); load(); navigate(`${location.pathname}?object=${o.guid}`); }} />
+      {creating === 'object' && here && (
+        <CreateModal parent={here} onClose={() => setCreating(null)}
+          onCreated={(o) => { setCreating(null); load(); navigate(`${location.pathname}?object=${o.guid}`); }} />
+      )}
+      {(creating === 'user' || creating === 'group') && here && (
+        <NewUserGroupModal kind={creating} parent={here} onClose={() => setCreating(null)}
+          onCreated={(o) => { setCreating(null); load(); navigate(`${location.pathname}?object=${o.guid}`); }} />
       )}
     </PageSection>
   );
