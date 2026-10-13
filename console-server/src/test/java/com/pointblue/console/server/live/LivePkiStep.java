@@ -75,6 +75,14 @@ public final class LivePkiStep {
                 }
                 case "user-create" -> show(call("POST", t + "/security/objects/" + guid(t, h, args[3]) + "/certificates",
                     Map.of("name", args[4], "algorithm", "rsa", "rsaBits", 2048, "validityYears", 1), h));
+                case "crl-times" -> {
+                    // READ-ONLY: the CRL configuration's own times beside the issued CRL's
+                    for (Object o : (List<?>) call("GET", t + "/security/pki", null, h).body().get("crls")) {
+                        Map<String, Object> c = Json.asMap(o);
+                        System.out.println(c.get("name") + ": issued " + c.get("issued") + " / thisUpdate " + c.get("thisUpdate")
+                            + "; nextIssue " + c.get("nextIssue") + " / nextUpdate " + c.get("nextUpdate"));
+                    }
+                }
                 case "user-list" -> show(call("GET", t + "/security/objects/" + guid(t, h, args[3]) + "/certificates", null, h));
                 default -> throw new IllegalArgumentException("unknown step " + op);
             }

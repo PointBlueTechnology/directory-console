@@ -1,11 +1,24 @@
-import { Button, Flex, FlexItem } from '@patternfly/react-core';
-import { DAYS, SLOTS, label, slot } from '../timemap';
+import { useState } from 'react';
+import { Button, Flex, FlexItem, ToggleGroup, ToggleGroupItem } from '@patternfly/react-core';
+import { DAYS, SLOTS, fromView, label, localShift, slot, toView } from '../timemap';
+
+/** "UTC-05:00" for a shift in half-hours. */
+function zoneName(shift: number): string {
+  const m = Math.abs(shift) * 30;
+  return `UTC${shift < 0 ? '-' : '+'}${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
 
 /**
  * The login time restriction grid: 7 days x 48 half-hours. A filled cell allows login. Each cell is a
- * toggle button (keyboard and screen reader friendly); a day's name toggles the whole day.
+ * toggle button (keyboard and screen reader friendly); a day's name toggles the whole day. eDirectory
+ * keeps the map in UTC; the grid shows it in this browser's time zone unless UTC is chosen.
  */
-export function TimeGrid({ bits, onChange, disabled }: { bits: boolean[]; onChange: (b: boolean[]) => void; disabled?: boolean }) {
+export function TimeGrid({ bits: utc, onChange: onUtcChange, disabled }: { bits: boolean[]; onChange: (b: boolean[]) => void; disabled?: boolean }) {
+  const local = localShift();
+  const [zone, setZone] = useState<'local' | 'utc'>(local === null || local === 0 ? 'utc' : 'local');
+  const shift = zone === 'local' && local !== null ? local : 0;
+  const bits = toView(utc, shift);
+  const onChange = (view: boolean[]) => onUtcChange(fromView(view, shift));
   const set = (indexes: number[], on: boolean) => {
     const next = bits.slice();
     indexes.forEach((i) => { next[i] = on; });
@@ -23,7 +36,20 @@ export function TimeGrid({ bits, onChange, disabled }: { bits: boolean[]; onChan
             Weekdays 07:00-19:00
           </Button>
         </FlexItem>
+        {local !== null && local !== 0 && (
+          <FlexItem align={{ default: 'alignRight' }}>
+            <ToggleGroup aria-label="Show times in">
+              <ToggleGroupItem text={`Your time (${zoneName(local)})`} buttonId="tz-local" isSelected={zone === 'local'} onChange={() => setZone('local')} />
+              <ToggleGroupItem text="UTC" buttonId="tz-utc" isSelected={zone === 'utc'} onChange={() => setZone('utc')} />
+            </ToggleGroup>
+          </FlexItem>
+        )}
       </Flex>
+      <p className="dc-subtle">
+        {zone === 'local' && local !== null
+          ? `Times are in your time zone (${zoneName(local)} today). eDirectory keeps them in UTC, so after a daylight-saving change they fall an hour differently in local time.`
+          : local === null ? 'Times are in UTC: your time zone is not a whole number of half-hours from UTC.' : 'Times are in UTC, as eDirectory keeps them.'}
+      </p>
       <div className="dc-timegrid" role="group" aria-label="Login allowed times">
         <div className="dc-timegrid__row" aria-hidden="true">
           <span className="dc-timegrid__day" />
