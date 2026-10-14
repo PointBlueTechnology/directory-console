@@ -12,6 +12,8 @@ import { linkProps, navigate } from '../router';
 import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../components/IdmParts';
+import { BulkLifecycleModal } from '../components/BulkLifecycle';
+import { plan } from '../lifecycle';
 
 /** Identity Manager: the engine, the driver sets, and each set's drivers with their state. */
 export function IdmPage({ driverSet }: { driverSet?: string }) {
@@ -110,7 +112,7 @@ function DriverSetView({ api: connected, guid }: { api: ReturnType<typeof idm>; 
       <CardBody>
         <HeadingLevel.Provider value="h3">
         <Tabs activeKey={tab} onSelect={(_e, k) => setTab(k)} aria-label="Driver set" mountOnEnter>
-          <Tab eventKey="drivers" title={<TabTitleText>Drivers</TabTitleText>}><DriversTable api={api} drivers={set.drivers} onChanged={load} server={server} /></Tab>
+          <Tab eventKey="drivers" title={<TabTitleText>Drivers</TabTitleText>}><DriversTable api={api} drivers={set.drivers} onChanged={load} server={server} serverName={on?.name} /></Tab>
           <Tab eventKey="jobs" title={<TabTitleText>Jobs</TabTitleText>}>
             <JobsTable api={api} load={() => api.setPart<{ jobs: Job[] }>(guid, 'jobs')} />
           </Tab>
@@ -127,7 +129,9 @@ function DriverSetView({ api: connected, guid }: { api: ReturnType<typeof idm>; 
   );
 }
 
-function DriversTable({ api, drivers, onChanged, server }: { api: ReturnType<typeof idm>; drivers: DriverRow[]; onChanged: () => void; server?: string }) {
+function DriversTable({ api, drivers, onChanged, server, serverName }: {
+  api: ReturnType<typeof idm>; drivers: DriverRow[]; onChanged: () => void; server?: string; serverName?: string;
+}) {
   const level = useHeading();
   const { can } = useSession();
   const { run, dialog } = useConfirmed();
@@ -135,6 +139,7 @@ function DriversTable({ api, drivers, onChanged, server }: { api: ReturnType<typ
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [bulk, setBulk] = useState<'start' | 'stop' | null>(null);
   const act = async (d: DriverRow, action: 'start' | 'stop' | 'restart') => {
     if (!d.guid) {
       return;
@@ -153,8 +158,15 @@ function DriversTable({ api, drivers, onChanged, server }: { api: ReturnType<typ
   };
   return (
     <div className="dc-tab-body">
+      {can('operator') && (
+        <Flex className="dc-tab-body">
+          <FlexItem><Button variant="secondary" size="sm" isDisabled={plan('start', drivers).act.length === 0} onClick={() => setBulk('start')}>Start all</Button></FlexItem>
+          <FlexItem><Button variant="secondary" size="sm" isDanger isDisabled={plan('stop', drivers).act.length === 0} onClick={() => setBulk('stop')}>Stop all</Button></FlexItem>
+        </Flex>
+      )}
       {notice && <Alert component={level} variant="success" isInline isPlain title={notice} />}
       <ProblemAlert error={error} />
+      {bulk && <BulkLifecycleModal action={bulk} drivers={drivers} api={api} serverName={serverName} onClose={() => setBulk(null)} onDone={onChanged} />}
       <Table aria-label="Drivers" variant="compact">
         <Thead><Tr><Th>Driver</Th><Th>State</Th><Th>Starts</Th><Th>Cache</Th><Th>Unprocessed</Th><Th>Trace</Th>{can('operator') && <Th screenReaderText="Actions" />}</Tr></Thead>
         <Tbody>
