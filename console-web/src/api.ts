@@ -729,8 +729,21 @@ export interface DefaultCertificateResult {
 
 export type ServerCertificate = Ref & { server: { dn: string; name: string } | null; usedBy?: string[]; certificate: Certificate | null; chain?: Certificate[] };
 
+/** The Organizational CA's settings (ndspkiSecurityRightsLevel bits, and nDSPKISuiteBMode). */
+export interface CaConfiguration {
+  requireReadRights: boolean;
+  requireWriteRights: boolean;
+  /** The PKI Health Check (ndsd start, DSRepair) creates missing default certificates and renews expired ones, in place. */
+  serverSelfProvisioning: boolean;
+  /** Only with server self-provisioning: default certificates are made again when the CA changes. */
+  forceHealthCheck: boolean;
+  userEmergencyCrl: boolean;
+  userSelfProvisioning: boolean;
+  suiteB: boolean;
+}
+
 export interface Pki {
-  ca: (Ref & { host?: string; defaultRsaKeySize?: string; defaultLifeYears?: string; certificates: Certificate[] }) | null;
+  ca: (Ref & { host?: string; defaultRsaKeySize?: string; defaultLifeYears?: string; certificates: Certificate[]; configuration?: CaConfiguration }) | null;
   serverCertificates: (Ref & { server: { dn: string; name: string } | null; usedBy: string[]; certificate: Certificate | null; chain: Certificate[] })[];
   trustedRoots: (Ref & { container: string; certificate: Certificate | null })[];
   crls: (Ref & { type: 'rsa' | 'ec'; issued?: string; nextIssue?: string; number?: string; status?: string; host?: string;
@@ -847,6 +860,9 @@ export function security(id: string) {
     /** New default certificates for one server: a missing one under its standard name, others as "<name> <date>"; nothing is deleted. */
     repairDefaultCertificates: (serverGuid: string, body: DefaultCertificatesRequest, confirm?: string) =>
       request<{ results: DefaultCertificateResult[] }>('POST', `${base}/pki/servers/${guidPath(serverGuid)}/default-certificates`, body, h(confirm)).then((r) => r.data.results),
+    /** Change the named CA settings; the others keep their values. */
+    caConfiguration: (body: Partial<CaConfiguration>, confirm?: string) =>
+      request<CaConfiguration>('PUT', `${base}/pki/ca/configuration`, body, h(confirm)).then((r) => r.data),
     /** The certificate an LDAP server offers: one of its own server's certificates. It takes effect when the LDAP server is refreshed. */
     useForLdap: (ldapServerGuid: string, certificateGuid: string, confirm?: string) =>
       request<{ ldapServer: string; certificate: string; previous: string }>('PUT', `${base}/pki/ldap-servers/${guidPath(ldapServerGuid)}/certificate`,

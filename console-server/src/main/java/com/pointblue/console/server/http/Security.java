@@ -124,6 +124,7 @@ final class Security {
                 case "GET pki/servers/{guid}/default-certificates" -> Http.json(ex, 200, defaultCertificates(l, guid));
                 case "POST pki/servers/{guid}/default-certificates" -> repairDefaultCertificates(ex, l, s, guid);
                 case "PUT pki/ldap-servers/{guid}/certificate" -> useForLdap(ex, l, s, guid);
+                case "PUT pki/ca/configuration" -> updateCaConfiguration(ex, l, s);
                 case "DELETE pki/server-certificates/{guid}" -> deleteServerCertificate(ex, l, s, guid);
                 case "POST pki/server-certificates/{guid}/revoke" -> revokeServerCertificate(ex, l, s, guid);
                 case "POST objects/{guid}/certificates/{name}/revoke" ->
@@ -1073,12 +1074,13 @@ final class Security {
         Map<String, Object> ca = null;
         if (sec != null && sec.first("nDSPKITreeCADN") != null) {
             Ldap.Entry c = l.read(sec.first("nDSPKITreeCADN"), "GUID", "cn", "hostServer", "nDSPKIPublicKeyCertificate", "nDSPKIPublicKeyCertificateEC",
-                "ndspkiDefaultRSAKeySize", "ndspkiDefaultCertificateLife", "nDSPKISubjectName");
+                "ndspkiDefaultRSAKeySize", "ndspkiDefaultCertificateLife", "nDSPKISubjectName", "ndspkiSecurityRightsLevel", "nDSPKISuiteBMode");
             if (c != null) {
                 ca = ref(c);
                 ca.put("host", c.first("hostServer"));
                 ca.put("defaultRsaKeySize", c.first("ndspkiDefaultRSAKeySize"));
                 ca.put("defaultLifeYears", c.first("ndspkiDefaultCertificateLife"));
+                ca.put("configuration", caConfiguration(c));
                 List<Map<String, Object>> certs = new ArrayList<>();
                 for (String a : new String[] {"nDSPKIPublicKeyCertificate", "nDSPKIPublicKeyCertificateEC"}) {
                     Map<String, Object> cert = cert(bytes(c, a));
@@ -1163,6 +1165,103 @@ final class Security {
         }
         out.put("crls", crls);
         return out;
+    }
+
+    /**
+     * The Organizational CA's settings, as Identity Console's CA configuration has them: bits of
+     * {@code ndspkiSecurityRightsLevel} (read from its eDirAPI, 2026-10-14), and Suite B mode in
+     * {@code nDSPKISuiteBMode}.
+     */
+    static final Map<String, Integer> CA_BITS = new LinkedHashMap<>();
+
+    static {
+        CA_BITS.put("requireReadRights", 0x1);
+        CA_BITS.put("requireWriteRights", 0x2);
+        CA_BITS.put("serverSelfProvisioning", 0x4);
+        CA_BITS.put("forceHealthCheck", 0x8);
+        CA_BITS.put("userEmergencyCrl", 0x10);
+        CA_BITS.put("userSelfProvisioning", 0x20);
+    }
+
+    /**
+     * {@code PUT pki/ca/configuration}: the settings named in the body (the others keep their values,
+     * as do bits the console does not know). Force health check needs server self-provisioning, as in
+     * Identity Console; Suite B needs a CA with only an ECDSA P-256 or P-384 certificate.
+     */
+    private void updateCaConfiguration(HttpExchange ex, Ldap l, Sessions.Session s) throws IOException, NamingException {
+        Ldap.Entry sec = securityContainer(l);
+        Ldap.Entry c = sec == null || sec.first("nDSPKITreeCADN") == null ? null
+            : l.read(sec.first("nDSPKITreeCADN"), "GUID", "ndspkiSecurityRightsLevel", "nDSPKISuiteBMode", "nDSPKIPublicKeyCertificate", "nDSPKIPublicKeyCertificateEC");
+        if (c == null) {
+            throw new Http.Problem(409, "no-ca", "this tree has no Organizational CA");
+        }
+        Map<String, Object> b = Http.body(ex);
+        Map<String, Object> before = caConfiguration(c);
+        String raw = c.first("ndspkiSecurityRightsLevel");
+        int level = raw == null || !raw.trim().matches("-?\\d+") ? 0 : Integer.parseInt(raw.trim());
+        int was = level;
+        for (Map.Entry<String, Integer> e : CA_BITS.entrySet()) {
+            Object v = b.get(e.getKey());
+            if (v == null) {
+                continue;
+            }
+            if (!(v instanceof Boolean on)) {
+                throw new IllegalArgumentException(e.getKey() + " is true or false");
+            }
+            level = on ? level | e.getValue() : level & ~e.getValue();
+        }
+        if ((level & CA_BITS.get("serverSelfProvisioning")) == 0) {
+            level &= ~CA_BITS.get("forceHealthCheck");
+        }
+        Boolean suiteB = null;
+        if (b.get("suiteB") != null) {
+            if (!(b.get("suiteB") instanceof Boolean on)) {
+                throw new IllegalArgumentException("suiteB is true or false");
+            }
+            suiteB = on;
+            X509Certificate ec = x509(bytes(c, "nDSPKIPublicKeyCertificateEC"));
+            boolean rsa = bytes(c, "nDSPKIPublicKeyCertificate") != null;
+            int curve = ec != null && ec.getPublicKey() instanceof ECPublicKey k ? k.getParams().getCurve().getField().getFieldSize() : 0;
+            if (on && !Boolean.TRUE.equals(before.get("suiteB")) && (rsa || (curve != 256 && curve != 384))) {
+                throw new Http.Problem(409, "suite-b", "Suite B needs a CA with only an ECDSA certificate on P-256 or P-384; this CA "
+                    + (rsa ? "also has an RSA certificate" : "has no such certificate"));
+            }
+        }
+        List<ModificationItem> mods = new ArrayList<>();
+        if (level != was || raw == null) {
+            mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute("ndspkiSecurityRightsLevel", String.valueOf(level))));
+        }
+        if (suiteB != null && suiteB != Boolean.TRUE.equals(before.get("suiteB"))) {
+            mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute("nDSPKISuiteBMode", suiteB ? "1" : "0")));
+        }
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("ca", c.dn());
+        detail.put("from", before);
+        if (!mods.isEmpty()) {
+            try {
+                l.modify(c.dn(), mods);
+            } catch (NamingException x) {
+                audit(s, "pki.ca.configuration", guidOf(c), detail, Ldap.Failure.of(x));
+                throw x;
+            }
+        }
+        Map<String, Object> after = caConfiguration(l.read(c.dn(), "ndspkiSecurityRightsLevel", "nDSPKISuiteBMode"));
+        detail.put("to", after);
+        if (!mods.isEmpty()) {
+            audit(s, "pki.ca.configuration", guidOf(c), detail, null);
+        }
+        Http.json(ex, 200, after);
+    }
+
+    private static Map<String, Object> caConfiguration(Ldap.Entry c) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        String raw = c.first("ndspkiSecurityRightsLevel");
+        int level = raw == null || !raw.trim().matches("-?\\d+") ? 0 : Integer.parseInt(raw.trim());
+        CA_BITS.forEach((k, bit) -> m.put(k, (level & bit) != 0));
+        m.put("suiteB", "TRUE".equalsIgnoreCase(c.first("nDSPKISuiteBMode")) || "1".equals(c.first("nDSPKISuiteBMode")));
+        m.put("level", raw);
+        m.put("suiteBValue", c.first("nDSPKISuiteBMode"));
+        return m;
     }
 
     private static String kmoKey(String cn, String container) {

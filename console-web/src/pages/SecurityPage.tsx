@@ -14,6 +14,7 @@ import { NewCertificateModal } from '../components/NewCertificate';
 import { SequenceModal } from '../components/SequenceModal';
 import { RevokeModal, revokedNotice } from '../components/RevokeCertificate';
 import { DefaultCertificatesModal } from '../components/DefaultCertificates';
+import { CaConfigurationPanel } from '../components/CaConfiguration';
 
 const DAY = 86_400_000;
 export const WARN_DAYS = 60;
@@ -133,6 +134,13 @@ function CertificatesView() {
                   ))}
                 </Tbody>
               </Table>
+              {pki.ca.configuration && (
+                <>
+                  <Title headingLevel="h3" size="md" className="dc-tab-body">Configuration</Title>
+                  <CaConfigurationPanel value={pki.ca.configuration} certificates={pki.ca.certificates} editor={editor}
+                    save={(change) => confirmed.run((c) => api.caConfiguration(change, c))} />
+                </>
+              )}
             </>
           )}
         </CardBody>

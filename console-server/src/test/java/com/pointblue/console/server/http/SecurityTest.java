@@ -367,6 +367,32 @@ public class SecurityTest {
     }
 
     @Test
+    public void caConfigurationBitsAreChangedOneByOneAndUnknownBitsKept() throws Exception {
+        String t = "/api/v2/trees/acme/security/pki";
+        Map<String, Object> ca = Json.asMap(call("GET", t, null, h).body().get("ca"));
+        assertEquals("not set: all off", false, Json.asMap(ca.get("configuration")).get("serverSelfProvisioning"));
+
+        assertEquals("force health check needs server self-provisioning", false,
+            call("PUT", t + "/ca/configuration", Map.of("forceHealthCheck", true), h).body().get("forceHealthCheck"));
+        Reply r = call("PUT", t + "/ca/configuration", Map.of("serverSelfProvisioning", true, "forceHealthCheck", true), h);
+        assertEquals(String.valueOf(r.body()), 200, r.status());
+        assertEquals("12", edir.entry("cn=TREE CA,cn=Security,o=system").getAttributeValue("ndspkiSecurityRightsLevel"));
+        // a bit the console does not know is kept
+        edir.server.modify("cn=TREE CA,cn=Security,o=system", new com.unboundid.ldap.sdk.Modification(
+            com.unboundid.ldap.sdk.ModificationType.REPLACE, "ndspkiSecurityRightsLevel", String.valueOf(12 | 0x100)));
+        r = call("PUT", t + "/ca/configuration", Map.of("serverSelfProvisioning", false), h);
+        assertEquals(false, r.body().get("forceHealthCheck"));
+        assertEquals("the unknown bit stays; turning off self-provisioning clears force health check",
+            String.valueOf(0x100), edir.entry("cn=TREE CA,cn=Security,o=system").getAttributeValue("ndspkiSecurityRightsLevel"));
+        assertEquals(400, call("PUT", t + "/ca/configuration", Map.of("requireReadRights", "yes"), h).status());
+
+        // Suite B: refused for a CA with an RSA certificate
+        edir.server.modify("cn=TREE CA,cn=Security,o=system", new com.unboundid.ldap.sdk.Modification(
+            com.unboundid.ldap.sdk.ModificationType.REPLACE, "nDSPKIPublicKeyCertificate", edir.pki.ca.getEncoded()));
+        assertEquals(409, call("PUT", t + "/ca/configuration", Map.of("suiteB", true), h).status());
+    }
+
+    @Test
     public void ebaIsFoundAmongTheServersNcpAddresses() throws Exception {
         String t = "/api/v2/trees/acme/security/eba";
         assertEquals("no server answers as the EBA CA", false, call("GET", t, null, h).body().get("available"));
