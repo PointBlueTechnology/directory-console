@@ -414,6 +414,19 @@ export interface Job {
 
 export type PasswordKind = 'named' | 'remote-loader' | 'key' | 'keystore';
 
+/** Trace settings. A driver has level, file, name, encoding and sizeLimitKb, and its driver set's beside them; a driver set has level, xslLevel, javaDebugPort, file, encoding and sizeLimitKb. */
+export interface TraceSettings {
+  level?: number | null;
+  xslLevel?: number | null;
+  javaDebugPort?: number | null;
+  file?: string | null;
+  name?: string | null;
+  encoding?: string | null;
+  /** KB; 0 is unlimited. */
+  sizeLimitKb?: number | null;
+  driverSet?: TraceSettings | null;
+}
+
 export type AssociationState = 'disabled' | 'processed' | 'pending' | 'manual' | 'migrate';
 
 export interface IdmDriverRef { guid: string | null; dn: string; name: string; driverSet: { dn: string; name: string } }
@@ -456,6 +469,11 @@ export function idm(id: string, server?: string) {
       request<void>('POST', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm)),
     removePassword: (kind: 'drivers' | 'driversets', guid: string, body: { kind: PasswordKind; name?: string }, confirm?: string) =>
       request<void>('DELETE', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm)),
+    /** Trace settings: a driver's (null: the driver set's applies) with the driver set's beside them, or a driver set's. */
+    trace: (kind: 'drivers' | 'driversets', guid: string) => request<TraceSettings>('GET', `${base}/${kind}/${guidPath(guid)}/trace`).then((r) => r.data),
+    /** Each named setting: a value, or null to remove it (a driver then uses the driver set's). */
+    setTrace: (kind: 'drivers' | 'driversets', guid: string, body: Partial<Record<keyof TraceSettings, string | number | null>>, confirm?: string) =>
+      request<TraceSettings>('PUT', `${base}/${kind}/${guidPath(guid)}/trace`, body, h(confirm)).then((r) => r.data),
     /** The object inspector: an object's associations, read over LDAP (no engine needed), and the tree's drivers. */
     associations: (guid: string) => request<ObjectAssociations>('GET', `${base}/objects/${guidPath(guid)}/associations`).then((r) => r.data),
     addAssociation: (guid: string, body: { driver: string; state: AssociationState; value: string }, confirm?: string) =>

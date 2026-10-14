@@ -177,6 +177,45 @@ public class ObjectsTest {
     }
 
     @Test
+    public void traceSettingsOfADriverAndItsDriverSet() throws Exception {
+        edir.add("dn: cn=Set1,o=system", "objectClass: DirXML-DriverSet", "cn: Set1", "DirXML-DriverTraceLevel: 3", "DirXML-JavaTraceFile: /opt/novell/java.trace");
+        edir.add("dn: cn=AD,cn=Set1,o=system", "objectClass: DirXML-Driver", "cn: AD", "DirXML-TraceLevel: 10", "DirXML-TraceSizeLimit: 100000");
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String driver = (String) resolve(h, "cn=AD,cn=Set1,o=system").body().get("guid");
+        String set = (String) resolve(h, "cn=Set1,o=system").body().get("guid");
+        String t = "/api/v2/trees/acme/idm/drivers/" + driver + "/trace";
+
+        Map<String, Object> got = call("GET", t, null, h).body();
+        assertEquals(String.valueOf(got), 10, Json.asInt(got.get("level"), -1));
+        assertEquals(null, got.get("file"));
+        assertEquals("what the driver set's would give", "/opt/novell/java.trace", Json.asMap(got.get("driverSet")).get("file"));
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("level", 5);
+        body.put("file", "/var/trace/ad.trace");
+        body.put("sizeLimitKb", null);
+        Reply put = call("PUT", t, body, h);
+        assertEquals(String.valueOf(put.body()), 200, put.status());
+        com.unboundid.ldap.sdk.Entry ad = edir.entry("cn=AD,cn=Set1,o=system");
+        assertEquals("5", ad.getAttributeValue("DirXML-TraceLevel"));
+        assertEquals("/var/trace/ad.trace", ad.getAttributeValue("DirXML-TraceFile"));
+        assertEquals("null: use the driver set's", null, ad.getAttributeValue("DirXML-TraceSizeLimit"));
+
+        assertEquals(400, call("PUT", t, Map.of("level", 11), h).status());
+        assertEquals(400, call("PUT", t, Map.of("xslLevel", 1), h).status());
+        assertEquals(400, call("PUT", t, Map.of("file", "a\nb"), h).status());
+
+        Reply s2 = call("PUT", "/api/v2/trees/acme/idm/driversets/" + set + "/trace", Map.of("xslLevel", 2, "javaDebugPort", 9200), h);
+        assertEquals(String.valueOf(s2.body()), 200, s2.status());
+        assertEquals("9200", edir.entry("cn=Set1,o=system").getAttributeValue("DirXML-JavaDebugPort"));
+        assertEquals(404, call("GET", "/api/v2/trees/acme/idm/driversets/" + driver + "/trace", null, h).status());
+
+        Map<String, String> v = signIn("cn=viewer,ou=Users,o=acme", "viewer-pw");
+        assertEquals(200, call("GET", t, null, v).status());
+        assertEquals(403, call("PUT", t, Map.of("level", 1), v).status());
+    }
+
+    @Test
     public void browseReadAndSchema() throws Exception {
         Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
         Reply roots = call("GET", "/api/v2/trees/acme/roots", null, h);

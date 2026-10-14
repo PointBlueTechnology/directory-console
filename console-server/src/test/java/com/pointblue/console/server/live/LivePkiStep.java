@@ -108,6 +108,17 @@ public final class LivePkiStep {
                     }
                     show(call("PATCH", t + "/idm/objects/" + o + "/associations", body, h));
                 }
+                // READ-ONLY: an object's attributes whose names contain the given text
+                case "obj-read" -> {
+                    Map<String, Object> attrs = Json.asMap(call("GET", t + "/objects/" + guid(t, h, args[3]), null, h).body().get("attributes"));
+                    attrs.forEach((k, v) -> {
+                        if (args.length < 5 || k.toLowerCase().contains(args[4].toLowerCase())) {
+                            System.out.println(k + ": " + Json.compact(v));
+                        }
+                    });
+                }
+                // READ-ONLY: a driver's (or driver set's) trace settings
+                case "trace-read" -> show(call("GET", t + "/idm/" + (args.length > 4 ? args[4] : "drivers") + "/" + guid(t, h, args[3]) + "/trace", null, h));
                 case "ca-config" -> show(new LiveSetupCheck.Reply(200, Json.asMap(Json.asMap(call("GET", t + "/security/pki", null, h).body().get("ca")).get("configuration")), null));
                 case "crl-times" -> {
                     // READ-ONLY: the CRL configuration's own times beside the issued CRL's
