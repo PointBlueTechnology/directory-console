@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Button, Form, FormGroup, FormHelperText, FormSelect, FormSelectOption, FormSelectOptionGroup, HelperText, HelperTextItem, Label, Modal,
-  ModalBody, ModalFooter, ModalHeader, Spinner, TextInput,
+  ModalBody, ModalFooter, ModalHeader, Spinner, TextInput, Title,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { type AssociationState, type DirObject, type ObjectAssociations, idm } from '../api';
@@ -89,6 +89,25 @@ export function AssociationsTab({ obj }: { obj: DirObject }) {
         </div>
       )}
       <p className="dc-subtle dc-tab-body">Read from {obj.servedBy?.dn ?? 'the connected server'}; associations replicate with the object.</p>
+      <Title headingLevel="h3" size="md" className="dc-tab-body">Password synchronization</Title>
+      {data.passwordSync.length === 0 ? <p className="dc-subtle">No driver has recorded a password synchronization for this object.</p> : (
+        <Table aria-label="Password synchronization" variant="compact">
+          <Thead><Tr><Th>Driver</Th><Th>Last result</Th><Th>When</Th><Th>Message</Th></Tr></Thead>
+          <Tbody>
+            {data.passwordSync.map((p) => (
+              <Tr key={p.raw}>
+                <Td dataLabel="Driver">{p.driver ? (p.driver.guid ? <a {...linkProps(`/idm/drivers/${p.driver.guid}`)}>{p.driver.name}</a> : p.driver.name)
+                  : <span className="dc-subtle dc-mono">{p.driverGuid ?? '?'}</span>}</Td>
+                <Td dataLabel="Last result">{p.status
+                  ? <Label isCompact color={p.status === 'succeeded' ? 'green' : p.status === 'failed' ? 'red' : p.status === 'pending' ? 'blue' : 'grey'}>{p.status}</Label>
+                  : <span className="dc-mono">{p.raw}</span>}</Td>
+                <Td dataLabel="When">{p.when ? new Date(p.when).toLocaleString() : '—'}</Td>
+                <Td dataLabel="Message">{p.message || <span className="dc-subtle">—</span>}</Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
       {adding && (
         <AssociationModal title="Add an association" drivers={free} onClose={() => setAdding(false)}
           onSave={(v) => act((c) => api.addAssociation(obj.guid, { driver: v.driver!, state: v.state, value: v.value }, c)).then(() => setAdding(false))} />

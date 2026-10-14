@@ -500,6 +500,8 @@ export interface ObjectAssociations {
   /** One per driver; {@code driver} null when no driver has that DN any more. */
   associations: { raw: string; driver?: IdmDriverRef | null; driverDn?: string; state?: AssociationState | string; value?: string }[];
   drivers: IdmDriverRef[];
+  /** Each driver's last password synchronization for this object, as the engine records it (DirXML-PasswordSyncStatus). */
+  passwordSync: { raw: string; driverGuid?: string; driver?: IdmDriverRef | null; when?: string; code?: number; status?: string; message?: string }[];
 }
 
 /** Identity Manager for one directory, on {@code server}'s engine (its GUID) or the connected server's. {@code confirm}: the directory's name, typed for a production directory. */

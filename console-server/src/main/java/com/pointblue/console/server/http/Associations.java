@@ -24,7 +24,7 @@ import javax.naming.directory.SearchControls;
  * 3 manual and 4 migrate, as DirXMLDev and the engine name them.
  *
  * <pre>
- * GET    /api/v2/trees/{tree}/idm/objects/{guid}/associations   the object, its associations, and the tree's drivers
+ * GET    /api/v2/trees/{tree}/idm/objects/{guid}/associations   the object, its associations and password synchronization, and the tree's drivers
  * POST   same   {"driver": guid, "state", "value"}               add one
  * PATCH  same   {"raw", "state"?, "value"?}                      change one (its state, or its value)
  * DELETE same   {"raw"}                                          remove one
@@ -59,6 +59,34 @@ final class Associations {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /**
+     * A {@code DirXML-PasswordSyncStatus} value: the driver's GUID (32 hex), the time (yyyyMMddHHmmssSSS,
+     * UTC), a 12-digit status code, then the message (ig4: 1 with a veto, 5 "pending", 4 with none). Codes
+     * not seen are given as their number.
+     */
+    static Map<String, Object> passwordSync(String raw) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("raw", raw);
+        java.util.regex.Matcher x = java.util.regex.Pattern.compile("^([0-9A-Fa-f]{32})(\\d{17})(\\d{12})(.*)$").matcher(raw);
+        if (!x.matches()) {
+            return m;
+        }
+        m.put("driverGuid", x.group(1).toLowerCase(Locale.ROOT));
+        String t = x.group(2);
+        m.put("when", t.substring(0, 4) + "-" + t.substring(4, 6) + "-" + t.substring(6, 8) + "T" + t.substring(8, 10) + ":" + t.substring(10, 12) + ":"
+            + t.substring(12, 14) + "." + t.substring(14, 17) + "Z");
+        int code = Integer.parseInt(x.group(3));
+        m.put("code", code);
+        m.put("status", switch (code) {
+            case 1 -> "failed";
+            case 4 -> "succeeded";
+            case 5 -> "pending";
+            default -> "status " + code;
+        });
+        m.put("message", x.group(4).trim());
+        return m;
     }
 
     static int stateOf(Object name) {
@@ -102,7 +130,7 @@ final class Associations {
     }
 
     private Map<String, Object> read(Ldap l, String guid) throws NamingException {
-        Ldap.Entry e = server.objects.byGuid(l, guid, "objectClass", "DirXML-Associations", "GUID");
+        Ldap.Entry e = server.objects.byGuid(l, guid, "objectClass", "DirXML-Associations", "DirXML-PasswordSyncStatus", "GUID");
         if (e == null) {
             throw new Http.Problem(404, "not-found", "no object has GUID " + guid);
         }
@@ -126,6 +154,18 @@ final class Associations {
             list.add(m);
         }
         out.put("associations", list);
+        // each driver's last password synchronization for this object, as the engine records it
+        Map<String, Map<String, Object>> byGuid = new LinkedHashMap<>();
+        drivers.values().forEach(d -> byGuid.put(String.valueOf(d.get("guid")).toLowerCase(Locale.ROOT), d));
+        List<Map<String, Object>> sync = new ArrayList<>();
+        for (Object v : e.attributes().getOrDefault("dirxml-passwordsyncstatus", List.of())) {
+            Map<String, Object> m = passwordSync(String.valueOf(v));
+            if (m.get("driverGuid") != null) {
+                m.put("driver", byGuid.get(String.valueOf(m.get("driverGuid"))));
+            }
+            sync.add(m);
+        }
+        out.put("passwordSync", sync);
         out.put("drivers", new ArrayList<>(drivers.values()));
         return out;
     }

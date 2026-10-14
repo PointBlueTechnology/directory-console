@@ -154,6 +154,19 @@ public class ObjectsTest {
         assertEquals("disabled", Json.asMap(list.get(1)).get("state"));
         assertEquals(2, ((List<?>) got.get("drivers")).size());
         String hr = (String) ((List<?>) got.get("drivers")).stream().map(Json::asMap).filter(d -> "HR".equals(d.get("name"))).findFirst().orElseThrow().get("guid");
+        assertEquals(List.of(), got.get("passwordSync"));
+        // the engine's record of each driver's last password synchronization (ig4's form)
+        edir.server.modify("cn=viewer,ou=Users,o=acme", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD,
+            "DirXML-PasswordSyncStatus", hr.toUpperCase() + "20261007155444953000000000001Code(-8032) Operation vetoed by policy.",
+            "0123456789ABCDEF0123456789ABCDEF20261008010203004000000000005Password Synchronization is pending."));
+        List<?> sync = (List<?>) call("GET", t, null, h).body().get("passwordSync");
+        Map<String, Object> first = Json.asMap(sync.get(0));
+        assertEquals(String.valueOf(sync), "failed", first.get("status"));
+        assertEquals("2026-10-07T15:54:44.953Z", first.get("when"));
+        assertEquals("Code(-8032) Operation vetoed by policy.", first.get("message"));
+        assertEquals("HR", Json.asMap(first.get("driver")).get("name"));
+        assertEquals("pending", Json.asMap(sync.get(1)).get("status"));
+        assertEquals("a driver not in the tree", null, Json.asMap(sync.get(1)).get("driver"));
 
         // a viewer reads but does not change
         Map<String, String> v = signIn("cn=viewer,ou=Users,o=acme", "viewer-pw");
