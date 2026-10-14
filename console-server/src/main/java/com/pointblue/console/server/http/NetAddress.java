@@ -41,4 +41,38 @@ final class NetAddress {
         }
         return Partitions.address(type, v);
     }
+
+    /**
+     * Only an IP address: IP (1), UDP or TCP over IPv4 (8, 9: port then address), or, as an 18-byte
+     * value of another type, port then an IPv6 address (eDirectory's UDP6 and TCP6); null for anything
+     * else (URLs, IPX, …).
+     */
+    static String ipOnly(byte[] b) {
+        int hash = -1;
+        for (int i = 0; i < Math.min(b.length, 4); i++) {
+            if (b[i] == '#') {
+                hash = i;
+                break;
+            }
+            if (b[i] < '0' || b[i] > '9') {
+                return null;
+            }
+        }
+        if (hash <= 0) {
+            return null;
+        }
+        int type = Integer.parseInt(new String(b, 0, hash, StandardCharsets.US_ASCII));
+        byte[] v = Arrays.copyOfRange(b, hash + 1, b.length);
+        if (type == 1 && v.length == 4 || (type == 8 || type == 9) && v.length == 6) {
+            return ip(b);
+        }
+        if (type != 13 && v.length == 18) {
+            try {
+                return java.net.InetAddress.getByAddress(Arrays.copyOfRange(v, 2, 18)).getHostAddress();
+            } catch (java.net.UnknownHostException e) {
+                return null;
+            }
+        }
+        return null;
+    }
 }

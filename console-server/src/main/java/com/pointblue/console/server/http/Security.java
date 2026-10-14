@@ -272,8 +272,8 @@ final class Security {
     static volatile long settleMillis = 2000;
 
     /** What a server's default certificates should be, and the state each is in. */
-    private record DefaultsState(Ldap.Entry server, String tree, X509Certificate caRsa, X509Certificate caEc, List<String> ips, List<String> dnsNames,
-                                 Map<DefaultCert, Ldap.Entry> existing) {
+    private record DefaultsState(Ldap.Entry server, String tree, X509Certificate caRsa, X509Certificate caEc, int rsaBits, List<String> ips,
+                                 List<String> dnsNames, Map<DefaultCert, Ldap.Entry> existing) {
     }
 
     private DefaultsState defaultsState(Ldap l, String serverGuid) throws NamingException {
@@ -283,7 +283,7 @@ final class Security {
         }
         Ldap.Entry sec = securityContainer(l);
         Ldap.Entry ca = sec == null || sec.first("nDSPKITreeCADN") == null ? null
-            : l.read(sec.first("nDSPKITreeCADN"), "nDSPKIPublicKeyCertificate", "nDSPKIPublicKeyCertificateEC");
+            : l.read(sec.first("nDSPKITreeCADN"), "nDSPKIPublicKeyCertificate", "nDSPKIPublicKeyCertificateEC", "ndspkiDefaultRSAKeySize");
         if (ca == null) {
             throw new Http.Problem(409, "no-ca", "this tree has no Organizational CA to issue certificates");
         }
@@ -297,8 +297,9 @@ final class Security {
         }
         List<String> ips = new ArrayList<>();
         for (Object a : srv.attributes().getOrDefault("networkaddress", List.of())) {
-            String ip = a instanceof byte[] b ? NetAddress.ip(b) : null;
-            if (ip != null && !ip.startsWith("127.") && !ips.contains(ip)) {
+            // IPv4 only: eDirectory's own default certificates name the IPv4 address and no other (ig4, 2026-10-14)
+            String ip = a instanceof byte[] b ? NetAddress.ipOnly(b) : null;
+            if (ip != null && !ip.contains(":") && !ip.startsWith("127.") && !ips.contains(ip)) {
                 ips.add(ip);
             }
         }
@@ -323,7 +324,9 @@ final class Security {
         if (dns.isEmpty()) {
             dns.add(serverName);
         }
-        return new DefaultsState(srv, tree, rsa, ec, ips, dns, existing);
+        // the CA's default RSA key size, as eDirectory's own default certificates have it (4096 on ig4)
+        int bits = List.of("2048", "3072", "4096").contains(String.valueOf(ca.first("ndspkiDefaultRSAKeySize"))) ? Integer.parseInt(ca.first("ndspkiDefaultRSAKeySize")) : 2048;
+        return new DefaultsState(srv, tree, rsa, ec, bits, ips, dns, existing);
     }
 
     /** The addresses a replacement names: the server's own, else (none but loopback) those its certificates carry now. */
@@ -496,7 +499,8 @@ final class Security {
             // subject O=<tree>, CN=<host>, in that order, as eDirectory's own default certificates have it
             // (ig4); Pki sends a DN's RDNs in its written order, so the tree comes first here
             String subject = "o=" + javax.naming.ldap.Rdn.escapeValue(tree) + ",cn=" + javax.naming.ldap.Rdn.escapeValue(host);
-            Pki.Spec spec = new Pki.Spec(d.cn, d == DefaultCert.EC ? "ec384" : "rsa", 2048, d == DefaultCert.EC ? "sha384" : "sha256", years,
+            // RSA at the CA's default size and EC P-384, both signed with SHA-384, as eDirectory makes them
+            Pki.Spec spec = new Pki.Spec(d.cn, d == DefaultCert.EC ? "ec384" : "rsa", st.rsaBits(), "sha384", years,
                 subject, ipCert ? ips.stream().map(ip -> "ip:" + ip).toList() : sans, true, null);
             r.put("action", old == null ? "created" : "replaced");
             try {

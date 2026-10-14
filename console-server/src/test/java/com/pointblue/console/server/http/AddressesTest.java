@@ -64,4 +64,12 @@ public class AddressesTest {
         assertEquals("TCP: the client's port is left out", "10.1.2.3", NetAddress.ip(net("9", 0xc3, 0x50, 10, 1, 2, 3)));
         assertNull(NetAddress.ip("x#1".getBytes(StandardCharsets.US_ASCII)));
     }
+
+    @Test
+    public void onlyIpAddressesCountForCertificates() {
+        assertEquals("10.1.2.3", NetAddress.ipOnly(net("9", 0x02, 0x0c, 10, 1, 2, 3)));
+        int[] v6 = {0x02, 0x0c, 0xfd, 0x74, 0x41, 0x61, 0xe4, 0x25, 0x3c, 0x7c, 0x02, 0x50, 0x56, 0xff, 0xfe, 0xb9, 0x3e, 0x74};
+        assertEquals("port then IPv6, as on ig4", "fd74:4161:e425:3c7c:250:56ff:feb9:3e74", NetAddress.ipOnly(net("11", v6)));
+        assertNull("a URL is not an address", NetAddress.ipOnly("13#h\0t\0".getBytes(StandardCharsets.US_ASCII)));
+    }
 }
