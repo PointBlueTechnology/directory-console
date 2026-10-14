@@ -28,10 +28,13 @@ function StateCell({ c }: { c?: DefaultCertificates['certificates'][number] }) {
 }
 
 /**
- * Check and repair eDirectory's default server certificates (SSL CertificateDNS, SSL EC CertificateDNS
+ * Check and renew eDirectory's default server certificates (SSL CertificateDNS, SSL EC CertificateDNS
  * when the tree CA has an EC key, and optionally SSL CertificateIP), server by server: choose servers,
- * choose what to replace, review, then each server in turn. A replaced certificate is deleted and made
- * again under the same name, so an LDAP server that names it keeps it, once refreshed.
+ * choose what to renew, review, then each server in turn. Nothing is deleted: a missing certificate is
+ * made under its standard name, an existing one gets a successor "<name> <date>" beside it, and an LDAP
+ * server is moved to the successor as a separate step at the end. (Deleting and re-making a certificate
+ * under the same name crashed ndsd on ig4; eDirectory's own renewal replaces in place, which no LDAP
+ * operation can.)
  */
 export function DefaultCertificatesModal({ servers, onClose, onChanged }: { servers: EdirServer[]; onClose: () => void; onChanged: () => void }) {
   const { me } = useSession();
@@ -48,6 +51,9 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
   const [results, setResults] = useState<Record<string, DefaultCertificateResult[] | Error>>({});
   const [current, setCurrent] = useState<string | null>(null);
   const [refreshed, setRefreshed] = useState<'no' | 'busy' | 'yes' | Error>('no');
+  // LDAP server GUID → what moving it to a successor did
+  const [moved, setMoved] = useState<Record<string, 'busy' | string | Error>>({});
+  const today = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
     servers.forEach((s) => {
@@ -75,11 +81,24 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
   });
   // what will happen to each certificate of a server, as the server will decide it
   const plan = (st: DefaultCertificates) => st.certificates.filter((c) => c.applicable && kinds.includes(c.kind))
-    .map((c) => ({ c, action: replace === 'invalid' && c.problems.length === 0 ? 'keep' : c.guid ? 'replace' : 'create' }));
+    .map((c) => ({ c, action: replace === 'invalid' && c.problems.length === 0 ? 'keep' : c.guid ? 'successor' : 'create' }));
   const changes = chosen.reduce((n, s) => n + plan(states[s.guid] as DefaultCertificates).filter((p) => p.action !== 'keep').length, 0);
   const ldapUsers = chosen.flatMap((s) => (states[s.guid] as DefaultCertificates).certificates
-    .filter((c) => c.usedBy.length > 0 && plan(states[s.guid] as DefaultCertificates).some((p) => p.c === c && p.action !== 'keep')).flatMap((c) => c.usedBy));
+    .filter((c) => c.usedBy.length > 0 && plan(states[s.guid] as DefaultCertificates).some((p) => p.c === c && p.action === 'successor')).flatMap((c) => c.usedBy));
   const connected = chosen.find((s) => (states[s.guid] as DefaultCertificates).connected);
+  // after the run: LDAP servers that name a certificate which now has a successor
+  const moves = chosen.flatMap((s) => {
+    const st = states[s.guid] as DefaultCertificates;
+    const res = results[s.guid];
+    return Array.isArray(res) ? res.filter((r) => r.status === 'ok' && r.replaces && r.guid)
+      .flatMap((r) => st.ldapServers.filter((ls) => ls.certificate?.toLowerCase() === r.replaces!.toLowerCase())
+        .map((ls) => ({ server: s, ldap: ls, result: r }))) : [];
+  });
+  const moveLdap = (ldapGuid: string, certGuid: string) => {
+    setMoved((old) => ({ ...old, [ldapGuid]: 'busy' }));
+    confirmed.run((c) => api.useForLdap(ldapGuid, certGuid, c)).then((r) => setMoved((old) => ({ ...old, [ldapGuid]: r.certificate })),
+      (e) => setMoved((old) => ({ ...old, [ldapGuid]: e instanceof Error ? e : new Error(String(e)) })));
+  };
 
   const toOptions = () => {
     if (single) {
@@ -122,7 +141,7 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
   return (
     <Modal isOpen onClose={step === 'running' ? undefined : onClose} variant="large" aria-labelledby="defcert-title">
       <ModalHeader title="Default server certificates" labelId="defcert-title"
-        description={{ servers: 'Choose the servers to repair.', options: 'Choose what to replace.', review: 'Check what will happen.', running: 'Working…', done: 'Done.' }[step]} />
+        description={{ servers: 'Choose the servers.', options: 'Choose what to renew.', review: 'Check what will happen.', running: 'Working…', done: 'Done.' }[step]} />
       <ModalBody>
         {step === 'servers' && (
           <>
@@ -152,9 +171,9 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
 
         {step === 'options' && (
           <Form onSubmit={(e) => e.preventDefault()}>
-            <FormGroup role="radiogroup" label="Replace" fieldId="replace" isStack>
+            <FormGroup role="radiogroup" label="Renew" fieldId="replace" isStack>
               <Radio id="replace-invalid" name="replace" label="Only certificates with a problem, or missing" isChecked={replace === 'invalid'} onChange={() => setReplace('invalid')} />
-              <Radio id="replace-all" name="replace" label="All of them" description="Every default certificate is made again, valid or not." isChecked={replace === 'all'} onChange={() => setReplace('all')} />
+              <Radio id="replace-all" name="replace" label="All of them" description="Every default certificate gets a new one, valid or not." isChecked={replace === 'all'} onChange={() => setReplace('all')} />
             </FormGroup>
             <Checkbox id="with-ip" label="Include SSL CertificateIP" description="A certificate whose subject is the server's IP address. eDirectory does not create it by default."
               isChecked={withIp} onChange={(_e, v) => setWithIp(v)} />
@@ -182,14 +201,10 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
 
         {(step === 'review' || step === 'running' || step === 'done') && (
           <>
-            {step === 'review' && connected && (
-              <Alert variant="warning" isInline title={`The console reaches the directory through ${connected.name}`} className="dc-tab-body">
-                If the console trusts that server by its own certificate rather than the tree's CA, it will report the certificate as changed once the LDAP server serves the new one; check it on the Certificates page.
-              </Alert>
-            )}
-            {step === 'review' && ldapUsers.length > 0 && (
-              <Alert variant="info" isInline title="LDAP servers keep serving the old certificates until refreshed" className="dc-tab-body">
-                {[...new Set(ldapUsers)].join(', ')} name{ldapUsers.length === 1 ? 's' : ''} a certificate that will be replaced. They keep it, by name; you can refresh them when this is done.
+            {step === 'review' && (
+              <Alert variant="info" isInline isPlain title="Nothing is deleted" className="dc-tab-body">
+                A missing certificate is made under its standard name. An existing one keeps its place and gets a new certificate beside it, named with today's date.
+                {ldapUsers.length > 0 && <> {[...new Set(ldapUsers)].join(', ')} keep{ldapUsers.length === 1 ? 's' : ''} the certificate {ldapUsers.length === 1 ? 'it names' : 'they name'} until you move {ldapUsers.length === 1 ? 'it' : 'them'} to the new one, on the last page.</>}
               </Alert>
             )}
             <Table aria-label="What happens on each server" variant="compact">
@@ -209,11 +224,13 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
                           <Tr key={c.kind}>
                             <Td dataLabel="Server">{i === 0 ? s.name : ''}</Td>
                             <Td dataLabel="Certificate">{c.name}</Td>
-                            <Td dataLabel="Action">{action === 'keep' ? <span className="dc-subtle">keep</span> : <>{action}{c.problems.length > 0 && c.problems[0] !== 'missing' && <span className="dc-subtle"> ({c.problems.join('; ')})</span>}</>}</Td>
+                            <Td dataLabel="Action">{action === 'keep' ? <span className="dc-subtle">keep</span>
+                              : action === 'create' ? 'create'
+                                : <>new: <strong>{r?.name ?? `${c.name} ${today}`}</strong>{c.problems.length > 0 && <span className="dc-subtle"> ({c.problems.join('; ')})</span>}</>}</Td>
                             <Td dataLabel="Names" className="dc-mono">{action === 'keep' ? '' : names.join(', ')}</Td>
                             <Td dataLabel="Outcome">
                               {current === s.guid && !res && <Spinner size="sm" aria-label="Working" />}
-                              {r && (r.status === 'ok' ? <Label color="green" isCompact>{r.action}</Label> : <Label color="red" isCompact>{r.detail ?? 'failed'}</Label>)}
+                              {r && (r.status === 'ok' ? <Label color="green" isCompact>{r.action === 'kept' ? 'kept' : 'made'}</Label> : <Label color="red" isCompact>{r.detail ?? 'failed'}</Label>)}
                               {i === 0 && res instanceof Error && <Label color="red" isCompact>{res.message}</Label>}
                             </Td>
                           </Tr>
@@ -225,14 +242,44 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
               </Tbody>
             </Table>
             {step === 'review' && changes === 0 && <p className="dc-tab-body">Nothing needs replacing on the chosen servers.</p>}
+            {step === 'done' && moves.length > 0 && (
+              <div className="dc-tab-body">
+                <p><strong>Move LDAP servers to the new certificates</strong> (optional; each takes effect when the LDAP servers are refreshed).</p>
+                {connected && (
+                  <Alert variant="warning" isInline isPlain title={`The console reaches the directory through ${connected.name}`}>
+                    If the console trusts it by its own certificate rather than the tree's CA, accept the new certificate on the Certificates page after the refresh.
+                  </Alert>
+                )}
+                <Table aria-label="LDAP servers" variant="compact">
+                  <Thead><Tr><Th>LDAP server</Th><Th>Uses now</Th><Th>New certificate</Th><Th screenReaderText="Move" /></Tr></Thead>
+                  <Tbody>
+                    {moves.map(({ ldap, result }) => {
+                      const m = moved[ldap.guid!];
+                      return (
+                        <Tr key={ldap.guid}>
+                          <Td dataLabel="LDAP server">{ldap.name}</Td>
+                          <Td dataLabel="Uses now">{typeof m === 'string' && m !== 'busy' ? m : ldap.certificate}</Td>
+                          <Td dataLabel="New certificate">{result.name}</Td>
+                          <Td isActionCell>
+                            {typeof m === 'string' && m !== 'busy' ? <Label color="green" isCompact>moved</Label>
+                              : <Button variant="secondary" size="sm" isLoading={m === 'busy'} isDisabled={m === 'busy'} onClick={() => moveLdap(ldap.guid!, result.guid!)}>Use the new one</Button>}
+                            {m instanceof Error && <Label color="red" isCompact>{m.message}</Label>}
+                          </Td>
+                        </Tr>
+                      );
+                    })}
+                  </Tbody>
+                </Table>
+              </div>
+            )}
             {step === 'done' && (
               <div className="dc-tab-body">
                 <List>
-                  <ListItem>LDAP servers serve the new certificates once refreshed (or restarted).</ListItem>
-                  <ListItem>Clients that trust these servers by their certificate, not the tree's CA, must trust the new ones.</ListItem>
+                  <ListItem>The old certificates are still there; delete them on the Certificates page once nothing uses them.</ListItem>
+                  <ListItem>Clients that trust these servers by their certificate, not the tree's CA, must trust the new ones before an LDAP server is moved.</ListItem>
                 </List>
-                {refreshed === 'yes' ? <Alert variant="success" isInline isPlain title="The LDAP servers were refreshed." />
-                  : <Button variant="secondary" isLoading={refreshed === 'busy'} isDisabled={refreshed === 'busy'} onClick={refreshLdap}>Refresh the LDAP servers now</Button>}
+                {Object.values(moved).some((m) => typeof m === 'string' && m !== 'busy') && (refreshed === 'yes' ? <Alert variant="success" isInline isPlain title="The LDAP servers were refreshed." />
+                  : <Button variant="secondary" isLoading={refreshed === 'busy'} isDisabled={refreshed === 'busy'} onClick={refreshLdap}>Refresh the LDAP servers now</Button>)}
                 {refreshed instanceof Error && <ProblemAlert error={refreshed} />}
               </div>
             )}
@@ -244,7 +291,7 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
         {step === 'servers' && <Button onClick={toOptions} isDisabled={chosen.length === 0}>Next</Button>}
         {step === 'options' && <><Button onClick={() => setStep('review')} isDisabled={!ipValid || (single !== null && lines(dnsText).length === 0)}>Next</Button>
           <Button variant="secondary" onClick={() => setStep('servers')}>Back</Button></>}
-        {step === 'review' && <><Button variant="danger" onClick={run} isDisabled={changes === 0}>Replace {changes} certificate{changes === 1 ? '' : 's'}</Button>
+        {step === 'review' && <><Button onClick={run} isDisabled={changes === 0}>Make {changes} certificate{changes === 1 ? '' : 's'}</Button>
           <Button variant="secondary" onClick={() => setStep('options')}>Back</Button></>}
         {step !== 'running' && <Button variant="link" onClick={onClose}>{step === 'done' ? 'Close' : 'Cancel'}</Button>}
       </ModalFooter>

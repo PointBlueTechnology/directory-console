@@ -82,7 +82,7 @@ final class Security {
         Ldap l = s.ldap();
         String route = method + " " + String.join("/", Arrays.copyOfRange(p, 2, p.length))
             .replaceAll("^(password-policies|challenge-sets|objects)/[0-9a-f]{32}", "$1/{guid}")
-            .replaceAll("^pki/(servers|server-certificates)/[0-9a-f]{32}", "pki/$1/{guid}")
+            .replaceAll("^pki/(servers|server-certificates|ldap-servers)/[0-9a-f]{32}", "pki/$1/{guid}")
             .replaceAll("^login-policy/sequences/[^/]+$", "login-policy/sequences/{name}")
             .replaceAll("^objects/\\{guid\\}/certificates/[^/]+/revoke$", "objects/{guid}/certificates/{name}/revoke")
             .replaceAll("assignments/[0-9a-f]{32}$", "assignments/{target}");
@@ -123,6 +123,7 @@ final class Security {
                 case "POST pki/servers/{guid}/certificates" -> createServerCertificate(ex, l, s, guid);
                 case "GET pki/servers/{guid}/default-certificates" -> Http.json(ex, 200, defaultCertificates(l, guid));
                 case "POST pki/servers/{guid}/default-certificates" -> repairDefaultCertificates(ex, l, s, guid);
+                case "PUT pki/ldap-servers/{guid}/certificate" -> useForLdap(ex, l, s, guid);
                 case "DELETE pki/server-certificates/{guid}" -> deleteServerCertificate(ex, l, s, guid);
                 case "POST pki/server-certificates/{guid}/revoke" -> revokeServerCertificate(ex, l, s, guid);
                 case "POST objects/{guid}/certificates/{name}/revoke" ->
@@ -268,9 +269,6 @@ final class Security {
         }
     }
 
-    /** Wait after deleting a certificate before making its replacement (Identity Console waits 5 s). */
-    static volatile long settleMillis = 2000;
-
     /** What a server's default certificates should be, and the state each is in. */
     private record DefaultsState(Ldap.Entry server, String tree, X509Certificate caRsa, X509Certificate caEc, int rsaBits, List<String> ips,
                                  List<String> dnsNames, Map<DefaultCert, Ldap.Entry> existing) {
@@ -385,16 +383,23 @@ final class Security {
         out.put("ecAvailable", st.caEc() != null);
         out.put("ips", suggestedIps(st));
         out.put("dnsNames", st.dnsNames());
-        List<String> ldapUsers = new ArrayList<>();
+        List<Map<String, Object>> ldapServers = new ArrayList<>();
         Map<String, List<String>> usedBy = new LinkedHashMap<>();
         for (Ldap.Entry ls : l.search("", "(&(objectClass=ldapServer)(ldapHostServer={0}))", new Object[] {st.server().dn()}, SearchControls.SUBTREE_SCOPE,
-                new String[] {"cn", "ldapKeyMaterialName"}, 20)) {
+                new String[] {"cn", "ldapKeyMaterialName", "GUID"}, 20)) {
             String kmo = ls.first("ldapKeyMaterialName");
             if (kmo != null) {
                 usedBy.computeIfAbsent(kmo.toLowerCase(Locale.ROOT), k -> new ArrayList<>()).add(String.valueOf(ls.first("cn")));
             }
-            ldapUsers.add(String.valueOf(ls.first("cn")));
+            Map<String, Object> m = ref(ls);
+            m.put("certificate", kmo);
+            ldapServers.add(m);
         }
+        out.put("ldapServers", ldapServers);
+        // newer copies made by this console ("<standard name> <date>"), newest first
+        String serverName = String.valueOf(st.server().first("cn"));
+        List<Ldap.Entry> mine = l.search(Names.parent(st.server().dn()), "(&(objectClass=nDSPKIKeyMaterial)(hostServer={0}))", new Object[] {st.server().dn()},
+            SearchControls.ONELEVEL_SCOPE, KMO, 500);
         List<Map<String, Object>> certs = new ArrayList<>();
         for (DefaultCert d : DefaultCert.values()) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -406,6 +411,22 @@ final class Security {
             m.put("certificate", k == null ? null : cert(bytes(k, "nDSPKIPublicKeyCertificate")));
             m.put("problems", problems(st, d));
             m.put("usedBy", usedBy.getOrDefault(d.cn.toLowerCase(Locale.ROOT), List.of()));
+            List<Map<String, Object>> successors = new ArrayList<>();
+            for (Ldap.Entry e : mine) {
+                String cn = String.valueOf(e.first("cn"));
+                String suffix = " - " + serverName;
+                if (cn.startsWith(d.cn + " ") && cn.endsWith(suffix)) {
+                    String name = cn.substring(0, cn.length() - suffix.length());
+                    Map<String, Object> o = new LinkedHashMap<>();
+                    o.put("guid", guidOf(e));
+                    o.put("name", name);
+                    o.put("certificate", cert(bytes(e, "nDSPKIPublicKeyCertificate")));
+                    o.put("usedBy", usedBy.getOrDefault(name.toLowerCase(Locale.ROOT), List.of()));
+                    successors.add(o);
+                }
+            }
+            successors.sort((x, y) -> String.valueOf(y.get("name")).compareTo(String.valueOf(x.get("name"))));
+            m.put("successors", successors);
             certs.add(m);
         }
         out.put("certificates", certs);
@@ -413,13 +434,15 @@ final class Security {
     }
 
     /**
-     * {@code POST pki/servers/{guid}/default-certificates}: replace one server's default certificates,
-     * one at a time: delete the key material object, then create its replacement with the same name, as
-     * Identity Console does (an LDAP server naming it keeps working: it names the certificate, and serves
-     * the copy it loaded until refreshed). {@code replace} is "invalid" (only those with a problem, the
-     * default) or "all"; {@code kinds} which to consider (dns, ec, ip); {@code dnsNames} and {@code ips}
-     * what they name. Unlike Identity Console, each server gets its own subject and addresses, and the DNS
-     * certificates carry their DNS names.
+     * {@code POST pki/servers/{guid}/default-certificates}: new default certificates for one server.
+     * Nothing is deleted: a certificate that is missing is made under its standard name; one that is
+     * there gets a successor named "<standard name> <date>", which an LDAP server can then be given as a
+     * separate step ({@code PUT pki/ldap-servers/{guid}/certificate}). Deleting a key material object and
+     * making another under the same name crashed ndsd on ig4 (eDirectory 9.2.8, 2026-10-14); eDirectory's
+     * own renewal (the PKI Health Check, with server self-provisioning on) replaces them in place, which
+     * no LDAP operation offers. {@code replace} is "invalid" (only those with a problem, the default) or
+     * "all"; {@code kinds} which to consider (dns, ec, ip); {@code dnsNames} and {@code ips} what they
+     * name. Each server gets its own subject and addresses, and the DNS certificates carry their DNS names.
      */
     private void repairDefaultCertificates(HttpExchange ex, Ldap l, Sessions.Session s, String serverGuid) throws IOException, NamingException {
         DefaultsState st = defaultsState(l, serverGuid);
@@ -480,59 +503,107 @@ final class Security {
                 continue;
             }
             Ldap.Entry old = st.existing().get(d);
-            Map<String, Object> detail = new LinkedHashMap<>(Map.of("server", st.server().dn(), "name", d.cn, "replace", replace, "problems", problems));
-            if (old != null) {
-                try {
-                    l.delete(old.dn());
-                    audit(s, "pki.default-certificate.delete", guidOf(old), Map.of("dn", old.dn(), "problems", problems), null);
-                } catch (NamingException x) {
-                    audit(s, "pki.default-certificate.delete", guidOf(old), Map.of("dn", old.dn()), Ldap.Failure.of(x));
-                    r.put("action", "replace");
-                    r.put("status", "failed");
-                    r.put("detail", "the old certificate could not be deleted: " + Ldap.Failure.of(x).getMessage());
-                    continue;
-                }
-                settle(l, old.dn());
-            }
+            String name = old == null ? d.cn : successorName(l, st.server(), d.cn);
+            Map<String, Object> detail = new LinkedHashMap<>(Map.of("server", st.server().dn(), "name", name, "replace", replace, "problems", problems));
             boolean ipCert = d == DefaultCert.IP;
             String host = ipCert ? ips.get(0) : dnsNames.isEmpty() ? String.valueOf(st.server().first("cn")) : dnsNames.get(0);
             // subject O=<tree>, CN=<host>, in that order, as eDirectory's own default certificates have it
             // (ig4); Pki sends a DN's RDNs in its written order, so the tree comes first here
             String subject = "o=" + javax.naming.ldap.Rdn.escapeValue(tree) + ",cn=" + javax.naming.ldap.Rdn.escapeValue(host);
             // RSA at the CA's default size and EC P-384, both signed with SHA-384, as eDirectory makes them
-            Pki.Spec spec = new Pki.Spec(d.cn, d == DefaultCert.EC ? "ec384" : "rsa", st.rsaBits(), "sha384", years,
+            Pki.Spec spec = new Pki.Spec(name, d == DefaultCert.EC ? "ec384" : "rsa", st.rsaBits(), "sha384", years,
                 subject, ipCert ? ips.stream().map(ip -> "ip:" + ip).toList() : sans, true, null);
-            r.put("action", old == null ? "created" : "replaced");
+            r.put("action", "created");
+            r.put("name", name);
+            if (old != null) {
+                r.put("replaces", d.cn);
+            }
             try {
                 Pki.createServerCertificate(l, st.server().dn(), spec);
-                Ldap.Entry made = l.read(Names.child(Names.parent(st.server().dn()), "cn", d.cn + " - " + st.server().first("cn")), KMO);
+                Ldap.Entry made = readSoon(l, Names.child(Names.parent(st.server().dn()), "cn", name + " - " + st.server().first("cn")));
                 r.put("status", "ok");
+                r.put("guid", made == null ? null : guidOf(made));
                 r.put("certificate", made == null ? null : cert(bytes(made, "nDSPKIPublicKeyCertificate")));
                 audit(s, "pki.default-certificate.create", made == null ? null : guidOf(made), detail, null);
             } catch (Pki.Refused x) {
                 detail.put("code", x.code);
                 audit(s, "pki.default-certificate.create", null, detail, null);
                 r.put("status", "failed");
-                r.put("detail", (old == null ? "" : "the old certificate was deleted, but its replacement was refused: ") + x.getMessage());
+                r.put("detail", x.getMessage());
             } catch (NamingException x) {
                 audit(s, "pki.default-certificate.create", null, detail, Ldap.Failure.of(x));
                 r.put("status", "failed");
-                r.put("detail", (old == null ? "" : "the old certificate was deleted, but its replacement failed: ") + Ldap.Failure.of(x).getMessage());
+                r.put("detail", Ldap.Failure.of(x).getMessage());
             }
         }
         Http.json(ex, 200, Map.of("results", results));
     }
 
-    /** Until the deleted object is gone from this server, then the settling wait. */
-    private static void settle(Ldap l, String dn) throws NamingException {
-        try {
-            for (int i = 0; i < 20 && l.read(dn, "cn") != null; i++) {
-                Thread.sleep(250);
-            }
-            Thread.sleep(settleMillis);
-        } catch (InterruptedException x) {
-            Thread.currentThread().interrupt();
+    /** "<standard name> <date>", with "-2", "-3"… when that is taken on this server. */
+    private static String successorName(Ldap l, Ldap.Entry server, String standard) throws NamingException {
+        String base = standard + " " + java.time.LocalDate.now(java.time.ZoneOffset.UTC);
+        String container = Names.parent(server.dn());
+        String serverName = String.valueOf(server.first("cn"));
+        String name = base;
+        for (int i = 2; l.read(Names.child(container, "cn", name + " - " + serverName), "cn") != null; i++) {
+            name = base + "-" + i;
         }
+        return name;
+    }
+
+    /**
+     * {@code PUT pki/ldap-servers/{guid}/certificate}: the certificate an LDAP server offers
+     * ({@code ldapKeyMaterialName}): one of its own server's key material objects, by GUID. It takes
+     * effect when the LDAP server is refreshed.
+     */
+    private void useForLdap(HttpExchange ex, Ldap l, Sessions.Session s, String ldapGuid) throws IOException, NamingException {
+        Ldap.Entry ls = server.objects.byGuid(l, ldapGuid, "objectClass", "cn", "ldapHostServer", "ldapKeyMaterialName");
+        if (ls == null || ls.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("ldapServer"))) {
+            throw new Http.Problem(404, "not-found", "no LDAP server has GUID " + ldapGuid);
+        }
+        String kmoGuid = Http.string(Http.body(ex), "certificate", true);
+        Ldap.Entry k = server.objects.byGuid(l, kmoGuid, "objectClass", "cn", "hostServer");
+        if (k == null || k.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("nDSPKIKeyMaterial"))) {
+            throw new Http.Problem(404, "not-found", "no server certificate has GUID " + kmoGuid);
+        }
+        String host = ls.first("ldapHostServer");
+        if (host == null || k.first("hostServer") == null || !Names.same(host, k.first("hostServer"))) {
+            throw new Http.Problem(409, "other-server", k.first("cn") + " belongs to another server than " + ls.first("cn") + "'s");
+        }
+        // the LDAP server names a certificate without its " - <server>" suffix
+        String cn = String.valueOf(k.first("cn"));
+        String suffix = " - " + Names.identity(host).get("name");
+        String name = cn.endsWith(suffix) ? cn.substring(0, cn.length() - suffix.length()) : cn;
+        String before = ls.first("ldapKeyMaterialName");
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("ldapServer", ls.dn());
+        detail.put("from", before);
+        detail.put("to", name);
+        try {
+            l.modify(ls.dn(), List.of(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute("ldapKeyMaterialName", name))));
+        } catch (NamingException x) {
+            audit(s, "ldap-server.certificate", ldapGuid, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "ldap-server.certificate", ldapGuid, detail, null);
+        Http.json(ex, 200, Map.of("ldapServer", ls.dn(), "certificate", name, "previous", before == null ? "" : before));
+    }
+
+    /** A new object, read back; eDirectory can take a moment to show it on this connection. */
+    private static Ldap.Entry readSoon(Ldap l, String dn) throws NamingException {
+        for (int i = 0; i < 20; i++) {
+            Ldap.Entry e = l.read(dn, KMO);
+            if (e != null) {
+                return e;
+            }
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException x) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+        return null;
     }
 
     private static List<String> strings(Object v, List<String> otherwise) {

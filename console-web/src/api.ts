@@ -700,7 +700,11 @@ export interface DefaultCertificates {
     problems: string[];
     /** LDAP servers on this server that use it. */
     usedBy: string[];
+    /** Newer copies ("<name> <date>"), newest first. */
+    successors: { guid: string | null; name: string; certificate: Certificate | null; usedBy: string[] }[];
   }[];
+  /** This server's LDAP servers and the certificate each names. */
+  ldapServers: (Ref & { certificate: string | null })[];
 }
 
 export interface DefaultCertificatesRequest {
@@ -714,7 +718,10 @@ export interface DefaultCertificatesRequest {
 export interface DefaultCertificateResult {
   kind: DefaultCertificateKind;
   name: string;
-  action: 'kept' | 'created' | 'replaced' | 'replace';
+  action: 'kept' | 'created';
+  /** The standard name this one succeeds, when it was made beside it. */
+  replaces?: string;
+  guid?: string | null;
   status: 'ok' | 'failed';
   detail?: string;
   certificate?: Certificate | null;
@@ -837,9 +844,13 @@ export function security(id: string) {
       request<ServerCertificate>('POST', `${base}/pki/servers/${guidPath(serverGuid)}/certificates`, body, h(confirm)).then((r) => r.data),
     /** A server's default certificates (SSL CertificateDNS, SSL EC CertificateDNS, SSL CertificateIP) and what is wrong with each. */
     defaultCertificates: (serverGuid: string) => get<DefaultCertificates>(`/pki/servers/${guidPath(serverGuid)}/default-certificates`),
-    /** Replace one server's default certificates: each is deleted and made again under the same name. */
+    /** New default certificates for one server: a missing one under its standard name, others as "<name> <date>"; nothing is deleted. */
     repairDefaultCertificates: (serverGuid: string, body: DefaultCertificatesRequest, confirm?: string) =>
       request<{ results: DefaultCertificateResult[] }>('POST', `${base}/pki/servers/${guidPath(serverGuid)}/default-certificates`, body, h(confirm)).then((r) => r.data.results),
+    /** The certificate an LDAP server offers: one of its own server's certificates. It takes effect when the LDAP server is refreshed. */
+    useForLdap: (ldapServerGuid: string, certificateGuid: string, confirm?: string) =>
+      request<{ ldapServer: string; certificate: string; previous: string }>('PUT', `${base}/pki/ldap-servers/${guidPath(ldapServerGuid)}/certificate`,
+        { certificate: certificateGuid }, h(confirm)).then((r) => r.data),
     /** Refused while an LDAP server or SAS service uses it. */
     deleteServerCertificate: (guid: string, confirm?: string) =>
       request<void>('DELETE', `${base}/pki/server-certificates/${guidPath(guid)}`, undefined, h(confirm)),

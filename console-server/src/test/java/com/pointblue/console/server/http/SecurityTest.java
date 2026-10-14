@@ -298,56 +298,69 @@ public class SecurityTest {
     }
 
     @Test
-    public void defaultCertificatesAreRepairedOnlyWhereSomethingIsWrong() throws Exception {
-        Security.settleMillis = 0;
-        String t = "/api/v2/trees/acme/security/pki/servers/" + guidOf("cn=edir1,ou=servers,o=system") + "/default-certificates";
+    public void defaultCertificatesGetSuccessorsNeverDeletesAndAnLdapServerIsMovedSeparately() throws Exception {
+        String sec = "/api/v2/trees/acme/security/pki";
+        String t = sec + "/servers/" + guidOf("cn=edir1,ou=servers,o=system") + "/default-certificates";
         edir.server.modify("cn=TREE CA,cn=Security,o=system", new com.unboundid.ldap.sdk.Modification(
             com.unboundid.ldap.sdk.ModificationType.REPLACE, "nDSPKIPublicKeyCertificate", edir.pki.ca.getEncoded()));
         // "9#" (TCP): port 524, then 10.0.0.9
-        byte[] tcp = {'9', '#', 0x02, 0x0c, 10, 0, 0, 9};
-        edir.server.modify("cn=edir1,ou=servers,o=system", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD, "networkAddress", tcp));
+        edir.server.modify("cn=edir1,ou=servers,o=system", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD, "networkAddress",
+            new byte[] {'9', '#', 0x02, 0x0c, 10, 0, 0, 9}));
 
         Map<String, Object> state = call("GET", t, null, h).body();
         assertEquals(String.valueOf(state), List.of("10.0.0.9"), state.get("ips"));
         assertEquals("no certificate yet: the server's own name", List.of("edir1"), state.get("dnsNames"));
         assertEquals("the fake CA has no EC key", false, state.get("ecAvailable"));
-        List<?> certs = (List<?>) state.get("certificates");
-        assertEquals(List.of("missing"), Json.asMap(certs.get(0)).get("problems"));
+        assertEquals("LDAP Server - edir1", Json.asMap(((List<?>) state.get("ldapServers")).get(0)).get("name"));
+        assertEquals(List.of("missing"), Json.asMap(((List<?>) state.get("certificates")).get(0)).get("problems"));
 
+        // missing: made under the standard names
         Reply made = call("POST", t, Map.of("kinds", List.of("dns", "ec", "ip"), "dnsNames", List.of("edir1.acme.example")), h);
         assertEquals(String.valueOf(made.body()), 200, made.status());
         List<?> results = (List<?>) made.body().get("results");
         assertEquals("EC is left out without an EC CA key", 2, results.size());
-        assertEquals("created", Json.asMap(results.get(0)).get("action"));
+        assertEquals("SSL CertificateDNS", Json.asMap(results.get(0)).get("name"));
         assertEquals("ok", Json.asMap(results.get(1)).get("status"));
         Map<String, Object> req = edir.pkiOps.requests.get(edir.pkiOps.requests.size() - 2);
-        assertEquals("SSL CertificateDNS", req.get("certificateName"));
         assertEquals("dots in a name are escaped in the dotted form", "o=ACME_TREE.cn=edir1\\.acme\\.example", req.get("subjectDN"));
         assertEquals("the DNS certificate names the DNS name and the address", 2, ((List<?>) req.get("subjectAltNames")).size());
-        assertEquals("SSL CertificateIP", edir.pkiOps.requests.get(edir.pkiOps.requests.size() - 1).get("certificateName"));
         assertEquals("o=ACME_TREE.cn=10\\.0\\.0\\.9", edir.pkiOps.requests.get(edir.pkiOps.requests.size() - 1).get("subjectDN"));
-
-        state = call("GET", t, null, h).body();
-        assertEquals(List.of("edir1.acme.example"), state.get("dnsNames"));
-        assertEquals(List.of(), Json.asMap(((List<?>) state.get("certificates")).get(0)).get("problems"));
-        String dnsGuid = (String) Json.asMap(((List<?>) state.get("certificates")).get(0)).get("guid");
 
         int before = edir.pkiOps.requests.size();
         results = (List<?>) call("POST", t, Map.of("kinds", List.of("dns", "ip")), h).body().get("results");
-        assertEquals("nothing wrong: nothing replaced", "kept", Json.asMap(results.get(0)).get("action"));
+        assertEquals("nothing wrong: nothing made", "kept", Json.asMap(results.get(0)).get("action"));
         assertEquals(before, edir.pkiOps.requests.size());
 
-        // the server moved: both certificates name an address it no longer has
+        // the server moved: a successor is made beside the old certificate, which stays
         edir.server.modify("cn=edir1,ou=servers,o=system", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.REPLACE, "networkAddress",
             new byte[] {'9', '#', 0x02, 0x0c, 10, 0, 0, 10}));
         state = call("GET", t, null, h).body();
-        assertEquals(List.of("does not name 10.0.0.10"), Json.asMap(((List<?>) state.get("certificates")).get(0)).get("problems"));
-        results = (List<?>) call("POST", t, Map.of("kinds", List.of("dns")), h).body().get("results");
-        assertEquals("replaced", Json.asMap(results.get(0)).get("action"));
-        state = call("GET", t, null, h).body();
         Map<String, Object> dns = Json.asMap(((List<?>) state.get("certificates")).get(0));
-        assertEquals(List.of(), dns.get("problems"));
-        assertTrue("a new key material object", !dnsGuid.equals(dns.get("guid")));
+        assertEquals(List.of("does not name 10.0.0.10"), dns.get("problems"));
+        String oldGuid = (String) dns.get("guid");
+        results = (List<?>) call("POST", t, Map.of("kinds", List.of("dns")), h).body().get("results");
+        Map<String, Object> r = Json.asMap(results.get(0));
+        String successor = "SSL CertificateDNS " + java.time.LocalDate.now(java.time.ZoneOffset.UTC);
+        assertEquals(String.valueOf(r), successor, r.get("name"));
+        assertEquals("SSL CertificateDNS", r.get("replaces"));
+        assertTrue("the old one is still there", edir.entry("cn=SSL CertificateDNS - edir1,ou=servers,o=system") != null);
+        state = call("GET", t, null, h).body();
+        dns = Json.asMap(((List<?>) state.get("certificates")).get(0));
+        assertEquals(oldGuid, dns.get("guid"));
+        List<?> successors = (List<?>) dns.get("successors");
+        assertEquals(successor, Json.asMap(successors.get(0)).get("name"));
+        // a second the same day takes the next free name
+        results = (List<?>) call("POST", t, Map.of("kinds", List.of("dns")), h).body().get("results");
+        assertEquals(successor + "-2", Json.asMap(results.get(0)).get("name"));
+
+        // the LDAP server is given the successor as a step of its own
+        String ldap = guidOf("cn=LDAP Server - edir1,ou=servers,o=system");
+        Reply used = call("PUT", sec + "/ldap-servers/" + ldap + "/certificate", Map.of("certificate", Json.asMap(successors.get(0)).get("guid")), h);
+        assertEquals(String.valueOf(used.body()), 200, used.status());
+        assertEquals(successor, edir.entry("cn=LDAP Server - edir1,ou=servers,o=system").getAttributeValue("ldapKeyMaterialName"));
+        assertEquals("ldap3", used.body().get("previous"));
+        state = call("GET", t, null, h).body();
+        assertEquals(List.of("LDAP Server - edir1"), Json.asMap(((List<?>) Json.asMap(((List<?>) state.get("certificates")).get(0)).get("successors")).get(1)).get("usedBy"));
 
         assertEquals(400, call("POST", t, Map.of("replace", "some"), h).status());
         assertEquals(400, call("POST", t, Map.of("kinds", List.of("dns"), "dnsNames", List.of("bad name")), h).status());
