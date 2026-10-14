@@ -216,7 +216,7 @@ final class Objects {
         schemas.remove(directoryId);
     }
 
-    private Schema schema(String directoryId, Ldap l) throws NamingException {
+    Schema schema(String directoryId, Ldap l) throws NamingException {
         CachedSchema c = schemas.get(directoryId);
         if (c == null || c.loaded.plus(SCHEMA_TTL).isBefore(Instant.now())) {
             c = new CachedSchema(Schema.load(l), Instant.now());

@@ -412,6 +412,18 @@ export interface Job {
   nextRun: string;
 }
 
+export interface MigrateResult {
+  ok: boolean;
+  dryRun?: boolean;
+  count?: number;
+  objects?: string[];
+  results?: { dn: string; ok: boolean; status: string }[];
+  sent?: number;
+  succeeded?: number;
+  failed?: number;
+  error?: string;
+}
+
 export type MappingColumnType = 'case' | 'nocase' | 'numeric' | 'interval-closed' | 'interval-open' | 'interval-rightopen' | 'interval-leftopen';
 export interface MappingColumn { name: string; type: MappingColumnType | string }
 export interface MappingTableRef extends Omit<Identity, 'guid'> {
@@ -492,6 +504,12 @@ export function idm(id: string, server?: string) {
     clearCache: (guid: string, confirm?: string) => request<unknown>('POST', at(`${base}/drivers/${guidPath(guid)}/cache/clear`), {}, h(confirm)).then((r) => r.data),
     resync: (guid: string, since: string | null, confirm?: string) =>
       request<unknown>('POST', at(`${base}/drivers/${guidPath(guid)}/resync`), since ? { since } : {}, h(confirm)).then((r) => r.data),
+    /** Vault objects to the application: with dryRun, the objects that would go; otherwise each one's outcome. */
+    migrateToApp: (guid: string, body: { base: string; class: string; filter?: string; max?: number; dryRun?: boolean }, confirm?: string) =>
+      request<MigrateResult>('POST', at(`${base}/drivers/${guidPath(guid)}/migrate/to-app`), body, h(confirm)).then((r) => r.data),
+    /** The application's objects into the vault: the engine queries the application; the results show in the driver's trace. */
+    migrateFromApp: (guid: string, body: { class: string; search?: { attribute: string; value: string }[] }, confirm?: string) =>
+      request<unknown>('POST', at(`${base}/drivers/${guidPath(guid)}/migrate/from-app`), body, h(confirm)).then((r) => r.data),
     job: (guid: string, action: 'start' | 'abort', confirm?: string) =>
       request<unknown>('POST', at(`${base}/jobs/${guidPath(guid)}/${action}`), {}, h(confirm)).then((r) => r.data),
     /** The mapping tables under a driver set, driver or library (or the whole tree). */

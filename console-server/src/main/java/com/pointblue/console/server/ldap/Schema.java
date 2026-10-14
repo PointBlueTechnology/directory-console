@@ -68,7 +68,7 @@ public final class Schema {
     private final Map<String, ObjectClass> classByName = new LinkedHashMap<>();
     private final Map<String, AttributeType> attributeByName = new LinkedHashMap<>();
 
-    Schema(Collection<String> classDefinitions, Collection<String> attributeDefinitions) {
+    public Schema(Collection<String> classDefinitions, Collection<String> attributeDefinitions) {
         for (String d : attributeDefinitions) {
             Map<String, List<String>> p = parse(d);
             AttributeType a = new AttributeType(p.get("").get(0), p.getOrDefault("NAME", List.of()),

@@ -15,6 +15,7 @@ import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../components/IdmParts';
 import { TracePanel } from '../components/TracePanel';
 import { MappingTablesPanel } from '../components/MappingTables';
+import { MigratePanel } from '../components/Migrate';
 
 type Idm = ReturnType<typeof idm>;
 type Status = Record<string, unknown> & { servedBy?: { dn: string }; dn: string; name: string; state?: string; startOption?: string; driverSetDn?: string; ancestors?: { dn: string; name: string }[] };
@@ -172,6 +173,7 @@ function Overview({ api, guid, status, onChanged }: { api: Idm; guid: string; st
         </DescriptionListGroup>
       </DescriptionList>
       {can('operator') && <Resync api={api} guid={guid} />}
+      {can('operator') && <MigratePanel api={api} guid={guid} />}
       {dialog}
       {sure.dialog}
     </div>

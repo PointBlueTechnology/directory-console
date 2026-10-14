@@ -150,7 +150,7 @@ public final class FakeEdir implements AutoCloseable {
     }
 
     /** A sample of eDirectory 9.2.8's schema (ig4), enough for the console's container and syntax decisions. */
-    static final String[] SCHEMA = {
+    public static final String[] SCHEMA = {
         "dn: cn=subschema,o=system",
         "objectClass: subschema",
         "cn: schema",

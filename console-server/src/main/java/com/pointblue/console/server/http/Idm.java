@@ -40,6 +40,8 @@ import javax.naming.directory.SearchControls;
  * GET  /api/v2/trees/{tree}/idm/drivers/{guid}/associations     ?state=&limit=
  * GET  /api/v2/trees/{tree}/idm/drivers/{guid}/cache            ?count=
  * POST /api/v2/trees/{tree}/idm/drivers/{guid}/cache/clear | resync {"since"}
+ * POST /api/v2/trees/{tree}/idm/drivers/{guid}/migrate/to-app     {"base", "class", "filter"?, "max"?, "dryRun"?}
+ * POST /api/v2/trees/{tree}/idm/drivers/{guid}/migrate/from-app   {"class", "search"?: [{"attribute", "value"}]}
  * PUT  /api/v2/trees/{tree}/idm/drivers/{guid}/log-level        {"level", "events"}
  * GET  /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/passwords
  * POST /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/passwords   {"kind", "name", "displayName", "value"}
@@ -231,6 +233,36 @@ final class Idm {
                         Long since = b.get("since") == null ? null : java.time.Instant.parse(Http.string(b, "since", true)).toEpochMilli();
                         acted(ex, s, "idm.driver.resync", guid, t, Operate.resync(engine, env(d, t), t.name(), since, true, confirm, tree(d)));
                     }
+                    // vault objects to the application: a preview (dryRun) lists them; then each is sent, with its outcome
+                    case "POST drivers/{guid}/migrate/to-app" -> {
+                        Target t = target(l, guid, false);
+                        Map<String, Object> b = Http.body(ex);
+                        String base = server.objects.dnOf(l, Http.string(b, "base", true));
+                        String cls = Http.string(b, "class", true);
+                        String filter = b.get("filter") == null || String.valueOf(b.get("filter")).isBlank()
+                            ? "(objectClass=" + cls + ")" : Http.string(b, "filter", true).trim();
+                        if (!filter.startsWith("(") || !filter.endsWith(")")) {
+                            throw new Http.Problem(400, "bad-filter", "the filter is one parenthesized LDAP filter, such as (sn=Smith)");
+                        }
+                        if (!filter.toLowerCase(Locale.ROOT).contains("objectclass")) {
+                            filter = "(&(objectClass=" + cls + ")" + filter + ")";
+                        }
+                        int max = Math.max(1, Math.min(Http.integer(b, "max", 100), 1000));
+                        boolean dry = Boolean.TRUE.equals(b.get("dryRun"));
+                        Operate.Result r = Operate.migrateIntoApp(engine, env(d, t), t.name(), base, filter, cls, max, dry, true, confirm, tree(d));
+                        if (dry) {
+                            result(ex, r);
+                        } else {
+                            // objects the driver refused are part of the outcome, not a failure of the request
+                            acted(ex, s, "idm.driver.migrate-to-app", guid, t, r, true);
+                        }
+                    }
+                    // the application's objects into the vault: the engine queries the application (asynchronously)
+                    case "POST drivers/{guid}/migrate/from-app" -> {
+                        Target t = target(l, guid, false);
+                        byte[] query = migrateQuery(server.objects.schema(s.principal.directoryId(), l), Http.body(ex));
+                        acted(ex, s, "idm.driver.migrate-from-app", guid, t, Operate.migrate(engine, env(d, t), t.name(), query, true, confirm, tree(d)));
+                    }
                     case "GET drivers/{guid}/passwords", "GET driversets/{guid}/passwords" -> {
                         Target t = target(l, guid, p[2].equals("driversets"));
                         Http.json(ex, 200, Map.of("named", engine.namedPasswords(t.dn())));
@@ -349,6 +381,42 @@ final class Idm {
         Http.json(ex, 200, Map.of("items", out));
     }
 
+    /**
+     * The query the engine sends the application to migrate its objects into the vault, in eDirectory's
+     * names as XDS has them: {@code {"class": "inetOrgPerson", "search": [{"attribute": "sn", "value": "Smith"}]}}
+     * becomes {@code <query class-name="User" scope="subtree"><search-class class-name="User"/>
+     * <search-attr attr-name="Surname"><value>Smith</value></search-attr><read-attr/></query>}.
+     */
+    static byte[] migrateQuery(com.pointblue.console.server.ldap.Schema schema, Map<String, Object> b) {
+        String cls = Http.string(b, "class", true);
+        com.pointblue.console.server.ldap.Schema.ObjectClass oc = schema.objectClass(cls);
+        if (oc == null) {
+            throw new Http.Problem(400, "unknown-class", "no object class " + cls);
+        }
+        String ndsClass = oc.ndsName() != null ? oc.ndsName() : oc.name();
+        StringBuilder x = new StringBuilder("<nds dtdversion=\"4.0\"><input><query class-name=\"").append(xmlAttr(ndsClass))
+            .append("\" scope=\"subtree\"><search-class class-name=\"").append(xmlAttr(ndsClass)).append("\"/>");
+        if (b.get("search") instanceof List<?> search) {
+            for (Object o : search) {
+                Map<String, Object> m = Json.asMap(o);
+                String a = Http.string(m, "attribute", true);
+                com.pointblue.console.server.ldap.Schema.AttributeType at = schema.attribute(a);
+                if (at == null) {
+                    throw new Http.Problem(400, "unknown-attribute", "no attribute " + a);
+                }
+                String nds = at.ndsName() != null ? at.ndsName() : at.name();
+                x.append("<search-attr attr-name=\"").append(xmlAttr(nds)).append("\"><value>")
+                    .append(xmlAttr(String.valueOf(m.getOrDefault("value", "")))).append("</value></search-attr>");
+            }
+        }
+        x.append("<read-attr/></query></input></nds>");
+        return x.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static String xmlAttr(String v) {
+        return v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
     /** The driver set or driver with this GUID; 404 when it is something else. */
     /** The servers that run {@code t}'s driver set (its Identity Manager servers), each with its GUID: per-replica driver values live there. */
     private List<Map<String, Object>> runningServers(Sessions.Session s, Ldap l, Operate.Engine engine, DirectoryConfig d, Target t) throws NamingException {
@@ -430,6 +498,11 @@ final class Idm {
 
     /** An operation's result, audited; a refusal (typing the directory name) is a 409. */
     private void acted(HttpExchange ex, Sessions.Session s, String action, String guid, Target t, Operate.Result r) throws IOException {
+        acted(ex, s, action, guid, t, r, false);
+    }
+
+    /** {@code perObject}: a result listing each object's outcome is answered 200 even when some failed. */
+    private void acted(HttpExchange ex, Sessions.Session s, String action, String guid, Target t, Operate.Result r, boolean perObject) throws IOException {
         Object body = parse(r);
         boolean refused = !r.ok && body instanceof Map<?, ?> m && m.get("refusal") != null;
         server.audit.log(new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via()), action, guid,
@@ -437,7 +510,8 @@ final class Idm {
         if (refused) {
             throw new Http.Problem(409, "confirm-directory", String.valueOf(((Map<?, ?>) body).get("refusal")));
         }
-        Http.json(ex, r.ok ? 200 : 502, body instanceof Map || body instanceof List ? body : Map.of("value", body));
+        boolean listed = perObject && body instanceof Map<?, ?> bm && bm.get("results") instanceof List;
+        Http.json(ex, r.ok || listed ? 200 : 502, body instanceof Map || body instanceof List ? body : Map.of("value", body));
     }
 
     private static List<Object> withGuids(Ldap l, String driverSetDn, Object drivers) throws NamingException {
