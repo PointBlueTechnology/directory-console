@@ -33,7 +33,7 @@ public class StaticFilesTest {
     public void start() throws Exception {
         server = new Server(new DataDir(tmp.newFolder("data").toPath()), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         server.start();
-        base = "https://localhost:" + server.port();
+        base = "https://127.0.0.1:" + server.port();
         http = ServerClient.trusting(server);
     }
 

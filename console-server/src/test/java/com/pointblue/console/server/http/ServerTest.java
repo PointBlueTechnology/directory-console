@@ -57,7 +57,7 @@ public class ServerTest {
     private void boot() throws Exception {
         server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(log, true, StandardCharsets.UTF_8));
         server.start();
-        base = "https://localhost:" + server.port();
+        base = "https://127.0.0.1:" + server.port();
         // trust exactly the console's own certificate, as a person does after checking its fingerprint
         KeyStore ks = KeyStore.getInstance("PKCS12");
         ks.load(null, null);

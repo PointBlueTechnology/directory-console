@@ -43,7 +43,7 @@ public final class LiveIdmCheck {
         Server server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         try {
             server.start();
-            LiveSetupCheck.base = "https://localhost:" + server.port();
+            LiveSetupCheck.base = "https://127.0.0.1:" + server.port();
             LiveSetupCheck.http = ServerClient.trusting(server);
             setUp(dataPath, u.getHost(), u.getPort() > 0 ? u.getPort() : 636, env.bindDn, env.password);
             String t = "/api/v2/trees/lab/idm";

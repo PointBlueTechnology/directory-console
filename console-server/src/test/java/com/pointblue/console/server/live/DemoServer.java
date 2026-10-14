@@ -98,7 +98,7 @@ public final class DemoServer {
         }
         server.start();
         HttpClient http = ServerClient.trusting(server);
-        String base = "https://localhost:" + port;
+        String base = "https://127.0.0.1:" + port;
         Matcher m = Pattern.compile("Setup token: ([0-9a-f]{32})").matcher(Files.readString(data.resolve("bootstrap.txt")));
         m.find();
         Map<String, String> t = Map.of("X-Setup-Token", m.group(1));

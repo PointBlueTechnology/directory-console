@@ -50,7 +50,7 @@ public final class LiveObjectsCheck {
         String container = null;
         try {
             server.start();
-            LiveSetupCheck.base = "https://localhost:" + server.port();
+            LiveSetupCheck.base = "https://127.0.0.1:" + server.port();
             LiveSetupCheck.http = ServerClient.trusting(server);
             setUp(dataPath, host, port, env.bindDn, env.password);
 

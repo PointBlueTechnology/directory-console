@@ -53,7 +53,7 @@ public final class LivePhase3Check {
         String container = null;
         try (FakeIdp idp = new FakeIdp()) {
             server.start();
-            LiveSetupCheck.base = "https://localhost:" + server.port();
+            LiveSetupCheck.base = "https://127.0.0.1:" + server.port();
             LiveSetupCheck.http = ServerClient.trusting(server);
             setUp(dataPath, u.getHost(), u.getPort() > 0 ? u.getPort() : 636, env.bindDn, env.password);
             System.out.println("# Phase 3 live check: " + args[1] + " (service account and admin: the environment's account)");

@@ -61,7 +61,7 @@ public class EdirTest {
         Path data = tmp.newFolder("data").toPath();
         server = new Server(new DataDir(data), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         server.start();
-        base = "https://localhost:" + server.port();
+        base = "https://127.0.0.1:" + server.port();
         http = ServerClient.trusting(server);
         Matcher m = Pattern.compile("Setup token: ([0-9a-f]{32})").matcher(Files.readString(data.resolve("bootstrap.txt")));
         assertTrue(m.find());
