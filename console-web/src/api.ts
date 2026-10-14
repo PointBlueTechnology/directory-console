@@ -414,7 +414,17 @@ export interface Job {
 
 export type PasswordKind = 'named' | 'remote-loader' | 'key' | 'keystore';
 
-/** Identity Manager for one directory. {@code confirm}: the directory's name, typed for a production directory. */
+export type AssociationState = 'disabled' | 'processed' | 'pending' | 'manual' | 'migrate';
+
+export interface IdmDriverRef { guid: string | null; dn: string; name: string; driverSet: { dn: string; name: string } }
+
+export interface ObjectAssociations {
+  object: Identity & { guid: string; objectClasses: string[] };
+  /** One per driver; {@code driver} null when no driver has that DN any more. */
+  associations: { raw: string; driver?: IdmDriverRef | null; driverDn?: string; state?: AssociationState | string; value?: string }[];
+  drivers: IdmDriverRef[];
+}
+
 /** Identity Manager for one directory, on {@code server}'s engine (its GUID) or the connected server's. {@code confirm}: the directory's name, typed for a production directory. */
 export function idm(id: string, server?: string) {
   const base = `/api/v2/trees/${encodeURIComponent(id)}/idm`;
@@ -446,7 +456,15 @@ export function idm(id: string, server?: string) {
       request<void>('POST', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm)),
     removePassword: (kind: 'drivers' | 'driversets', guid: string, body: { kind: PasswordKind; name?: string }, confirm?: string) =>
       request<void>('DELETE', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm)),
-    objectAssociations: (guid: string) => get<Record<string, unknown>>(`/objects/${guidPath(guid)}/associations`),
+    /** The object inspector: an object's associations, read over LDAP (no engine needed), and the tree's drivers. */
+    associations: (guid: string) => request<ObjectAssociations>('GET', `${base}/objects/${guidPath(guid)}/associations`).then((r) => r.data),
+    addAssociation: (guid: string, body: { driver: string; state: AssociationState; value: string }, confirm?: string) =>
+      request<ObjectAssociations>('POST', `${base}/objects/${guidPath(guid)}/associations`, body, h(confirm)).then((r) => r.data),
+    /** Change one association, named by its value as read ({@code raw}); refused (409) when that value has changed meanwhile. */
+    changeAssociation: (guid: string, body: { raw: string; state?: AssociationState; value?: string }, confirm?: string) =>
+      request<ObjectAssociations>('PATCH', `${base}/objects/${guidPath(guid)}/associations`, body, h(confirm)).then((r) => r.data),
+    removeAssociation: (guid: string, raw: string, confirm?: string) =>
+      request<ObjectAssociations>('DELETE', `${base}/objects/${guidPath(guid)}/associations`, { raw }, h(confirm)).then((r) => r.data),
     /** The servers that run this driver's driver set. */
     driverServers: (guid: string) => request<ServerChoice[]>('GET', `${base}/drivers/${guidPath(guid)}/servers`).then((r) => r.data),
     /** The servers that run a driver set, to choose which one the operations run on. */

@@ -87,6 +87,8 @@ public final class LivePkiStep {
                 }
                 case "user-create" -> show(call("POST", t + "/security/objects/" + guid(t, h, args[3]) + "/certificates",
                     Map.of("name", args[4], "algorithm", "rsa", "rsaBits", 2048, "validityYears", 1), h));
+                // READ-ONLY: the object inspector's view of an object
+                case "assoc-read" -> show(call("GET", t + "/idm/objects/" + guid(t, h, args[3]) + "/associations", null, h));
                 case "ca-config" -> show(new LiveSetupCheck.Reply(200, Json.asMap(Json.asMap(call("GET", t + "/security/pki", null, h).body().get("ca")).get("configuration")), null));
                 case "crl-times" -> {
                     // READ-ONLY: the CRL configuration's own times beside the issued CRL's

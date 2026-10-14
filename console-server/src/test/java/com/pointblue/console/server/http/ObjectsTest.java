@@ -133,6 +133,50 @@ public class ObjectsTest {
     }
 
     @Test
+    public void objectInspectorReadsAndChangesAssociations() throws Exception {
+        edir.add("dn: cn=Set1,o=system", "objectClass: DirXML-DriverSet", "cn: Set1");
+        edir.add("dn: cn=AD,cn=Set1,o=system", "objectClass: DirXML-Driver", "cn: AD");
+        edir.add("dn: cn=HR,cn=Set1,o=system", "objectClass: DirXML-Driver", "cn: HR");
+        edir.server.modify("cn=viewer,ou=Users,o=acme", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD,
+            "DirXML-Associations", "cn=AD,cn=Set1,o=system#1#{abc-123}", "cn=Gone,cn=Set1,o=system#0#x"));
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String user = (String) resolve(h, "cn=viewer,ou=Users,o=acme").body().get("guid");
+        String t = "/api/v2/trees/acme/idm/objects/" + user + "/associations";
+
+        Map<String, Object> got = call("GET", t, null, h).body();
+        List<?> list = (List<?>) got.get("associations");
+        assertEquals(String.valueOf(got), 2, list.size());
+        Map<String, Object> ad = Json.asMap(list.get(0));
+        assertEquals("processed", ad.get("state"));
+        assertEquals("{abc-123}", ad.get("value"));
+        assertEquals("AD", Json.asMap(ad.get("driver")).get("name"));
+        assertEquals("a driver that no longer exists", null, Json.asMap(list.get(1)).get("driver"));
+        assertEquals("disabled", Json.asMap(list.get(1)).get("state"));
+        assertEquals(2, ((List<?>) got.get("drivers")).size());
+        String hr = (String) ((List<?>) got.get("drivers")).stream().map(Json::asMap).filter(d -> "HR".equals(d.get("name"))).findFirst().orElseThrow().get("guid");
+
+        // a viewer reads but does not change
+        Map<String, String> v = signIn("cn=viewer,ou=Users,o=acme", "viewer-pw");
+        assertEquals(200, call("GET", t, null, v).status());
+        assertEquals(403, call("DELETE", t, Map.of("raw", ad.get("raw")), v).status());
+
+        Reply added = call("POST", t, Map.of("driver", hr, "state", "manual", "value", "E1234"), h);
+        assertEquals(String.valueOf(added.body()), 200, added.status());
+        assertTrue(edir.entry("cn=viewer,ou=Users,o=acme").hasAttributeValue("DirXML-Associations", "cn=HR,cn=Set1,o=system#3#E1234"));
+        assertEquals("one association per driver", 409, call("POST", t, Map.of("driver", hr, "state", "processed", "value", "x"), h).status());
+        assertEquals(400, call("POST", t, Map.of("driver", hr, "state", "lost"), h).status());
+
+        Reply changed = call("PATCH", t, Map.of("raw", ad.get("raw"), "state", "migrate"), h);
+        assertEquals(200, changed.status());
+        assertTrue(edir.entry("cn=viewer,ou=Users,o=acme").hasAttributeValue("DirXML-Associations", "cn=AD,cn=Set1,o=system#4#{abc-123}"));
+        assertEquals("the value read is gone: refused, not applied to what is there now", 409,
+            call("PATCH", t, Map.of("raw", ad.get("raw"), "state", "disabled"), h).status());
+
+        assertEquals(200, call("DELETE", t, Map.of("raw", "cn=Gone,cn=Set1,o=system#0#x"), h).status());
+        assertEquals(2, edir.entry("cn=viewer,ou=Users,o=acme").getAttributeValues("DirXML-Associations").length);
+    }
+
+    @Test
     public void browseReadAndSchema() throws Exception {
         Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
         Reply roots = call("GET", "/api/v2/trees/acme/roots", null, h);

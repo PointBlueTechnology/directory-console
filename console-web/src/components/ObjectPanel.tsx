@@ -17,6 +17,7 @@ import { UserCertificatesTab } from './UserCertificatesTab';
 import { GroupMembersTab, UserGroupsTab } from './MembershipTab';
 import { RightsTab } from './RightsTab';
 import { ReplicasTab } from './ReplicasTab';
+import { AssociationsTab } from './AssociationsTab';
 import { HeadingLevel } from '../heading';
 
 type Dialog = null | { kind: 'attr'; attribute?: string } | { kind: 'rename' } | { kind: 'move' } | { kind: 'delete' }
@@ -201,6 +202,11 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
         {group && (
           <Tab eventKey="members" title={<TabTitleText>Members</TabTitleText>}>
             <GroupMembersTab obj={obj} etag={etag} onChanged={refreshed} />
+          </Tab>
+        )}
+        {(user || group || Object.keys(obj.attributes).some((a) => a.toLowerCase() === 'dirxml-associations')) && me.roles.length > 0 && me.via !== 'user-directory' && (
+          <Tab eventKey="associations" title={<TabTitleText>Associations</TabTitleText>}>
+            <AssociationsTab obj={obj} />
           </Tab>
         )}
         <Tab eventKey="rights" title={<TabTitleText>Rights</TabTitleText>}>

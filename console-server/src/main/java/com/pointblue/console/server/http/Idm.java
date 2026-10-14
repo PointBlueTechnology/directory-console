@@ -45,7 +45,7 @@ import javax.naming.directory.SearchControls;
  * POST /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/passwords   {"kind", "name", "displayName", "value"}
  * DELETE same                                                            {"kind", "name"}
  * POST /api/v2/trees/{tree}/idm/jobs/{guid}/start | abort
- * GET  /api/v2/trees/{tree}/idm/objects/{guid}/associations     an object's associations (object inspector)
+ * GET, POST, PATCH, DELETE /api/v2/trees/{tree}/idm/objects/{guid}/associations   the object inspector (see Associations)
  * </pre>
  */
 final class Idm {
@@ -54,9 +54,11 @@ final class Idm {
     private static final List<String> KINDS = List.of("named", "remote-loader", "key", "keystore");
 
     private final Server server;
+    private final Associations associations;
 
     Idm(Server server) {
         this.server = server;
+        this.associations = new Associations(server);
     }
 
     private record Target(String dn, String name, String driverSetDn, boolean isDriverSet) {
@@ -77,6 +79,11 @@ final class Idm {
         String guid = p.length > 3 ? p[3] : null;
         if (route.equals("GET ")) {
             status(ex, s);
+            return;
+        }
+        // the object inspector works over LDAP alone: no engine connection, and the same on every server
+        if (route.endsWith(" objects/{guid}/associations")) {
+            associations.handle(ex, s, method, guid);
             return;
         }
         String onServer = Http.query(ex).get("server");
@@ -216,11 +223,6 @@ final class Idm {
                         Target t = new Target(job.dn(), String.valueOf(Names.leaf(job.dn()).getValue()), setDn, false);
                         acted(ex, s, "idm.job." + p[4], guid, t, Operate.jobAction(engine, env(d, t), t.name(), driver, p[4], true, confirm, tree(d)));
                     }
-                    case "GET objects/{guid}/associations" -> {
-                        Ldap.Entry o = server.objects.byGuid(l, guid, "1.1");
-                        Target any = new Target(o.dn(), "", firstDriverSet(l), true);
-                        result(ex, Operate.inspectObject(engine, env(d, any), o.dn()));
-                    }
                     default -> throw new Http.Problem(404, "not-found", method + " " + path);
                 }
             } catch (Vault.VaultException | UnsupportedOperationException e) {
@@ -321,14 +323,6 @@ final class Idm {
         }
         out.sort((a, b) -> String.valueOf(a.get("name")).compareToIgnoreCase(String.valueOf(b.get("name"))));
         Http.json(ex, 200, Map.of("items", out));
-    }
-
-    private String firstDriverSet(Ldap l) throws NamingException {
-        List<Ldap.Entry> sets = l.search("", "(objectClass=DirXML-DriverSet)", null, SearchControls.SUBTREE_SCOPE, new String[] {"1.1"}, 1);
-        if (sets.isEmpty()) {
-            throw new Http.Problem(404, "no-driver-set", "this tree has no driver set");
-        }
-        return sets.get(0).dn();
     }
 
     /** The driver set or driver with this GUID; 404 when it is something else. */

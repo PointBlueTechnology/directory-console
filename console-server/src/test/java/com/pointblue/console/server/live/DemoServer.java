@@ -56,7 +56,9 @@ public final class DemoServer {
             "dn: cn=Viewers,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Viewers\nmember: cn=viewer,ou=Users,o=acme",
             "dn: cn=Sales Editors,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Sales Editors\nmember: cn=pat,ou=Sales,ou=Users,o=acme",
             "dn: cn=Help Desk,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Help Desk\nmember: cn=help,ou=Users,o=acme",
-            "dn: cn=pat,ou=Sales,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: pat\nsn: Lee\ngivenName: Pat\nfullName: Pat Lee\nuid: pat\nuserPassword: pat-pw\ngroupMembership: cn=Sales Editors,ou=Groups,o=acme",
+            "dn: cn=pat,ou=Sales,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: pat\nsn: Lee\ngivenName: Pat\nfullName: Pat Lee\nuid: pat\nuserPassword: pat-pw\ngroupMembership: cn=Sales Editors,ou=Groups,o=acme"
+                + "\nDirXML-Associations: cn=Active Directory,cn=Driver Set,o=system#1#{6F9619FF-8B86-D011-B42D-00C04FC964FF}"
+                + "\nDirXML-Associations: cn=Delimited Text,cn=Driver Set,o=system#3#E1001",
             "dn: cn=help,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: help\nsn: Desk\nfullName: Help Desk\nuid: help\nuserPassword: help-pw\ngroupMembership: cn=Help Desk,ou=Groups,o=acme",
             "dn: cn=viewer,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: viewer\nsn: Viewer\nuserPassword: viewer-pw\ngroupMembership: cn=Viewers,ou=Groups,o=acme",
             "dn: cn=Smith\\, John,ou=Sales,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: Smith, John\nsn: Smith\ngivenName: John\nuid: jsmith\nmail: jsmith@acme.example\ntitle: Account manager\ngroupMembership: cn=Viewers,ou=Groups,o=acme",
