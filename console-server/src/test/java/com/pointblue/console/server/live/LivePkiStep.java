@@ -89,6 +89,25 @@ public final class LivePkiStep {
                     Map.of("name", args[4], "algorithm", "rsa", "rsaBits", 2048, "validityYears", 1), h));
                 // READ-ONLY: the object inspector's view of an object
                 case "assoc-read" -> show(call("GET", t + "/idm/objects/" + guid(t, h, args[3]) + "/associations", null, h));
+                // one association of an object: the one with the named driver gets this state (and value, when given)
+                case "assoc-change" -> {
+                    String o = guid(t, h, args[3]);
+                    String raw = null;
+                    for (Object a : (List<?>) call("GET", t + "/idm/objects/" + o + "/associations", null, h).body().get("associations")) {
+                        Map<String, Object> m = Json.asMap(a);
+                        if (m.get("driver") != null && args[4].equalsIgnoreCase(String.valueOf(Json.asMap(m.get("driver")).get("name")))) {
+                            raw = (String) m.get("raw");
+                        }
+                    }
+                    if (raw == null) {
+                        throw new IllegalStateException("no association with " + args[4]);
+                    }
+                    Map<String, Object> body = new HashMap<>(Map.of("raw", raw, "state", args[5]));
+                    if (args.length > 6) {
+                        body.put("value", args[6]);
+                    }
+                    show(call("PATCH", t + "/idm/objects/" + o + "/associations", body, h));
+                }
                 case "ca-config" -> show(new LiveSetupCheck.Reply(200, Json.asMap(Json.asMap(call("GET", t + "/security/pki", null, h).body().get("ca")).get("configuration")), null));
                 case "crl-times" -> {
                     // READ-ONLY: the CRL configuration's own times beside the issued CRL's
