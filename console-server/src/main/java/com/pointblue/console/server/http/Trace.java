@@ -22,7 +22,7 @@ import javax.naming.directory.ModificationItem;
  *
  * <pre>
  * GET /api/v2/trees/{tree}/idm/drivers/{guid}/trace       level, file, name, encoding, sizeLimitKb, and the driver set's
- * PUT same   {"level": 3 | null, …}                       each named field: a value, or null to use the driver set's
+ * PUT same   {"level": 3 | null}                          the trace level, or null to use the driver set's (the rest is read-only)
  * GET /api/v2/trees/{tree}/idm/driversets/{guid}/trace    level, xslLevel, javaDebugPort, file, encoding, sizeLimitKb
  * PUT same
  * </pre>
@@ -118,6 +118,10 @@ final class Trace {
         for (String k : b.keySet()) {
             if (!fields.containsKey(k)) {
                 throw new IllegalArgumentException("not a trace setting: " + k + " (one of " + String.join(", ", fields.keySet()) + ")");
+            }
+            // driver properties are read-only in the console, the trace level excepted (decided 2026-10-14)
+            if (!k.equals("level")) {
+                throw new Http.Problem(403, "read-only", "only the trace level is changed here; " + k + " is shown, not changed");
             }
         }
         for (Map.Entry<String, Field> en : fields.entrySet()) {

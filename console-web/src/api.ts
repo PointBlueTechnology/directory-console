@@ -412,6 +412,28 @@ export interface Job {
   nextRun: string;
 }
 
+/** One entry of a configuration-values document: a header or a value, at a depth (subordinates are deeper); inactive under an unchosen option. */
+export interface ConfigItem {
+  kind: 'header' | 'value';
+  depth: number;
+  name?: string;
+  label?: string | null;
+  type?: string;
+  value?: string | null;
+  description?: string | null;
+  inactive: boolean;
+}
+
+export interface DriverProperties {
+  general: { javaModule: string | null; nativeModule: string | null; package: string | null; cacheLimit: string | null; securityEquals: string[] };
+  authentication: { id: string | null; server: string | null; remoteLoader?: Record<string, string>; passwordSet: boolean };
+  parameters: { section: string; items: ConfigItem[] }[];
+  gcvs: { source: string; items: ConfigItem[] }[];
+  engineControlValues: ConfigItem[];
+  filter: { name: string; publisher: string; subscriber: string; attributes: { name: string; publisher: string; subscriber: string }[] }[];
+  policies: { dn: string; name: string; set: string; setNumber: number; order: number }[];
+}
+
 export interface MigrateResult {
   ok: boolean;
   dryRun?: boolean;
@@ -512,6 +534,8 @@ export function idm(id: string, server?: string) {
       request<unknown>('POST', at(`${base}/drivers/${guidPath(guid)}/migrate/from-app`), body, h(confirm)).then((r) => r.data),
     job: (guid: string, action: 'start' | 'abort', confirm?: string) =>
       request<unknown>('POST', at(`${base}/jobs/${guidPath(guid)}/${action}`), {}, h(confirm)).then((r) => r.data),
+    /** A driver's properties, read-only: shim, authentication, parameters, GCVs, ECVs, filter and policies. */
+    driverProperties: (guid: string) => request<DriverProperties>('GET', `${base}/drivers/${guidPath(guid)}/properties`).then((r) => r.data),
     /** The mapping tables under a driver set, driver or library (or the whole tree). */
     mappingTables: (under?: string) =>
       request<{ items: MappingTableRef[] }>('GET', `${base}/mapping-tables${under ? `?under=${encodeURIComponent(under)}` : ''}`).then((r) => r.data.items),

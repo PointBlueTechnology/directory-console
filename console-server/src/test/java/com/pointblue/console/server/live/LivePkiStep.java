@@ -136,6 +136,8 @@ public final class LivePkiStep {
                 }
                 // READ-ONLY: a mapping table as the console reads it
                 case "mt-read" -> show(call("GET", t + "/idm/mapping-tables/" + guid(t, h, args[3]), null, h));
+                // READ-ONLY: a driver's properties
+                case "props" -> show(call("GET", t + "/idm/drivers/" + guid(t, h, args[3]) + "/properties", null, h));
                 case "ca-config" -> show(new LiveSetupCheck.Reply(200, Json.asMap(Json.asMap(call("GET", t + "/security/pki", null, h).body().get("ca")).get("configuration")), null));
                 case "crl-times" -> {
                     // READ-ONLY: the CRL configuration's own times beside the issued CRL's

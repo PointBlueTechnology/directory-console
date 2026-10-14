@@ -190,24 +190,23 @@ public class ObjectsTest {
         assertEquals(null, got.get("file"));
         assertEquals("what the driver set's would give", "/opt/novell/java.trace", Json.asMap(got.get("driverSet")).get("file"));
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("level", 5);
-        body.put("file", "/var/trace/ad.trace");
-        body.put("sizeLimitKb", null);
-        Reply put = call("PUT", t, body, h);
+        Reply put = call("PUT", t, Map.of("level", 5), h);
         assertEquals(String.valueOf(put.body()), 200, put.status());
         com.unboundid.ldap.sdk.Entry ad = edir.entry("cn=AD,cn=Set1,o=system");
         assertEquals("5", ad.getAttributeValue("DirXML-TraceLevel"));
-        assertEquals("/var/trace/ad.trace", ad.getAttributeValue("DirXML-TraceFile"));
-        assertEquals("null: use the driver set's", null, ad.getAttributeValue("DirXML-TraceSizeLimit"));
+        Map<String, Object> inherit = new HashMap<>();
+        inherit.put("level", null);
+        assertEquals(200, call("PUT", t, inherit, h).status());
+        assertEquals("null: use the driver set's", null, edir.entry("cn=AD,cn=Set1,o=system").getAttributeValue("DirXML-TraceLevel"));
 
+        assertEquals("only the level is changed here", 403, call("PUT", t, Map.of("file", "/var/trace/ad.trace"), h).status());
         assertEquals(400, call("PUT", t, Map.of("level", 11), h).status());
         assertEquals(400, call("PUT", t, Map.of("xslLevel", 1), h).status());
-        assertEquals(400, call("PUT", t, Map.of("file", "a\nb"), h).status());
 
-        Reply s2 = call("PUT", "/api/v2/trees/acme/idm/driversets/" + set + "/trace", Map.of("xslLevel", 2, "javaDebugPort", 9200), h);
+        Reply s2 = call("PUT", "/api/v2/trees/acme/idm/driversets/" + set + "/trace", Map.of("level", 4), h);
         assertEquals(String.valueOf(s2.body()), 200, s2.status());
-        assertEquals("9200", edir.entry("cn=Set1,o=system").getAttributeValue("DirXML-JavaDebugPort"));
+        assertEquals("4", edir.entry("cn=Set1,o=system").getAttributeValue("DirXML-DriverTraceLevel"));
+        assertEquals(403, call("PUT", "/api/v2/trees/acme/idm/driversets/" + set + "/trace", Map.of("javaDebugPort", 9200), h).status());
         assertEquals(404, call("GET", "/api/v2/trees/acme/idm/driversets/" + driver + "/trace", null, h).status());
 
         Map<String, String> v = signIn("cn=viewer,ou=Users,o=acme", "viewer-pw");
@@ -328,6 +327,55 @@ public class ObjectsTest {
         assertEquals(409, call("DELETE", base + "/" + guid, Map.of("name", "depts"), h).status());
         assertEquals(204, call("DELETE", base + "/" + guid, Map.of("name", "Depts"), h).status());
         assertEquals(null, edir.entry("cn=Depts,cn=AD,cn=Set1,o=system"));
+    }
+
+    @Test
+    public void aDriversPropertiesAreReadAsSections() throws Exception {
+        String shim = "<?xml version=\"1.0\"?><driver-config name=\"AD\"><driver-options><configuration-values><definitions>"
+            + "<header display-name=\"Authentication Options\"/>"
+            + "<group><definition display-name=\"Show authentication options\" name=\"show\" type=\"enum\"><enum-choice display-name=\"show\">show</enum-choice>"
+            + "<enum-choice display-name=\"hide\">hide</enum-choice><value>hide</value></definition>"
+            + "<subordinates active-value=\"show\"><definition display-name=\"xlfid(m)Authentication Method\" name=\"m\" type=\"string\"><value>Negotiate</value></definition></subordinates></group>"
+            + "</definitions></configuration-values></driver-options><subscriber-options/><publisher-options><configuration-values><definitions>"
+            + "<definition display-name=\"Polling interval\" name=\"poll\" type=\"integer\"><value>60</value></definition></definitions></configuration-values></publisher-options></driver-config>";
+        String gcvs = "<configuration-values><definitions><definition display-name=\"Domain\" name=\"d\" type=\"string\"><value>acme.example</value></definition>"
+            + "<definition display-name=\"Groups\" name=\"g\" type=\"list\"><value><item>a</item><item>b</item></value></definition></definitions></configuration-values>";
+        String filter = "<filter><filter-class class-name=\"User\" publisher=\"sync\" subscriber=\"sync\"><filter-attr attr-name=\"Surname\" publisher=\"sync\" subscriber=\"notify\"/>"
+            + "</filter-class></filter>";
+        edir.add("dn: cn=Set1,o=system", "objectClass: DirXML-DriverSet", "cn: Set1");
+        edir.add("dn: cn=AD,cn=Set1,o=system", "objectClass: DirXML-Driver", "cn: AD", "DirXML-JavaModule: com.novell.nds.dirxml.remote.driver.DriverShimImpl",
+            "DirXML-ShimAuthID: ACME\\idm", "DirXML-ShimAuthServer: REMOTE(hostname=dc1.acme.example port=8090 kmo=idm)dc1.acme.example",
+            "DirXML-Policies: cn=pkg-GCVs,cn=AD,cn=Set1,o=system#0#14", "DirXML-Policies: cn=sub-mp,cn=AD,cn=Set1,o=system#1#6",
+            "DirXML-Policies: cn=first-mp,cn=AD,cn=Set1,o=system#0#6", "DirXML-Policies: cn=smp,cn=AD,cn=Set1,o=system#0#0");
+        edir.add("dn: cn=pkg-GCVs,cn=AD,cn=Set1,o=system", "objectClass: DirXML-GlobalConfigDef", "cn: pkg-GCVs");
+        for (String[] a : new String[][] {{"cn=AD,cn=Set1,o=system", "DirXML-ShimConfigInfo", shim}, {"cn=AD,cn=Set1,o=system", "DirXML-DriverFilter", filter},
+                {"cn=pkg-GCVs,cn=AD,cn=Set1,o=system", "DirXML-ConfigValues", gcvs}}) {
+            edir.server.modify(a[0], new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD, a[1], a[2].getBytes(StandardCharsets.UTF_8)));
+        }
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String driver = (String) resolve(h, "cn=AD,cn=Set1,o=system").body().get("guid");
+        Map<String, Object> p = call("GET", "/api/v2/trees/acme/idm/drivers/" + driver + "/properties", null, h).body();
+
+        Map<String, Object> auth = Json.asMap(p.get("authentication"));
+        assertEquals(String.valueOf(p), "dc1.acme.example", Json.asMap(auth.get("remoteLoader")).get("hostname"));
+        assertEquals(false, auth.get("passwordSet"));
+        List<?> params = (List<?>) p.get("parameters");
+        assertEquals("the subscriber has none", 2, params.size());
+        List<?> driverItems = (List<?>) Json.asMap(params.get(0)).get("items");
+        assertEquals("header", Json.asMap(driverItems.get(0)).get("kind"));
+        assertEquals("an enum shows its choice's label", "hide", Json.asMap(driverItems.get(1)).get("value"));
+        Map<String, Object> sub = Json.asMap(driverItems.get(2));
+        assertEquals("Authentication Method", sub.get("label"));
+        assertEquals(1, Json.asInt(sub.get("depth"), 0));
+        assertEquals("under hide, the show subordinates are inactive", true, sub.get("inactive"));
+        Map<String, Object> pkg = Json.asMap(((List<?>) p.get("gcvs")).get(0));
+        assertEquals("pkg-GCVs", pkg.get("source"));
+        assertEquals("a; b", Json.asMap(((List<?>) pkg.get("items")).get(1)).get("value"));
+        Map<String, Object> user = Json.asMap(((List<?>) p.get("filter")).get(0));
+        assertEquals("notify", Json.asMap(((List<?>) user.get("attributes")).get(0)).get("subscriber"));
+        List<?> policies = (List<?>) p.get("policies");
+        assertEquals(List.of("smp", "first-mp", "sub-mp", "pkg-GCVs"), policies.stream().map(x -> Json.asMap(x).get("name")).toList());
+        assertEquals("Subscriber matching", Json.asMap(policies.get(1)).get("set"));
     }
 
     @Test

@@ -28,8 +28,10 @@ const FIELDS: Record<'drivers' | 'driversets', { key: Key; label: string; number
 const text = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
 /**
- * A driver's or driver set's trace settings. A driver's setting can be left to the driver set ("Use the
- * driver set's"), which removes it from the driver; the driver set's value is shown beside it.
+ * A driver's or driver set's trace settings. Only the trace level is changed here (driver properties are
+ * read-only in the console); a driver's level can be left to the driver set ("Use the driver set's"),
+ * which removes it from the driver. The other settings are shown, with the driver set's where the driver
+ * has none.
  */
 export function TracePanel({ kind, guid }: { kind: 'drivers' | 'driversets'; guid: string }) {
   const { me, can } = useSession();
@@ -76,6 +78,20 @@ export function TracePanel({ kind, guid }: { kind: 'drivers' | 'driversets'; gui
         {fields.map((f) => {
           const inherited = driver && draft[f.key] === null;
           const fromSet = saved.driverSet?.[f.key];
+          // only the trace level is changed in the console (decided 2026-10-14); the rest is shown
+          if (f.key !== 'level') {
+            const own = saved[f.key];
+            return (
+              <FormGroup key={f.key} label={f.label} fieldId={`trace-${f.key}`}>
+                <div id={`trace-${f.key}`} className={f.number ? undefined : 'dc-mono'}>
+                  {own !== null && own !== undefined ? String(own)
+                    : driver ? <span className="dc-subtle">the driver set's{fromSet !== null && fromSet !== undefined ? `: ${fromSet}` : ' (not set)'}</span>
+                      : <span className="dc-subtle">not set</span>}
+                </div>
+                <FormHelperText><HelperText><HelperTextItem>{f.help}</HelperTextItem></HelperText></FormHelperText>
+              </FormGroup>
+            );
+          }
           return (
             <FormGroup key={f.key} label={f.label} fieldId={`trace-${f.key}`}>
               {driver && (

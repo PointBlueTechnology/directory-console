@@ -51,6 +51,7 @@ import javax.naming.directory.SearchControls;
  * GET, PUT /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/trace                trace settings (see Trace)
  * GET, PATCH /api/v2/trees/{tree}/idm/jobs/{guid}/definition; DELETE …/jobs/{guid}  a job's definition (see Jobs)
  * /api/v2/trees/{tree}/idm/mapping-tables[/{guid}]                                    mapping tables (see MappingTables)
+ * GET /api/v2/trees/{tree}/idm/drivers/{guid}/properties                              a driver's properties, read-only (see DriverProperties)
  * </pre>
  */
 final class Idm {
@@ -63,6 +64,7 @@ final class Idm {
     private final Trace trace;
     private final Jobs jobs;
     private final MappingTables mappingTables;
+    private final DriverProperties driverProperties;
 
     Idm(Server server) {
         this.server = server;
@@ -70,6 +72,7 @@ final class Idm {
         this.trace = new Trace(server);
         this.jobs = new Jobs(server);
         this.mappingTables = new MappingTables(server);
+        this.driverProperties = new DriverProperties(server);
     }
 
     private record Target(String dn, String name, String driverSetDn, boolean isDriverSet) {
@@ -98,6 +101,11 @@ final class Idm {
             return;
         }
         // trace settings are attributes of the driver or driver set: LDAP alone, too
+        // a driver's properties, read-only: LDAP alone
+        if (route.equals("GET drivers/{guid}/properties")) {
+            driverProperties.handle(ex, s, guid);
+            return;
+        }
         // mapping tables are resource objects: LDAP alone
         if (p.length > 2 && p[2].equals("mapping-tables")) {
             mappingTables.handle(ex, s, method, p.length > 3 && !p[3].isEmpty() ? p[3] : null);
