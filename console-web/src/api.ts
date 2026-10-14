@@ -412,6 +412,22 @@ export interface Job {
   nextRun: string;
 }
 
+export interface JobDefinition extends Identity {
+  owner: { dn: string; name: string; kind: 'driver' | 'driver set' };
+  /** A hash of the job's XmlData: a change carries it back. */
+  version: string;
+  displayName?: string;
+  description?: string;
+  javaClass?: string;
+  disabled?: boolean;
+  /** Cron: minute hour day-of-month month day-of-week; null when it has none. */
+  schedule?: string | null;
+  scopeRequired?: boolean;
+  parameters?: { name: string; label: string; type: string; value?: string }[];
+  servers: { dn: string; name: string }[];
+  scope: { raw: string; dn?: string; scope?: string | null }[];
+}
+
 export type PasswordKind = 'named' | 'remote-loader' | 'key' | 'keystore';
 
 /** Trace settings. A driver has level, file, name, encoding and sizeLimitKb, and its driver set's beside them; a driver set has level, xslLevel, javaDebugPort, file, encoding and sizeLimitKb. */
@@ -464,6 +480,13 @@ export function idm(id: string, server?: string) {
       request<unknown>('POST', at(`${base}/drivers/${guidPath(guid)}/resync`), since ? { since } : {}, h(confirm)).then((r) => r.data),
     job: (guid: string, action: 'start' | 'abort', confirm?: string) =>
       request<unknown>('POST', at(`${base}/jobs/${guidPath(guid)}/${action}`), {}, h(confirm)).then((r) => r.data),
+    /** A job's definition, servers and scope (read over LDAP). */
+    jobDefinition: (guid: string) => request<JobDefinition>('GET', `${base}/jobs/${guidPath(guid)}/definition`).then((r) => r.data),
+    /** Change a job, as read at {@code version}; refused (409) when it changed meanwhile. A null schedule removes it. */
+    changeJob: (guid: string, body: { version: string; disabled?: boolean; schedule?: string | null; servers?: string[] }, confirm?: string) =>
+      request<JobDefinition>('PATCH', `${base}/jobs/${guidPath(guid)}/definition`, body, h(confirm)).then((r) => r.data),
+    /** Delete a job; {@code name} is its name, typed. */
+    deleteJob: (guid: string, name: string, confirm?: string) => request<void>('DELETE', `${base}/jobs/${guidPath(guid)}`, { name }, h(confirm)),
     passwords: (kind: 'drivers' | 'driversets', guid: string) => get<{ named: string[] }>(`/${kind}/${guidPath(guid)}/passwords`),
     setPassword: (kind: 'drivers' | 'driversets', guid: string, body: { kind: PasswordKind; name?: string; displayName?: string; value: string }, confirm?: string) =>
       request<void>('POST', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm)),

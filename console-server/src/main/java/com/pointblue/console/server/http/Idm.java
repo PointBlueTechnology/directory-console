@@ -47,6 +47,7 @@ import javax.naming.directory.SearchControls;
  * POST /api/v2/trees/{tree}/idm/jobs/{guid}/start | abort
  * GET, POST, PATCH, DELETE /api/v2/trees/{tree}/idm/objects/{guid}/associations   the object inspector (see Associations)
  * GET, PUT /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/trace                trace settings (see Trace)
+ * GET, PATCH /api/v2/trees/{tree}/idm/jobs/{guid}/definition; DELETE …/jobs/{guid}  a job's definition (see Jobs)
  * </pre>
  */
 final class Idm {
@@ -57,11 +58,13 @@ final class Idm {
     private final Server server;
     private final Associations associations;
     private final Trace trace;
+    private final Jobs jobs;
 
     Idm(Server server) {
         this.server = server;
         this.associations = new Associations(server);
         this.trace = new Trace(server);
+        this.jobs = new Jobs(server);
     }
 
     private record Target(String dn, String name, String driverSetDn, boolean isDriverSet) {
@@ -90,6 +93,11 @@ final class Idm {
             return;
         }
         // trace settings are attributes of the driver or driver set: LDAP alone, too
+        // a job's definition, servers and scope are attributes of the job object; running it stays with the engine
+        if (route.matches("(GET|PATCH) jobs/\\{guid}/definition") || route.equals("DELETE jobs/{guid}")) {
+            jobs.handle(ex, s, method, guid, route.endsWith("/definition"));
+            return;
+        }
         if (route.matches("(GET|PUT) (drivers|driversets)/\\{guid}/trace")) {
             trace.handle(ex, s, method, guid, route.contains("driversets/"));
             return;

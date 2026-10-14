@@ -48,7 +48,7 @@ public final class Ldap implements AutoCloseable {
     static final String EFFECTIVE_PRIVILEGES = "2.16.840.1.113719.1.27.100.33";
     /** Virtual list view request and response. eDirectory honours them without listing them in the root DSE. */
     /** Attributes always read as bytes, whatever the schema says (the login time map is a bit map). */
-    static final String BINARY = "GUID loginAllowedTimeMap networkAddress loginIntruderAddress Replica nDSPKIPublicKeyCertificate nDSPKIPublicKeyCertificateEC "
+    static final String BINARY = "GUID loginAllowedTimeMap networkAddress loginIntruderAddress XmlData Replica nDSPKIPublicKeyCertificate nDSPKIPublicKeyCertificateEC "
         + "nDSPKICertificateChain nDSPKITrustedRootCertificate certificateRevocationList cACertificate userCertificate nsimChallengeSetGUID";
     static final String VLV_REQUEST = "2.16.840.1.113730.3.4.9";
     static final String VLV_RESPONSE = "2.16.840.1.113730.3.4.10";

@@ -216,6 +216,62 @@ public class ObjectsTest {
     }
 
     @Test
+    public void aJobsDefinitionIsChangedInPlaceAndGuardedByItsVersion() throws Exception {
+        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><job-aggregation>\n\t<job-definition auto-delete=\"false\" disabled=\"true\" "
+            + "display-name=\"xlfid(job-display-name)Subscriber channel trigger\" scope-required=\"false\" type=\"java\">\n"
+            + "\t\t<description>xlfid(job-description)Submits trigger documents.</description>\n"
+            + "\t\t<java-class>com.novell.nds.dirxml.job.trigger.Trigger</java-class>\n"
+            + "\t\t<configuration-values><definitions><definition display-name=\"xlfid(x)Use Job CN?\" name=\"use-job-cn\" type=\"boolean\"><value>true</value></definition>"
+            + "<definition name=\"objs\" type=\"list\"><value><item>Group</item><item>Organizational Unit</item></value></definition></definitions></configuration-values>\n"
+            + "\t</job-definition>\n</job-aggregation>";
+        edir.add("dn: ou=servers,o=system", "objectClass: organizationalUnit", "ou: servers");
+        edir.add("dn: cn=edir1,ou=servers,o=system", "objectClass: ncpServer", "cn: edir1");
+        edir.add("dn: cn=edir2,ou=servers,o=system", "objectClass: ncpServer", "cn: edir2");
+        edir.add("dn: cn=Set1,o=system", "objectClass: DirXML-DriverSet", "cn: Set1");
+        edir.add("dn: cn=AD,cn=Set1,o=system", "objectClass: DirXML-Driver", "cn: AD");
+        edir.add("dn: cn=refs,cn=AD,cn=Set1,o=system", "objectClass: DirXML-Job", "cn: refs", "DirXML-ServerList: cn=edir1,ou=servers,o=system",
+            "DirXML-Scope: ou=users,o=acme#0#<scope-def scope=\"subtree\"/>");
+        edir.server.modify("cn=refs,cn=AD,cn=Set1,o=system", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD,
+            "XmlData", xml.getBytes(StandardCharsets.UTF_8)));
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String job = (String) resolve(h, "cn=refs,cn=AD,cn=Set1,o=system").body().get("guid");
+        String t = "/api/v2/trees/acme/idm/jobs/" + job + "/definition";
+
+        Map<String, Object> got = call("GET", t, null, h).body();
+        assertEquals(String.valueOf(got), true, got.get("disabled"));
+        assertEquals("Subscriber channel trigger", got.get("displayName"));
+        assertEquals("Submits trigger documents.", got.get("description"));
+        assertEquals(null, got.get("schedule"));
+        assertEquals("driver", Json.asMap(got.get("owner")).get("kind"));
+        assertEquals("subtree", Json.asMap(((List<?>) got.get("scope")).get(0)).get("scope"));
+        assertEquals("Group; Organizational Unit", Json.asMap(((List<?>) got.get("parameters")).get(1)).get("value"));
+        String version = (String) got.get("version");
+
+        Reply changed = call("PATCH", t, Map.of("version", version, "disabled", false, "schedule", "0  2 * * 6",
+            "servers", List.of("cn=edir1,ou=servers,o=system", "cn=edir2,ou=servers,o=system")), h);
+        assertEquals(String.valueOf(changed.body()), 200, changed.status());
+        String now = new String(edir.entry("cn=refs,cn=AD,cn=Set1,o=system").getAttributeValueBytes("XmlData"), StandardCharsets.UTF_8);
+        assertEquals("only the start tag's attributes changed",
+            xml.replace("disabled=\"true\"", "disabled=\"false\"").replace("type=\"java\">", "type=\"java\" schedule=\"0 2 * * 6\">"), now);
+        assertEquals(2, edir.entry("cn=refs,cn=AD,cn=Set1,o=system").getAttributeValues("DirXML-ServerList").length);
+
+        assertEquals("the version read is stale", 409, call("PATCH", t, Map.of("version", version, "disabled", true), h).status());
+        String v2 = (String) changed.body().get("version");
+        assertEquals(400, call("PATCH", t, Map.of("version", v2, "schedule", "every day"), h).status());
+        assertEquals(400, call("PATCH", t, Map.of("version", v2, "servers", List.of("ou=Users,o=acme")), h).status());
+        Reply none = call("PATCH", t, Map.of("version", v2, "schedule", ""), h);
+        assertEquals(null, none.body().get("schedule"));
+
+        Map<String, String> v = signIn("cn=viewer,ou=Users,o=acme", "viewer-pw");
+        assertEquals(200, call("GET", t, null, v).status());
+        String jobPath = "/api/v2/trees/acme/idm/jobs/" + job;
+        assertEquals(403, call("DELETE", jobPath, Map.of("name", "refs"), v).status());
+        assertEquals("the name typed", 409, call("DELETE", jobPath, Map.of("name", "ref"), h).status());
+        assertEquals(204, call("DELETE", jobPath, Map.of("name", "refs"), h).status());
+        assertEquals(null, edir.entry("cn=refs,cn=AD,cn=Set1,o=system"));
+    }
+
+    @Test
     public void browseReadAndSchema() throws Exception {
         Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
         Reply roots = call("GET", "/api/v2/trees/acme/roots", null, h);

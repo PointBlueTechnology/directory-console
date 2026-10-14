@@ -119,6 +119,10 @@ public final class LivePkiStep {
                 }
                 // READ-ONLY: a driver's (or driver set's) trace settings
                 case "trace-read" -> show(call("GET", t + "/idm/" + (args.length > 4 ? args[4] : "drivers") + "/" + guid(t, h, args[3]) + "/trace", null, h));
+                // READ-ONLY: a driver set's jobs, as the engine lists them
+                case "jobs" -> show(call("GET", t + "/idm/driversets/" + guid(t, h, args[3]) + "/jobs", null, h));
+                // READ-ONLY: a job's definition, as the console reads it
+                case "job-read" -> show(call("GET", t + "/idm/jobs/" + guid(t, h, args[3]) + "/definition", null, h));
                 case "ca-config" -> show(new LiveSetupCheck.Reply(200, Json.asMap(Json.asMap(call("GET", t + "/security/pki", null, h).body().get("ca")).get("configuration")), null));
                 case "crl-times" -> {
                     // READ-ONLY: the CRL configuration's own times beside the issued CRL's

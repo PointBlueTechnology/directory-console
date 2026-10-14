@@ -10,6 +10,7 @@ import { useSession } from '../session';
 import { useHeading } from '../heading';
 import { ProblemAlert } from './Problem';
 import { useConfirmed } from './Confirm';
+import { JobDetailsModal } from './JobDetails';
 
 /** A driver's state as a coloured label. */
 export function StateLabel({ state }: { state: string }) {
@@ -26,6 +27,7 @@ export function JobsTable({ api, load }: { api: Idm; load: () => Promise<{ jobs:
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   // callers pass an inline loader; load once per mount, not on every parent render
   const loader = useRef(load);
   loader.current = load;
@@ -57,7 +59,7 @@ export function JobsTable({ api, load }: { api: Idm; load: () => Promise<{ jobs:
           <Tbody>
             {jobs.map((j) => (
               <Tr key={j.dn}>
-                <Td dataLabel="Job">{j.name} {j.disabled && <Label isCompact>disabled</Label>}<div className="dc-subtle dc-mono">{j.javaClass.replace(/^com\.novell\.nds\.dirxml\.job\./, '')}</div></Td>
+                <Td dataLabel="Job"><Button variant="link" isInline onClick={() => tree.resolve(j.dn).then((r) => setOpen(r.data.guid), setError)}>{j.name}</Button>{' '}{j.disabled && <Label isCompact>disabled</Label>}<div className="dc-subtle dc-mono">{j.javaClass.replace(/^com\.novell\.nds\.dirxml\.job\./, '')}</div></Td>
                 <Td dataLabel="Owner">{j.owner}</Td>
                 <Td dataLabel="Running">{j.running}</Td>
                 <Td dataLabel="Scheduled">{j.scheduled}</Td>
@@ -73,6 +75,7 @@ export function JobsTable({ api, load }: { api: Idm; load: () => Promise<{ jobs:
           </Tbody>
         </Table>
       )}
+      {open && <JobDetailsModal api={api} guid={open} onClose={() => setOpen(null)} onChanged={refresh} />}
       {dialog}
     </div>
   );
