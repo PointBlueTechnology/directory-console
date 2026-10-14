@@ -272,6 +272,65 @@ public class ObjectsTest {
     }
 
     @Test
+    public void mappingTablesAreReadEditedCreatedAndDeleted() throws Exception {
+        // Designer writes each column definition among the rows, as on ig4
+        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><mapping-table>\n\t<col-def name=\"key\" type=\"nocase\"/>\n\t<row>\n\t\t<col>dept1</col>\n"
+            + "\t\t<col>Sales &amp; Marketing</col>\n\t</row>\n\t<col-def name=\"value\" type=\"case\"/>\n\t<row>\n\t\t<col>dept2</col>\n\t\t<col>Support</col>\n\t</row>\n</mapping-table>";
+        edir.add("dn: cn=Set1,o=system", "objectClass: DirXML-DriverSet", "cn: Set1");
+        edir.add("dn: cn=AD,cn=Set1,o=system", "objectClass: DirXML-Driver", "cn: AD");
+        edir.add("dn: cn=Depts,cn=AD,cn=Set1,o=system", "objectClass: DirXML-Resource", "cn: Depts",
+            "DirXML-ContentType: application/vnd.novell.dirxml.mapping-table+xml ;charset=UTF-8", "DirXML-pkgGUID: X;com.example;1.0;Example Package;EXPKG");
+        edir.add("dn: cn=Script,cn=AD,cn=Set1,o=system", "objectClass: DirXML-Resource", "cn: Script", "DirXML-ContentType: text/ecmascript;charset=UTF-8");
+        edir.server.modify("cn=Depts,cn=AD,cn=Set1,o=system", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD,
+            "DirXML-Data", xml.getBytes(StandardCharsets.UTF_8)));
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String set = (String) resolve(h, "cn=Set1,o=system").body().get("guid");
+        String base = "/api/v2/trees/acme/idm/mapping-tables";
+
+        List<?> items = (List<?>) call("GET", base + "?under=" + set, null, h).body().get("items");
+        assertEquals("only the mapping table, not the script", 1, items.size());
+        Map<String, Object> listed = Json.asMap(items.get(0));
+        assertEquals("driver", Json.asMap(listed.get("owner")).get("kind"));
+        assertEquals("Example Package", listed.get("package"));
+        String guid = (String) listed.get("guid");
+
+        Map<String, Object> got = call("GET", base + "/" + guid, null, h).body();
+        assertEquals(List.of(Map.of("name", "key", "type", "nocase"), Map.of("name", "value", "type", "case")), got.get("columns"));
+        assertEquals(List.of(List.of("dept1", "Sales & Marketing"), List.of("dept2", "Support")), got.get("rows"));
+
+        Map<String, Object> body = new HashMap<>(Map.of("version", got.get("version"), "columns", got.get("columns"),
+            "rows", List.of(List.of("dept1", "Sales & Marketing"), List.of("dept3", "R<&>D"))));
+        Reply saved = call("PUT", base + "/" + guid, body, h);
+        assertEquals(String.valueOf(saved.body()), 200, saved.status());
+        String now = new String(edir.entry("cn=Depts,cn=AD,cn=Set1,o=system").getAttributeValueBytes("DirXML-Data"), StandardCharsets.UTF_8);
+        assertTrue(now, now.contains("<col-def name=\"value\" type=\"case\"/>") && now.contains("<col>R&lt;&amp;&gt;D</col>"));
+        assertEquals(List.of("dept3", "R<&>D"), ((List<?>) saved.body().get("rows")).get(1));
+        assertEquals("the version read is stale", 409, call("PUT", base + "/" + guid, body, h).status());
+
+        Map<String, Object> bad = new HashMap<>(body);
+        bad.put("version", saved.body().get("version"));
+        bad.put("rows", List.of(List.of("only one")));
+        assertEquals(400, call("PUT", base + "/" + guid, bad, h).status());
+        bad.put("rows", List.of());
+        bad.put("columns", List.of(Map.of("name", "a", "type", "fuzzy")));
+        assertEquals(400, call("PUT", base + "/" + guid, bad, h).status());
+
+        String driver = (String) resolve(h, "cn=AD,cn=Set1,o=system").body().get("guid");
+        Reply made = call("POST", base, Map.of("parent", driver, "name", "Locations", "columns", List.of(Map.of("name", "code", "type", "nocase"),
+            Map.of("name", "city", "type", "nocase")), "rows", List.of(List.of("CHI", "Chicago"))), h);
+        assertEquals(String.valueOf(made.body()), 201, made.status());
+        assertEquals(List.of(List.of("CHI", "Chicago")), made.body().get("rows"));
+        assertEquals(409, call("POST", base, Map.of("parent", driver, "name", "Locations", "columns", List.of(Map.of("name", "a"))), h).status());
+
+        Map<String, String> v = signIn("cn=viewer,ou=Users,o=acme", "viewer-pw");
+        assertEquals(200, call("GET", base + "/" + guid, null, v).status());
+        assertEquals(403, call("DELETE", base + "/" + guid, Map.of("name", "Depts"), v).status());
+        assertEquals(409, call("DELETE", base + "/" + guid, Map.of("name", "depts"), h).status());
+        assertEquals(204, call("DELETE", base + "/" + guid, Map.of("name", "Depts"), h).status());
+        assertEquals(null, edir.entry("cn=Depts,cn=AD,cn=Set1,o=system"));
+    }
+
+    @Test
     public void browseReadAndSchema() throws Exception {
         Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
         Reply roots = call("GET", "/api/v2/trees/acme/roots", null, h);

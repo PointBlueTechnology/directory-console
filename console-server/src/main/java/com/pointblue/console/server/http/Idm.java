@@ -48,6 +48,7 @@ import javax.naming.directory.SearchControls;
  * GET, POST, PATCH, DELETE /api/v2/trees/{tree}/idm/objects/{guid}/associations   the object inspector (see Associations)
  * GET, PUT /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/trace                trace settings (see Trace)
  * GET, PATCH /api/v2/trees/{tree}/idm/jobs/{guid}/definition; DELETE …/jobs/{guid}  a job's definition (see Jobs)
+ * /api/v2/trees/{tree}/idm/mapping-tables[/{guid}]                                    mapping tables (see MappingTables)
  * </pre>
  */
 final class Idm {
@@ -59,12 +60,14 @@ final class Idm {
     private final Associations associations;
     private final Trace trace;
     private final Jobs jobs;
+    private final MappingTables mappingTables;
 
     Idm(Server server) {
         this.server = server;
         this.associations = new Associations(server);
         this.trace = new Trace(server);
         this.jobs = new Jobs(server);
+        this.mappingTables = new MappingTables(server);
     }
 
     private record Target(String dn, String name, String driverSetDn, boolean isDriverSet) {
@@ -93,6 +96,11 @@ final class Idm {
             return;
         }
         // trace settings are attributes of the driver or driver set: LDAP alone, too
+        // mapping tables are resource objects: LDAP alone
+        if (p.length > 2 && p[2].equals("mapping-tables")) {
+            mappingTables.handle(ex, s, method, p.length > 3 && !p[3].isEmpty() ? p[3] : null);
+            return;
+        }
         // a job's definition, servers and scope are attributes of the job object; running it stays with the engine
         if (route.matches("(GET|PATCH) jobs/\\{guid}/definition") || route.equals("DELETE jobs/{guid}")) {
             jobs.handle(ex, s, method, guid, route.endsWith("/definition"));

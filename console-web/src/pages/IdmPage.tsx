@@ -14,6 +14,7 @@ import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../components/IdmParts';
 import { BulkLifecycleModal } from '../components/BulkLifecycle';
 import { TracePanel } from '../components/TracePanel';
+import { MappingTablesPanel } from '../components/MappingTables';
 import { plan } from '../lifecycle';
 
 /** Identity Manager: the engine, the driver sets, and each set's drivers with their state. */
@@ -119,6 +120,7 @@ function DriverSetView({ api: connected, guid }: { api: ReturnType<typeof idm>; 
           </Tab>
           <Tab eventKey="servers" title={<TabTitleText>Servers and activation</TabTitleText>}><ServersPanel api={api} guid={guid} /></Tab>
           <Tab eventKey="trace" title={<TabTitleText>Trace</TabTitleText>}><TracePanel kind="driversets" guid={guid} /></Tab>
+          <Tab eventKey="mapping-tables" title={<TabTitleText>Mapping tables</TabTitleText>}><MappingTablesPanel under={guid} canCreate /></Tab>
           <Tab eventKey="log" title={<TabTitleText>Log level</TabTitleText>}>
             <LogLevelPanel load={() => api.setPart(guid, 'log-level')} />
           </Tab>

@@ -412,6 +412,20 @@ export interface Job {
   nextRun: string;
 }
 
+export type MappingColumnType = 'case' | 'nocase' | 'numeric' | 'interval-closed' | 'interval-open' | 'interval-rightopen' | 'interval-leftopen';
+export interface MappingColumn { name: string; type: MappingColumnType | string }
+export interface MappingTableRef extends Omit<Identity, 'guid'> {
+  guid: string | null;
+  owner: { dn: string; name: string; kind: 'driver set' | 'driver' | 'library' | 'subscriber' | 'publisher' | 'container' };
+  /** The package it came from, when it did. */
+  package: string | null;
+}
+export interface MappingTable extends MappingTableRef {
+  version: string;
+  columns: MappingColumn[];
+  rows: string[][];
+}
+
 export interface JobDefinition extends Identity {
   owner: { dn: string; name: string; kind: 'driver' | 'driver set' };
   /** A hash of the job's XmlData: a change carries it back. */
@@ -480,6 +494,18 @@ export function idm(id: string, server?: string) {
       request<unknown>('POST', at(`${base}/drivers/${guidPath(guid)}/resync`), since ? { since } : {}, h(confirm)).then((r) => r.data),
     job: (guid: string, action: 'start' | 'abort', confirm?: string) =>
       request<unknown>('POST', at(`${base}/jobs/${guidPath(guid)}/${action}`), {}, h(confirm)).then((r) => r.data),
+    /** The mapping tables under a driver set, driver or library (or the whole tree). */
+    mappingTables: (under?: string) =>
+      request<{ items: MappingTableRef[] }>('GET', `${base}/mapping-tables${under ? `?under=${encodeURIComponent(under)}` : ''}`).then((r) => r.data.items),
+    mappingTable: (guid: string) => request<MappingTable>('GET', `${base}/mapping-tables/${guidPath(guid)}`).then((r) => r.data),
+    /** Save a table whole, as read at {@code version}; refused (409) when it changed meanwhile. */
+    saveMappingTable: (guid: string, body: { version: string; columns: MappingColumn[]; rows: string[][] }, confirm?: string) =>
+      request<MappingTable>('PUT', `${base}/mapping-tables/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
+    createMappingTable: (body: { parent: string; name: string; columns: MappingColumn[]; rows: string[][] }, confirm?: string) =>
+      request<MappingTable>('POST', `${base}/mapping-tables`, body, h(confirm)).then((r) => r.data),
+    /** Delete a table; {@code name} is its name, typed. */
+    deleteMappingTable: (guid: string, name: string, confirm?: string) =>
+      request<void>('DELETE', `${base}/mapping-tables/${guidPath(guid)}`, { name }, h(confirm)),
     /** A job's definition, servers and scope (read over LDAP). */
     jobDefinition: (guid: string) => request<JobDefinition>('GET', `${base}/jobs/${guidPath(guid)}/definition`).then((r) => r.data),
     /** Change a job, as read at {@code version}; refused (409) when it changed meanwhile. A null schedule removes it. */

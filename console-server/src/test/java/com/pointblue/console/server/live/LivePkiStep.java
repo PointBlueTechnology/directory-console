@@ -123,6 +123,19 @@ public final class LivePkiStep {
                 case "jobs" -> show(call("GET", t + "/idm/driversets/" + guid(t, h, args[3]) + "/jobs", null, h));
                 // READ-ONLY: a job's definition, as the console reads it
                 case "job-read" -> show(call("GET", t + "/idm/jobs/" + guid(t, h, args[3]) + "/definition", null, h));
+                // READ-ONLY: the DNs an LDAP filter finds, with the named attributes
+                case "find" -> {
+                    Map<String, Object> req = new HashMap<>(Map.of("ldapFilter", args[3], "scope", "subtree", "page", Map.of("count", 200)));
+                    if (args.length > 4) {
+                        req.put("attributes", List.of(args).subList(4, args.length));
+                    }
+                    for (Object o : (List<?>) call("POST", t + "/search", req, h).body().get("items")) {
+                        Map<String, Object> m = Json.asMap(o);
+                        System.out.println(m.get("dn") + (m.get("attributes") == null ? "" : "  " + Json.compact(m.get("attributes"))));
+                    }
+                }
+                // READ-ONLY: a mapping table as the console reads it
+                case "mt-read" -> show(call("GET", t + "/idm/mapping-tables/" + guid(t, h, args[3]), null, h));
                 case "ca-config" -> show(new LiveSetupCheck.Reply(200, Json.asMap(Json.asMap(call("GET", t + "/security/pki", null, h).body().get("ca")).get("configuration")), null));
                 case "crl-times" -> {
                     // READ-ONLY: the CRL configuration's own times beside the issued CRL's

@@ -14,6 +14,7 @@ import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../components/IdmParts';
 import { TracePanel } from '../components/TracePanel';
+import { MappingTablesPanel } from '../components/MappingTables';
 
 type Idm = ReturnType<typeof idm>;
 type Status = Record<string, unknown> & { servedBy?: { dn: string }; dn: string; name: string; state?: string; startOption?: string; driverSetDn?: string; ancestors?: { dn: string; name: string }[] };
@@ -81,6 +82,7 @@ export function DriverPage({ guid }: { guid: string }) {
             <Tab eventKey="cache" title={<TabTitleText>Cache</TabTitleText>}><Cache api={api} guid={guid} onChanged={load} /></Tab>
             <Tab eventKey="health" title={<TabTitleText>Health</TabTitleText>}><Health api={api} guid={guid} /></Tab>
             <Tab eventKey="trace" title={<TabTitleText>Trace</TabTitleText>}><TracePanel kind="drivers" guid={guid} /></Tab>
+            <Tab eventKey="mapping-tables" title={<TabTitleText>Mapping tables</TabTitleText>}><MappingTablesPanel under={guid} canCreate /></Tab>
             <Tab eventKey="log" title={<TabTitleText>Log level</TabTitleText>}>
               <LogLevelSave api={api} guid={guid} />
             </Tab>
