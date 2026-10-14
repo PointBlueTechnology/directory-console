@@ -85,36 +85,6 @@ final class Tasks {
         Http.json(ex, 200, accountJson(e));
     }
 
-    /**
-     * The address of the last failed login that counted towards intruder lockout (Net Address syntax,
-     * as networkAddress: the type in ASCII digits, '#', then the address). IP (1) is four bytes; TCP and
-     * UDP (9, 8) are port then IPv4, shown without the port, which is the client's own.
-     */
-    static String intruderAddress(byte[] b) {
-        int hash = -1;
-        for (int i = 0; i < Math.min(b.length, 4); i++) {
-            if (b[i] == '#') {
-                hash = i;
-                break;
-            }
-            if (b[i] < '0' || b[i] > '9') {
-                return null;
-            }
-        }
-        if (hash <= 0) {
-            return null;
-        }
-        int type = Integer.parseInt(new String(b, 0, hash, java.nio.charset.StandardCharsets.US_ASCII));
-        byte[] v = java.util.Arrays.copyOfRange(b, hash + 1, b.length);
-        if (type == 1 && v.length == 4) {
-            return (v[0] & 0xff) + "." + (v[1] & 0xff) + "." + (v[2] & 0xff) + "." + (v[3] & 0xff);
-        }
-        if ((type == 8 || type == 9) && v.length == 6) {
-            return (v[2] & 0xff) + "." + (v[3] & 0xff) + "." + (v[4] & 0xff) + "." + (v[5] & 0xff);
-        }
-        return com.pointblue.console.server.ldap.Partitions.address(type, v);
-    }
-
     static Map<String, Object> accountJson(Ldap.Entry e) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("disabled", bool(e.first("loginDisabled")));
@@ -122,7 +92,7 @@ final class Tasks {
         m.put("intruderAttempts", integer(e.first("loginIntruderAttempts")));
         m.put("intruderResetTime", iso(e.first("loginIntruderResetTime")));
         Object from = e.attributes().getOrDefault("loginintruderaddress", List.of()).stream().findFirst().orElse(null);
-        m.put("intruderAddress", from instanceof byte[] b ? intruderAddress(b) : from == null ? null : String.valueOf(from));
+        m.put("intruderAddress", from instanceof byte[] b ? NetAddress.ip(b) : from == null ? null : String.valueOf(from));
         m.put("loginExpires", iso(e.first("loginExpirationTime")));
         m.put("maxConnections", integer(e.first("loginMaximumSimultaneous")));
         m.put("lastLogin", iso(e.first("loginTime")));

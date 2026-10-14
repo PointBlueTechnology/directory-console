@@ -60,8 +60,8 @@ public class AddressesTest {
 
     @Test
     public void intruderAddressIsShownAsAnIpAddress() {
-        assertEquals("192.168.1.20", Tasks.intruderAddress(net("1", 192, 168, 1, 20)));
-        assertEquals("TCP: the client's port is left out", "10.1.2.3", Tasks.intruderAddress(net("9", 0xc3, 0x50, 10, 1, 2, 3)));
-        assertNull(Tasks.intruderAddress("x#1".getBytes(StandardCharsets.US_ASCII)));
+        assertEquals("192.168.1.20", NetAddress.ip(net("1", 192, 168, 1, 20)));
+        assertEquals("TCP: the client's port is left out", "10.1.2.3", NetAddress.ip(net("9", 0xc3, 0x50, 10, 1, 2, 3)));
+        assertNull(NetAddress.ip("x#1".getBytes(StandardCharsets.US_ASCII)));
     }
 }

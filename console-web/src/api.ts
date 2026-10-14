@@ -678,6 +678,48 @@ export interface Certificate {
 
 export interface Ref { guid?: string | null; dn: string; name: string }
 
+export type DefaultCertificateKind = 'dns' | 'ec' | 'ip';
+
+export interface DefaultCertificates {
+  server: Ref;
+  /** The console reaches the directory through this server. */
+  connected: boolean;
+  tree: string | null;
+  /** The tree CA has an EC key, so SSL EC CertificateDNS applies. */
+  ecAvailable: boolean;
+  /** The server's IP addresses (from its network addresses) and the DNS names a replacement would carry. */
+  ips: string[];
+  dnsNames: string[];
+  certificates: {
+    kind: DefaultCertificateKind;
+    name: string;
+    applicable: boolean;
+    guid: string | null;
+    certificate: Certificate | null;
+    /** Empty when nothing is wrong; "missing" when there is none. */
+    problems: string[];
+    /** LDAP servers on this server that use it. */
+    usedBy: string[];
+  }[];
+}
+
+export interface DefaultCertificatesRequest {
+  replace: 'invalid' | 'all';
+  kinds: DefaultCertificateKind[];
+  dnsNames?: string[];
+  ips?: string[];
+  validityYears?: number;
+}
+
+export interface DefaultCertificateResult {
+  kind: DefaultCertificateKind;
+  name: string;
+  action: 'kept' | 'created' | 'replaced' | 'replace';
+  status: 'ok' | 'failed';
+  detail?: string;
+  certificate?: Certificate | null;
+}
+
 export type ServerCertificate = Ref & { server: { dn: string; name: string } | null; usedBy?: string[]; certificate: Certificate | null; chain?: Certificate[] };
 
 export interface Pki {
@@ -793,6 +835,11 @@ export function security(id: string) {
     /** A server certificate (key material object) on a server, from the tree CA. */
     createServerCertificate: (serverGuid: string, body: CertificateRequest, confirm?: string) =>
       request<ServerCertificate>('POST', `${base}/pki/servers/${guidPath(serverGuid)}/certificates`, body, h(confirm)).then((r) => r.data),
+    /** A server's default certificates (SSL CertificateDNS, SSL EC CertificateDNS, SSL CertificateIP) and what is wrong with each. */
+    defaultCertificates: (serverGuid: string) => get<DefaultCertificates>(`/pki/servers/${guidPath(serverGuid)}/default-certificates`),
+    /** Replace one server's default certificates: each is deleted and made again under the same name. */
+    repairDefaultCertificates: (serverGuid: string, body: DefaultCertificatesRequest, confirm?: string) =>
+      request<{ results: DefaultCertificateResult[] }>('POST', `${base}/pki/servers/${guidPath(serverGuid)}/default-certificates`, body, h(confirm)).then((r) => r.data.results),
     /** Refused while an LDAP server or SAS service uses it. */
     deleteServerCertificate: (guid: string, confirm?: string) =>
       request<void>('DELETE', `${base}/pki/server-certificates/${guidPath(guid)}`, undefined, h(confirm)),

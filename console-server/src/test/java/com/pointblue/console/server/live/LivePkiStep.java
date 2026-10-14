@@ -30,6 +30,8 @@ import java.util.regex.Pattern;
  *   java -cp … LivePkiStep <environments.properties> ig4 server-delete <name>
  *   java -cp … LivePkiStep <environments.properties> ig4 user-create <user DN> <name>
  *   java -cp … LivePkiStep <environments.properties> ig4 user-list <user DN>
+ *   java -cp … LivePkiStep <environments.properties> ig4 defaults-read <server name>
+ *   java -cp … LivePkiStep <environments.properties> ig4 defaults-repair <server name> <invalid|all> <dns,ec,ip>
  */
 public final class LivePkiStep {
 
@@ -97,6 +99,10 @@ public final class LivePkiStep {
                 case "seq-create" -> show(call("POST", t + "/security/login-policy/sequences",
                     Map.of("name", args[3], "methods", List.of("NDS", "Challenge Response")), h));
                 case "seq-delete" -> show(call("DELETE", t + "/security/login-policy/sequences/" + URLEncoder.encode(args[3], "UTF-8").replace("+", "%20"), null, h));
+                case "defaults-read" -> show(call("GET", t + "/security/pki/servers/" + serverNamed(call("GET", t + "/edir/servers", null, h), args[3]) + "/default-certificates", null, h));
+                // one server's default certificates: each named one is deleted and made again
+                case "defaults-repair" -> show(call("POST", t + "/security/pki/servers/" + serverNamed(call("GET", t + "/edir/servers", null, h), args[3]) + "/default-certificates",
+                    Map.of("replace", args[4], "kinds", List.of(args[5].split(","))), h));
                 case "user-list" -> show(call("GET", t + "/security/objects/" + guid(t, h, args[3]) + "/certificates", null, h));
                 default -> throw new IllegalArgumentException("unknown step " + op);
             }
@@ -110,6 +116,16 @@ public final class LivePkiStep {
 
     private static String guid(String t, Map<String, String> h, String dn) throws Exception {
         return (String) call("GET", t + "/objects?dn=" + URLEncoder.encode(dn, "UTF-8"), null, h).body().get("guid");
+    }
+
+    private static String serverNamed(LiveSetupCheck.Reply servers, String name) {
+        for (Object o : (List<?>) servers.body().get("list")) {
+            Map<String, Object> m = Json.asMap(o);
+            if (name.equalsIgnoreCase(String.valueOf(m.get("name")))) {
+                return (String) m.get("guid");
+            }
+        }
+        throw new IllegalStateException("no server named " + name);
     }
 
     /** The server this console connection is on. */

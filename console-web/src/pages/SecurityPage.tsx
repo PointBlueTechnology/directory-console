@@ -13,6 +13,7 @@ import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { NewCertificateModal } from '../components/NewCertificate';
 import { SequenceModal } from '../components/SequenceModal';
 import { RevokeModal, revokedNotice } from '../components/RevokeCertificate';
+import { DefaultCertificatesModal } from '../components/DefaultCertificates';
 
 const DAY = 86_400_000;
 export const WARN_DAYS = 60;
@@ -69,6 +70,7 @@ function CertificatesView() {
   const [error, setError] = useState<unknown>(null);
   const [servers, setServers] = useState<EdirServer[]>([]);
   const [creating, setCreating] = useState(false);
+  const [defaults, setDefaults] = useState(false);
   const [opError, setOpError] = useState<unknown>(null);
   const [revoking, setRevoking] = useState<Pki['serverCertificates'][number] | null>(null);
   const [opNotice, setOpNotice] = useState<string | null>(null);
@@ -138,6 +140,7 @@ function CertificatesView() {
 
       <Card className="dc-tab-body">
         <CardTitle><Flex><FlexItem grow={{ default: 'grow' }}><Title headingLevel="h2" size="lg">Server certificates</Title></FlexItem>
+          {editor && pki.ca && <FlexItem><Button variant="secondary" onClick={() => setDefaults(true)} isDisabled={servers.length === 0}>Default certificates…</Button></FlexItem>}
           {editor && pki.ca && <FlexItem><Button variant="secondary" onClick={() => setCreating(true)} isDisabled={servers.length === 0}>New server certificate</Button></FlexItem>}
         </Flex></CardTitle>
         <CardBody>
@@ -175,6 +178,7 @@ function CertificatesView() {
               onCreate={(body, server) => confirmed.run((c) => api.createServerCertificate(server!, body, c)).then(load)}
               onClose={() => setCreating(false)} />
           )}
+          {defaults && <DefaultCertificatesModal servers={servers} onClose={() => setDefaults(false)} onChanged={load} />}
           {revoking && (
             <RevokeModal name={revoking.name} onClose={() => setRevoking(null)}
               onRevoke={(r) => confirmed.run((c) => api.revokeServerCertificate(revoking.guid!, r, c))}
