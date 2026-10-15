@@ -1,10 +1,41 @@
 import { useEffect, useState } from 'react';
 import {
-  ActionGroup, Alert, Button, Form, FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem,
+  ActionGroup, Alert, Button, Checkbox, Form, FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem,
   Divider, LoginPage, Radio, TextInput,
 } from '@patternfly/react-core';
 import { ApiError, type Candidate, type Directory, type Me, type Probe, session } from '../api';
 import { CertificateDetails } from '../components/Certificates';
+
+/** What "Remember my name" keeps, in this browser only: never the password. */
+interface Remembered {
+  name: string;
+  directory: string;
+  host?: string;
+  port?: string;
+}
+
+const REMEMBER_KEY = 'directory-console.sign-in';
+
+function remembered(): Remembered | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(REMEMBER_KEY) ?? 'null') as Remembered | null;
+    return v && typeof v.name === 'string' && typeof v.directory === 'string' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function remember(v: Remembered | null): void {
+  try {
+    if (v) {
+      localStorage.setItem(REMEMBER_KEY, JSON.stringify(v));
+    } else {
+      localStorage.removeItem(REMEMBER_KEY);
+    }
+  } catch {
+    // storage blocked (a private window, site data cleared): sign-in still works, it just is not remembered
+  }
+}
 
 /** The directory list's choice for an address the person types. */
 const OTHER = '__other__';
@@ -45,16 +76,18 @@ function ssoError(): string | null {
  */
 export function SignIn({ reason, onSignedIn }: Props) {
   const [directories, setDirectories] = useState<Directory[] | null>(null);
+  const [saved] = useState(remembered);
+  const [rememberMe, setRememberMe] = useState(!!saved);
   const [directory, setDirectory] = useState('');
-  const [name, setName] = useState('');
+  const [name, setName] = useState(saved?.name ?? '');
   const [password, setPassword] = useState('');
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [choice, setChoice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(ssoError);
   const [busy, setBusy] = useState(false);
   const [others, setOthers] = useState(false);
-  const [host, setHost] = useState('');
-  const [port, setPort] = useState('636');
+  const [host, setHost] = useState(saved?.host ?? '');
+  const [port, setPort] = useState(saved?.port ?? '636');
   const [offer, setOffer] = useState<Probe | null>(null);
   const [confirm, setConfirm] = useState('');
   const chosen = directories?.find((d) => d.id === directory);
@@ -63,16 +96,30 @@ export function SignIn({ reason, onSignedIn }: Props) {
   useEffect(() => {
     session.directories().then((d) => {
       setDirectories(d);
-      setDirectory(d.length > 0 ? d[0].id : OTHER);
+      // the remembered tree, while it is still offered; otherwise the first
+      const keep = saved && (d.some((x) => x.id === saved.directory) || saved.directory === OTHER) ? saved.directory : null;
+      setDirectory(keep ?? (d.length > 0 ? d[0].id : OTHER));
     }).catch(() => setError('The console did not answer. Try again in a moment.'));
     session.signInOptions().then((o) => setOthers(o.otherDirectories)).catch(() => setOthers(false));
   }, []);
+
+  /** After a successful sign-in: keep or forget the name, as the person chose. */
+  const signedIn = (me: Me) => {
+    remember(rememberMe ? { name: name.trim(), directory, ...(directory === OTHER ? { host: host.trim(), port } : {}) } : null);
+    onSignedIn(me);
+  };
+
+  const forget = () => {
+    remember(null);
+    setRememberMe(false);
+    setName('');
+  };
 
   /** A directory the person entered: an untrusted certificate is offered to them, and accepted for their own sign-ins. */
   const submitOther = async () => {
     try {
       const accept = offer ? { probeId: offer.probeId, confirm: confirm.trim() } : undefined;
-      onSignedIn(await session.signInOther(host.trim(), Number(port), name.trim(), password, accept));
+      signedIn(await session.signInOther(host.trim(), Number(port), name.trim(), password, accept));
     } catch (x) {
       if (x instanceof ApiError && x.code === 'untrusted-certificate' && x.problem.probe) {
         setOffer(x.problem.probe as unknown as Probe);
@@ -101,7 +148,7 @@ export function SignIn({ reason, onSignedIn }: Props) {
       return;
     }
     try {
-      onSignedIn(await session.signIn(directory, name, password, candidates ? choice ?? undefined : undefined));
+      signedIn(await session.signIn(directory, name, password, candidates ? choice ?? undefined : undefined));
     } catch (x) {
       if (x instanceof ApiError && x.code === 'choose-account') {
         setCandidates((x.problem.candidates as Candidate[]) ?? []);
@@ -165,7 +212,7 @@ export function SignIn({ reason, onSignedIn }: Props) {
             )}
             <FormGroup label="Name" fieldId="name" isRequired>
               <TextInput id="name" value={name} onChange={(_e, v) => setName(v)} autoComplete="username"
-                aria-describedby="name-help" isRequired autoFocus />
+                aria-describedby="name-help" isRequired autoFocus={!saved} />
               <FormHelperText>
                 <HelperText id="name-help">
                   <HelperTextItem>{other ? 'Your full name (DN), such as cn=jsmith,ou=sales,o=acme' : 'Your user name, or your full name such as jsmith.sales.acme'}</HelperTextItem>
@@ -200,8 +247,14 @@ export function SignIn({ reason, onSignedIn }: Props) {
         )}
         <FormGroup label="Password" fieldId="password" isRequired>
           <TextInput id="password" type="password" value={password} onChange={(_e, v) => setPassword(v)}
-            autoComplete="current-password" isRequired />
+            autoComplete="current-password" isRequired autoFocus={!!saved} />
         </FormGroup>
+        {!candidates && (
+          <FormGroup fieldId="remember">
+            <Checkbox id="remember" label="Remember my name on this computer" isChecked={rememberMe} onChange={(_e, v) => setRememberMe(v)}
+              description={saved ? <Button variant="link" isInline onClick={forget}>Forget {saved.name}</Button> : 'Your name and tree are kept in this browser; your password never is.'} />
+          </FormGroup>
+        )}
         <ActionGroup>
           <Button type="submit" variant={!other && chosen?.sso ? 'secondary' : 'primary'} isBlock isLoading={busy}
             isDisabled={busy || !directory || !password || (!candidates && !name) || (!!candidates && !choice)

@@ -36,6 +36,8 @@ export interface Me {
   grants: Grant[];
   via: 'direct' | 'break-glass' | 'oidc' | 'user-directory';
   csrf: string;
+  /** How long the session may sit idle, and when it ends however active it is (the tree's limits). */
+  session?: { idleSeconds: number; expiresAt: string };
 }
 
 export interface Directory {
@@ -229,6 +231,21 @@ let csrf: string | null = null;
 /** Remember the session's CSRF token; every write sends it. */
 export function setCsrf(token: string | null): void {
   csrf = token;
+  if (token === null) {
+    limits = null;
+  }
+}
+
+/** When the console last answered a request: each answer restarts the session's idle timer. */
+let lastAnswer = Date.now();
+export function lastServerContact(): number {
+  return lastAnswer;
+}
+
+/** The session's limits as the console last sent them (headers on every signed-in answer); null before any. */
+let limits: { idleSeconds: number; expiresAt: string } | null = null;
+export function sessionLimits(): { idleSeconds: number; expiresAt: string } | null {
+  return limits;
 }
 
 /** Called when the session is gone (expired, signed out elsewhere, directory connection lost). */
@@ -252,6 +269,14 @@ export async function request<T>(method: string, path: string, body?: unknown, h
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: 'same-origin',
   });
+  if (r.status !== 401 && r.status !== 503) {
+    lastAnswer = Date.now();
+  }
+  const idle = r.headers.get('X-Session-Idle-Seconds');
+  const expires = r.headers.get('X-Session-Expires');
+  if (idle && expires) {
+    limits = { idleSeconds: Number(idle), expiresAt: expires };
+  }
   const text = await r.text();
   const parsed: unknown = text ? JSON.parse(text) : undefined;
   if (!r.ok && r.status !== 207) {
@@ -774,6 +799,7 @@ export interface DirectorySettings {
   directLogin: boolean;
   serviceAccount: string | null;
   login: { searchBases: string[]; duplicates: 'choose' | 'error' };
+  session: { idleMinutes: number; maxHours: number };
   breakGlass: string[];
   roles: RoleMappingJson[];
   presets: Preset[];
@@ -797,6 +823,8 @@ export function settings(id: string) {
     login: (login: { searchBases: string[]; duplicates: 'choose' | 'error' }, etag?: string) => put('login', login, etag),
     /** Checked by signing in as it; null removes it. */
     serviceAccount: (account: { dn: string; password: string } | null, etag?: string) => put('service-account', account, etag),
+    /** Idle timeout and longest session for this tree; applies at once, to open sessions too. */
+    sessionLimits: (limits: { idleMinutes: number; maxHours: number }, etag?: string) => put('session', limits, etag),
   };
 }
 

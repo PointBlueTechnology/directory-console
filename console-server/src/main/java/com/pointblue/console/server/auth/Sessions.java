@@ -111,6 +111,12 @@ public final class Sessions {
     private final Duration idle;
     private final Duration absolute;
     private final Clock clock;
+    /** A tree's own limits (Settings > Directory), looked up at every check so a change applies at once; null keeps the defaults. */
+    private volatile java.util.function.Function<String, Limits> limits = id -> null;
+
+    /** How long a session may sit idle, and how long it may last at most. */
+    public record Limits(Duration idle, Duration absolute) {
+    }
     private final Map<String, Session> sessions = new ConcurrentHashMap<>();
 
     public Sessions(Duration idle, Duration absolute) {
@@ -133,6 +139,22 @@ public final class Sessions {
         return s;
     }
 
+    /** Where each tree's own limits come from. */
+    public void limits(java.util.function.Function<String, Limits> byDirectory) {
+        this.limits = byDirectory;
+    }
+
+    /** The limits that apply to {@code s}: its tree's, or the defaults. */
+    public Limits limitsOf(Session s) {
+        Limits l = limits.apply(s.principal.directoryId());
+        return l == null ? new Limits(idle, absolute) : l;
+    }
+
+    /** When {@code s} ends at the latest, however active it is. */
+    public Instant expiresAt(Session s) {
+        return s.created.plus(limitsOf(s).absolute());
+    }
+
     /** The live session for {@code id}, refreshing its idle timer; null (and closed) when expired or unknown. */
     public Session get(String id) {
         Session s = id == null ? null : sessions.get(id);
@@ -140,7 +162,8 @@ public final class Sessions {
             return null;
         }
         Instant now = clock.instant();
-        if (s.lastSeen.plus(idle).isBefore(now) || s.created.plus(absolute).isBefore(now)) {
+        Limits l = limitsOf(s);
+        if (s.lastSeen.plus(l.idle()).isBefore(now) || s.created.plus(l.absolute()).isBefore(now)) {
             remove(s.id);
             return null;
         }

@@ -244,6 +244,20 @@ public class ServerTest {
         // with the service account and a search base, a bare name signs in
         assertEquals(200, call("POST", "/api/v2/session", Map.of("directory", id, "name", "admin", "password", "admin-pw"), Map.of()).status());
         assertEquals(null, call("PUT", at + "/service-account", null, w).body().get("serviceAccount"));
+
+        // session limits for this tree: shown to the UI, refused outside the allowed range
+        assertEquals(1800, Json.asInt(Json.asMap(call("GET", "/api/v2/session", null, w).body().get("session")).get("idleSeconds"), 0));
+        assertEquals(400, call("PUT", at + "/session", Map.of("idleMinutes", 2, "maxHours", 8), w).status());
+        assertEquals(400, call("PUT", at + "/session", Map.of("idleMinutes", 15, "maxHours", 48), w).status());
+        Map<String, Object> saved = Json.asMap(call("PUT", at + "/session", Map.of("idleMinutes", 15, "maxHours", 8), w).body().get("session"));
+        assertEquals(15, Json.asInt(saved.get("idleMinutes"), 0));
+        assertEquals(8, Json.asInt(saved.get("maxHours"), 0));
+        Map<String, Object> now = Json.asMap(call("GET", "/api/v2/session", null, w).body().get("session"));
+        assertEquals("applies to this session at once", 900, Json.asInt(now.get("idleSeconds"), 0));
+        Reply any = call("GET", "/api/v2/session", null, w);
+        assertEquals("every signed-in answer carries the limits", "900", any.raw().headers().firstValue("X-Session-Idle-Seconds").orElse(null));
+        assertEquals(now.get("expiresAt"), any.raw().headers().firstValue("X-Session-Expires").orElse(null));
+        assertTrue(String.valueOf(now.get("expiresAt")).matches("\\d{4}-.*Z"));
     }
 
     /** First sign-in to {@code edir}, accepting its CA; the new tree's id. */

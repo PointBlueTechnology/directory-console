@@ -14,6 +14,9 @@ import { PresetEditor, presetJson } from '../components/PresetEditor';
 import { useStepUp } from '../components/StepUp';
 import { TreesSection } from '../components/TreesSection';
 
+/** A whole number from {@code min} to {@code max}. */
+const sessionOk = (v: string, min: number, max: number) => /^\d+$/.test(v.trim()) && Number(v) >= min && Number(v) <= max;
+
 const lines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean);
 
 /**
@@ -84,6 +87,8 @@ function DirectorySection({ s, api, etag, onSaved }: {
   const [bases, setBases] = useState(s.login.searchBases.join('\n'));
   const [duplicates, setDuplicates] = useState(s.login.duplicates);
   const [saDn, setSaDn] = useState(s.serviceAccount ?? '');
+  const [idleMinutes, setIdleMinutes] = useState(String(s.session.idleMinutes));
+  const [maxHours, setMaxHours] = useState(String(s.session.maxHours));
   const [saPassword, setSaPassword] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -106,6 +111,24 @@ function DirectorySection({ s, api, etag, onSaved }: {
               isChecked={tier === 'lab'} onChange={() => setTier('lab')} />
           </FormGroup>
           <ActionGroup><Button variant="secondary" isDisabled={busy || tier === s.tier} onClick={() => go(`The tier is now ${tier}.`, () => api.tier(tier as 'production' | 'lab', etag))}>Save the tier</Button></ActionGroup>
+        </FormSection>
+        <FormSection title="Sessions" titleElement="h3">
+          <p className="dc-subtle">For everyone signed in to this tree, including people signed in now. People are warned two minutes before an idle sign-out.</p>
+          <FormGroup label="Sign out after this many idle minutes" fieldId="dir-idle">
+            <TextInput id="dir-idle" type="number" min={5} max={240} value={idleMinutes} onChange={(_e, v) => setIdleMinutes(v)}
+              validated={sessionOk(idleMinutes, 5, 240) ? 'default' : 'error'} />
+            <FormHelperText><HelperText><HelperTextItem variant={sessionOk(idleMinutes, 5, 240) ? 'default' : 'error'}>5 to 240 minutes; 30 by default.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+          <FormGroup label="End every session after this many hours" fieldId="dir-max">
+            <TextInput id="dir-max" type="number" min={1} max={24} value={maxHours} onChange={(_e, v) => setMaxHours(v)}
+              validated={sessionOk(maxHours, 1, 24) ? 'default' : 'error'} />
+            <FormHelperText><HelperText><HelperTextItem variant={sessionOk(maxHours, 1, 24) ? 'default' : 'error'}>1 to 24 hours, however active the person is; 12 by default.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+          <ActionGroup>
+            <Button variant="secondary" isDisabled={busy || !sessionOk(idleMinutes, 5, 240) || !sessionOk(maxHours, 1, 24)
+              || (Number(idleMinutes) === s.session.idleMinutes && Number(maxHours) === s.session.maxHours)}
+              onClick={() => go('The session limits are saved.', () => api.sessionLimits({ idleMinutes: Number(idleMinutes), maxHours: Number(maxHours) }, etag))}>Save the session limits</Button>
+          </ActionGroup>
         </FormSection>
         <FormSection title="Service account" titleElement="h3">
           <p className="dc-subtle">

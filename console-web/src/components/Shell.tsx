@@ -14,6 +14,7 @@ import { SchemaPage } from '../pages/SchemaPage';
 import { ObjectPage } from '../pages/ObjectPage';
 import { NotFound } from '../pages/NotFound';
 import { ErrorBoundary } from './ErrorBoundary';
+import { SessionWarning } from './SessionWarning';
 
 // administration pages load when first opened: most sessions never visit them
 const IdmPage = lazy(() => import('../pages/IdmPage').then((m) => ({ default: m.IdmPage })));
@@ -112,6 +113,7 @@ export function Shell() {
   return (
     <Page masthead={masthead} sidebar={sidebar} isManagedSidebar mainAriaLabel="Directory Console">
       {sessionState.can('admin') && path !== '/certificates' && <ExpiryBanner />}
+      <SessionWarning />
       <ErrorBoundary resetKey={path}>
         <Suspense fallback={<Bullseye><Spinner aria-label="Loading" /></Bullseye>}>{route(path)}</Suspense>
       </ErrorBoundary>

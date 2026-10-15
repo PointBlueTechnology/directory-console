@@ -34,6 +34,7 @@ import javax.naming.NamingException;
  * PUT  /api/v2/directories/{id}/tier            {"tier": production|lab}
  * PUT  /api/v2/directories/{id}/login           {"searchBases": [DN…], "duplicates": choose|error}
  * PUT  /api/v2/directories/{id}/service-account {"dn", "password"} (checked by signing in as it), or null for none
+ * PUT  /api/v2/directories/{id}/session         {"idleMinutes": 5-240, "maxHours": 1-24}: applies at once, to sessions already open too
  * </pre>
  *
  * The tier, sign-in options and service account are what the console's first sign-in leaves for later
@@ -75,6 +76,19 @@ final class Settings {
                 });
             }
             case "PUT login" -> login(ex, s, d);
+            case "PUT session" -> {
+                Map<String, Object> b = Json.asMap(body(ex));
+                int idle = Http.integer(b, "idleMinutes", 30);
+                int hours = Http.integer(b, "maxHours", 12);
+                save(ex, s, d, "session", Map.of("idleMinutes", idle, "maxHours", hours), v -> {
+                    if (idle < Server.MIN_IDLE_MINUTES || idle > Server.MAX_IDLE_MINUTES) {
+                        throw new IllegalArgumentException("the idle timeout is " + Server.MIN_IDLE_MINUTES + " to " + Server.MAX_IDLE_MINUTES + " minutes");
+                    }
+                    if (hours < Server.MIN_HOURS || hours > Server.MAX_HOURS) {
+                        throw new IllegalArgumentException("the longest session is " + Server.MIN_HOURS + " to " + Server.MAX_HOURS + " hours");
+                    }
+                });
+            }
             case "PUT service-account" -> serviceAccount(ex, s, d);
             default -> throw new Http.Problem(404, "not-found", method + " " + path);
         }
@@ -102,6 +116,8 @@ final class Settings {
         m.put("tier", d.tier());
         m.put("directLogin", d.directLogin());
         m.put("serviceAccount", d.serviceAccountDn());
+        Sessions.Limits limits = server.sessionLimits(d.id());
+        m.put("session", Map.of("idleMinutes", limits == null ? 30 : limits.idle().toMinutes(), "maxHours", limits == null ? 12 : limits.absolute().toHours()));
         m.put("login", Map.of("searchBases", d.searchBases(), "duplicates", d.duplicates() == DirectoryConfig.Duplicates.ERROR ? "error" : "choose"));
         m.put("breakGlass", d.breakGlass());
         m.put("roles", d.roles().stream().map(DirectoryConfig.RoleMapping::json).toList());

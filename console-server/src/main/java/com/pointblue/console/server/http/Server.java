@@ -13,6 +13,7 @@ import com.pointblue.console.server.tls.Certs;
 import com.pointblue.console.server.tls.ConsoleTls;
 import com.pointblue.console.server.tls.Probe;
 import com.pointblue.console.server.tls.TrustStore;
+import com.pointblue.dirxml.dev.json.Json;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsParameters;
@@ -76,6 +77,7 @@ public final class Server {
     public Server(DataDir data, int port, String publicUrl, PrintStream out) throws IOException, GeneralSecurityException {
         this.data = data;
         this.config = new ConfigStore(data, SecretBox.open(data.keys().resolve("config.key")));
+        this.sessions.limits(this::sessionLimits);
         this.audit = new AuditLog(data);
         this.trust = new TrustStore(data);
         // a pinned address that presents another certificate: kept as an alert for admins, and audited once
@@ -312,6 +314,10 @@ public final class Server {
                 throw new Http.Problem(403, "csrf", "the X-CSRF-Token header is missing or wrong");
             }
         }
+        // the session's current limits on every answer, so the UI's warning follows a change at once
+        Sessions.Limits l = sessions.limitsOf(s);
+        ex.getResponseHeaders().set("X-Session-Idle-Seconds", String.valueOf(l.idle().toSeconds()));
+        ex.getResponseHeaders().set("X-Session-Expires", sessions.expiresAt(s).toString());
         if (role != null && !s.principal.has(role)) {
             throw new Http.Problem(403, "forbidden", "this needs the " + role.id() + " role");
         }
@@ -345,6 +351,20 @@ public final class Server {
         return OtherDirectory.VIA.equals(s.principal.via()) ? s.principal.subject() : null;
     }
 
+    /** Session limits a console admin may choose for a tree. */
+    static final int MIN_IDLE_MINUTES = 5, MAX_IDLE_MINUTES = 240, MIN_HOURS = 1, MAX_HOURS = 24;
+
+    /** A tree's own session limits ("session": {"idleMinutes", "maxHours"}), or null for the defaults (30 minutes, 12 hours). */
+    Sessions.Limits sessionLimits(String directoryId) {
+        Object dirs = config.read().get("directories");
+        if (!(dirs instanceof Map<?, ?> all) || !(all.get(directoryId) instanceof Map<?, ?> dir) || !(dir.get("session") instanceof Map<?, ?> s)) {
+            return null;
+        }
+        int idle = Math.max(MIN_IDLE_MINUTES, Math.min(MAX_IDLE_MINUTES, Json.asInt(s.get("idleMinutes"), 30)));
+        int hours = Math.max(MIN_HOURS, Math.min(MAX_HOURS, Json.asInt(s.get("maxHours"), 12)));
+        return new Sessions.Limits(Duration.ofMinutes(idle), Duration.ofHours(hours));
+    }
+
     Map<String, Object> me(Sessions.Session s) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("name", s.principal.name());
@@ -360,6 +380,9 @@ public final class Server {
         }).toList());
         m.put("via", s.principal.via());
         m.put("csrf", s.csrf);
+        // for the UI's warning: how long it may sit idle, and when it ends however active it is
+        Sessions.Limits l = sessions.limitsOf(s);
+        m.put("session", Map.of("idleSeconds", l.idle().toSeconds(), "expiresAt", sessions.expiresAt(s).toString()));
         return m;
     }
 

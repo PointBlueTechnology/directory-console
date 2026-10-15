@@ -43,6 +43,26 @@ public class SessionsAndThrottleTest {
     private static final Sessions.Principal PAT = new Sessions.Principal("cn=pat,o=acme", "cn=pat,o=acme", "Pat", "prod", Set.of(Role.OPERATOR), "direct");
 
     @Test
+    public void aTreeCanHaveItsOwnLimitsAndAChangeAppliesAtOnce() {
+        Moving clock = new Moving();
+        Sessions s = new Sessions(Duration.ofMinutes(30), Duration.ofHours(12), clock);
+        java.util.Map<String, Sessions.Limits> byTree = new java.util.concurrent.ConcurrentHashMap<>();
+        s.limits(byTree::get);
+        Sessions.Session prod = s.create(PAT, null);
+        Sessions.Session dev = s.create(new Sessions.Principal("cn=pat,o=acme", "cn=pat,o=acme", "Pat", "dev", Set.of(Role.OPERATOR), "direct"), null);
+        byTree.put("prod", new Sessions.Limits(Duration.ofMinutes(10), Duration.ofHours(2)));
+        assertEquals("prod's own idle limit", Duration.ofMinutes(10), s.limitsOf(prod).idle());
+        assertEquals("dev keeps the defaults", Duration.ofMinutes(30), s.limitsOf(dev).idle());
+        assertEquals(clock.now.plus(Duration.ofHours(2)), s.expiresAt(prod));
+        clock.advance(Duration.ofMinutes(11));
+        assertNull("prod's 10 minutes apply to a session already open", s.get(prod.id));
+        assertSame(dev, s.get(dev.id));
+        byTree.put("dev", new Sessions.Limits(Duration.ofMinutes(5), Duration.ofHours(1)));
+        clock.advance(Duration.ofMinutes(6));
+        assertNull("dev's new limit applies at once", s.get(dev.id));
+    }
+
+    @Test
     public void idleAndAbsoluteLimitsEndASession() {
         Moving clock = new Moving();
         Sessions s = new Sessions(Duration.ofMinutes(30), Duration.ofHours(12), clock);
