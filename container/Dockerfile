@@ -7,6 +7,9 @@ FROM eclipse-temurin:21-jre AS prep
 RUN mkdir -p /out/data && chown 65532:65532 /out/data && chmod 700 /out/data
 
 FROM gcr.io/distroless/java21-debian12:nonroot
+LABEL org.opencontainers.image.source="https://github.com/PointBlueTechnology/directory-console" \
+      org.opencontainers.image.title="Directory Console" \
+      org.opencontainers.image.licenses="MIT"
 COPY --from=prep --chown=65532:65532 /out/data /data
 COPY artifacts/lib/ /app/lib/
 COPY artifacts/console.jar /app/console.jar

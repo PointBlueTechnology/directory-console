@@ -31,13 +31,31 @@ the console runs and the Identity Manager page says why.
 | `console-web` | The web UI: React and PatternFly 6, built into `console.jar` and served by the console under its strict content security policy. |
 | `console-theme` | `@pointblue/console-theme`: Point Blue's PatternFly design-token overrides, shared with DirXMLDevWeb. |
 
-## Run it
+## Install
+
+The image is published at `ghcr.io/pointbluetechnology/directory-console` for amd64 and arm64:
+`latest` and `<version>` for each release, `main` for the newest commit. With `compose.yaml` from
+this repository:
 
 ```
-container/build.sh            # tests, packages, docker build -> directory-console:<version>
 docker compose up -d
 docker compose logs console   # the setup URL, the one-time token and the certificate fingerprint
 ```
+
+or without compose:
+
+```
+docker run -d --name directory-console --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+  -p 8443:8443 -e CONSOLE_PUBLIC_URL=https://console.example.com:8443 -v console-data:/data \
+  ghcr.io/pointbluetechnology/directory-console:latest
+docker logs directory-console
+```
+
+Identity Manager needs the engine's `dirxml_misc.jar` and `ldap.jar` (from an engine's
+`lib/dirxml/classes`) mounted read-only at `/engine`; they are OpenText's and never in the image.
+
+To build the image yourself: `container/build.sh` (tests, packages, `docker build` →
+`directory-console:<version>`), then `CONSOLE_IMAGE=directory-console:<version> docker compose up -d`.
 
 Check that your browser shows the printed fingerprint before using the token. Setup is the
 `/api/v2/setup` API (directory, probe, trust, authority, service account, login, finish); after it,
