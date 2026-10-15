@@ -13,6 +13,7 @@ A web console for NetIQ/OpenText **eDirectory** and **Identity Manager**. It run
 Every action runs with the signed-in person's own eDirectory rights, and every change is audited.
 
 - **Install:** [docs/QUICKSTART.md](docs/QUICKSTART.md), including Docker Desktop on Windows.
+- **Upgrade:** [docs/UPGRADING.md](docs/UPGRADING.md).
 - **What works today, and what does not yet:** [docs/STATUS.md](docs/STATUS.md).
 
 ## Install
@@ -148,7 +149,7 @@ Sign in as `cn=admin,o=system` / `admin-pw`, or `viewer` / `viewer-pw` for the r
 | `console-auth` | OpenID Connect sign-in and merged TLS trust; also used by DirXMLDevWeb. |
 | `console-theme` | Point Blue's PatternFly design tokens; also used by DirXMLDevWeb. |
 | `container` | The image and its build script. |
-| `docs` | The [quickstart](docs/QUICKSTART.md), [status](docs/STATUS.md) and [API notes](docs/API.md). |
+| `docs` | The [quickstart](docs/QUICKSTART.md), [upgrading](docs/UPGRADING.md), [status](docs/STATUS.md) and [API notes](docs/API.md). |
 
 ### Lab checks
 

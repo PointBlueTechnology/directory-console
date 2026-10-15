@@ -108,6 +108,8 @@
                         <systemPropertyVariables>
                             <!-- read once when the JDK's HTTP client loads: ServerTest sends a foreign Host header -->
                             <jdk.httpclient.allowRestrictedHeaders>host</jdk.httpclient.allowRestrictedHeaders>
+                            <!-- tests never ask GitHub for the latest release on their own -->
+                            <console.updateCheck>off</console.updateCheck>
                         </systemPropertyVariables>
                     </configuration>
                 </plugin>

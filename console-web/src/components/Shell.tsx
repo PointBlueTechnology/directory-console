@@ -6,7 +6,7 @@ import {
 } from '@patternfly/react-core';
 import { MoonIcon, SunIcon, UserIcon } from '@patternfly/react-icons';
 import { useSession } from '../session';
-import { daysUntil, trust } from '../api';
+import { type UpdateState, daysUntil, trust, updates } from '../api';
 import { linkProps, match, navigate, useLocation } from '../router';
 import { Browser } from '../pages/Browser';
 import { Search } from '../pages/Search';
@@ -15,6 +15,7 @@ import { ObjectPage } from '../pages/ObjectPage';
 import { NotFound } from '../pages/NotFound';
 import { ErrorBoundary } from './ErrorBoundary';
 import { SessionWarning } from './SessionWarning';
+import { UpdateBanner } from './UpdateBanner';
 
 // administration pages load when first opened: most sessions never visit them
 const IdmPage = lazy(() => import('../pages/IdmPage').then((m) => ({ default: m.IdmPage })));
@@ -45,6 +46,8 @@ export function Shell() {
   const { me, signOut } = sessionState;
   const { path } = useLocation();
   const [userOpen, setUserOpen] = useState(false);
+  const [version, setVersion] = useState<{ version: string; update?: UpdateState } | null>(null);
+  useEffect(() => { updates.version().then(setVersion).catch(() => setVersion(null)); }, []);
   const [dark, setDark] = useDarkTheme();
 
   useEffect(() => {
@@ -84,6 +87,12 @@ export function Shell() {
                   )}>
                   <DropdownList>
                     <DropdownItem key="who" isDisabled description={me.via === 'user-directory' ? 'a directory you entered · your own rights' : `${me.directory} · ${me.roles.join(', ')}`}>{me.dn}</DropdownItem>
+                    {version && (
+                      <DropdownItem key="version" isDisabled description={version.update?.newer ? `${version.update.latest} is available`
+                        : version.update?.enabled && version.update.error ? 'Cannot check for new versions' : undefined}>
+                        Directory Console {version.version}
+                      </DropdownItem>
+                    )}
                     <DropdownItem key="out" onClick={signOut}>Sign out</DropdownItem>
                   </DropdownList>
                 </Dropdown>
@@ -113,6 +122,7 @@ export function Shell() {
   return (
     <Page masthead={masthead} sidebar={sidebar} isManagedSidebar mainAriaLabel="Directory Console">
       {sessionState.can('admin') && path !== '/certificates' && <ExpiryBanner />}
+      {sessionState.can('admin') && path !== '/settings' && <UpdateBanner update={version?.update ?? null} />}
       <SessionWarning />
       <ErrorBoundary resetKey={path}>
         <Suspense fallback={<Bullseye><Spinner aria-label="Loading" /></Bullseye>}>{route(path)}</Suspense>

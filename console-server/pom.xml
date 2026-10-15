@@ -70,6 +70,8 @@
                     <archive>
                         <manifest>
                             <mainClass>com.pointblue.console.server.Main</mainClass>
+                            <!-- Implementation-Version: the console's own version, shown in the UI and the health check -->
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
                             <addClasspath>true</addClasspath>
                             <classpathPrefix>lib/</classpathPrefix>
                         </manifest>

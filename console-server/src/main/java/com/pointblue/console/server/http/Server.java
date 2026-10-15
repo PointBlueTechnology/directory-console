@@ -56,6 +56,7 @@ public final class Server {
     final Probe probes = new Probe();
     final OtherDirectory other = new OtherDirectory(this);
     final Trees trees = new Trees(this);
+    final Updates updates = new Updates(this);
     final Sessions sessions = new Sessions(Duration.ofMinutes(30), Duration.ofHours(12));
     final DirectLogin login;
     final com.pointblue.console.server.auth.OidcLogin oidc;
@@ -122,9 +123,11 @@ public final class Server {
 
     public void start() {
         http.start();
+        updates.start();
     }
 
     public void stop() {
+        updates.stop();
         http.stop(1);
     }
 
@@ -208,7 +211,7 @@ public final class Server {
 
     private void route(HttpExchange ex, String path, String method) throws IOException {
         if (path.equals("/api/v2/health/live")) {
-            Http.json(ex, 200, Map.of("status", "live"));
+            Http.json(ex, 200, Map.of("status", "live", "version", updates.version()));
             return;
         }
         if (path.equals("/api/v2/health/ready")) {
@@ -256,6 +259,10 @@ public final class Server {
         }
         if (path.startsWith("/api/v2/trees/")) {
             objects.handle(ex, path, method);
+            return;
+        }
+        if (updates.handles(path)) {
+            updates.handle(ex, method, path);
             return;
         }
         if (trees.handles(path)) {

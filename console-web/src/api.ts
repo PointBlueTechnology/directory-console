@@ -1318,6 +1318,28 @@ export const trees = {
   remove: (id: string, name: string) => request<void>('DELETE', `/api/v2/console/trees/${encodeURIComponent(id)}`, { name }),
 };
 
+/** The console's version, and for admins the last check for a newer release. */
+export interface UpdateState {
+  enabled: boolean;
+  current: string;
+  latest?: string;
+  newer?: boolean | null;
+  url?: string;
+  published?: string;
+  checkedAt?: string;
+  /** Why the last check failed; the console works as before. */
+  error?: string;
+}
+
+/** Where the upgrade steps are documented. */
+export const UPGRADING_URL = 'https://github.com/PointBlueTechnology/directory-console/blob/main/docs/UPGRADING.md';
+
+export const updates = {
+  version: () => request<{ version: string; update?: UpdateState }>('GET', '/api/v2/console/version').then((r) => r.data),
+  setEnabled: (enabled: boolean) => request<UpdateState>('PUT', '/api/v2/console/updates', { enabled }).then((r) => r.data),
+  checkNow: () => request<UpdateState>('POST', '/api/v2/console/updates/check', {}).then((r) => r.data),
+};
+
 export const consoleSettings = {
   get: () => request<ConsoleSettings>('GET', '/api/v2/console/settings').then((r) => r.data),
   /** Either setting, or both; what is left out stays as it is. */

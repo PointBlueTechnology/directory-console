@@ -186,14 +186,17 @@ server you signed in to.
 
 | What | Command |
 |---|---|
-| Update to the newest version | `docker compose pull` then `docker compose up -d` |
+| Update to the newest version | `docker compose pull` then `docker compose up -d`; see [UPGRADING.md](UPGRADING.md) first |
 | Stop and start | `docker compose stop`, `docker compose start` |
 | Check the audit log is intact | `docker compose exec console java -jar /app/console.jar admin verify-audit` |
 | Set up again (the old configuration is kept aside) | `docker compose exec console java -jar /app/console.jar admin reset-bootstrap`, then `docker compose restart console` |
 | Remove everything, including all settings | `docker compose down -v` |
 
 The console keeps its settings, certificates and audit log in the `console-data` volume, which survives
-updates. Back it up like any Docker volume.
+updates. Back it up before upgrading: [UPGRADING.md](UPGRADING.md) shows how, and how to go back.
+
+**New versions:** administrators see a banner when a newer release is out. The console checks once a day; turn
+it off in **Settings > Updates** if this console has no internet access.
 
 ## Troubleshooting
 

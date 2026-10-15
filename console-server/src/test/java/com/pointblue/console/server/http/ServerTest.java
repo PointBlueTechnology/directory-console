@@ -3,6 +3,7 @@ package com.pointblue.console.server.http;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.pointblue.console.server.data.DataDir;
@@ -313,6 +314,49 @@ public class ServerTest {
             assertEquals("its sessions end", 401, call("GET", "/api/v2/session", null, onTest).status());
             assertEquals(1, ((List<?>) call("GET", "/api/v2/directories", null, Map.of()).body().get("list")).size());
             assertTrue("its certificates go", server.trust.entries().stream().noneMatch(e -> e.scope().equals("directory:test")));
+        }
+    }
+
+    @Test
+    public void updateCheckReportsANewerReleaseAndSurvivesAnUnreachableServer() throws Exception {
+        com.sun.net.httpserver.HttpServer releases = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        releases.createContext("/latest", ex -> {
+            byte[] b = "{\"tag_name\":\"v99.0.0\",\"html_url\":\"https://example.test/r/v99.0.0\",\"published_at\":\"2026-12-01T00:00:00Z\"}"
+                .getBytes(StandardCharsets.UTF_8);
+            ex.sendResponseHeaders(200, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+        });
+        releases.start();
+        try {
+            System.setProperty("console.updateUrl", "http://127.0.0.1:" + releases.getAddress().getPort() + "/latest");
+            server.stop();
+            boot();
+            String id = firstSignIn();
+            Map<String, String> w = signedIn(id, "cn=admin,o=system", "admin-pw");
+            Map<String, Object> st = Json.asMap(call("POST", "/api/v2/console/updates/check", Map.of(), w).body());
+            assertEquals("99.0.0", st.get("latest"));
+            assertEquals("https://example.test/r/v99.0.0", st.get("url"));
+            assertEquals(true, st.get("enabled"));
+            assertNull("no error", st.get("error"));
+            assertEquals("the version is in the health check", "development",
+                call("GET", "/api/v2/health/live", null, Map.of()).body().get("version"));
+            Map<String, Object> v = call("GET", "/api/v2/console/version", null, w).body();
+            assertEquals("development", v.get("version"));
+            assertEquals("99.0.0", Json.asMap(v.get("update")).get("latest"));
+
+            // the release server cannot be reached: recorded, nothing else changes
+            releases.stop(0);
+            Map<String, Object> down = Json.asMap(call("POST", "/api/v2/console/updates/check", Map.of(), w).body());
+            assertTrue(String.valueOf(down.get("error")), down.get("error") != null);
+            assertEquals("the last good answer is kept", "99.0.0", down.get("latest"));
+            assertEquals(200, call("GET", "/api/v2/session", null, w).status());
+
+            assertEquals(false, Json.asMap(call("PUT", "/api/v2/console/updates", Map.of("enabled", false), w).body()).get("enabled"));
+            assertEquals(400, call("PUT", "/api/v2/console/updates", Map.of("enabled", "no"), w).status());
+        } finally {
+            System.clearProperty("console.updateUrl");
+            releases.stop(0);
         }
     }
 

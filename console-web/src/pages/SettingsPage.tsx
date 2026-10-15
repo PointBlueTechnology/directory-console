@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActionGroup, Alert, Button, Checkbox, ClipboardCopy, EmptyState, EmptyStateBody, Form, FormGroup, FormHelperText, FormSection, HelperText,
+  ActionGroup, Alert, Button, Checkbox, ClipboardCopy, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, EmptyState, EmptyStateBody, Form, FormGroup, FormHelperText, FormSection, HelperText,
   HelperTextItem, Label, LabelGroup, List, ListItem, PageSection, Radio, Spinner, Tab, Tabs, TabTitleText, TextArea, TextInput, Title, Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
 import { DownloadIcon, PlusIcon, UploadIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type DirectorySettings, type OidcSettings, type Preset, type RoleMappingJson, consoleSettings, settings } from '../api';
+import { type DirectorySettings, type OidcSettings, type Preset, type RoleMappingJson, type UpdateState, UPGRADING_URL, consoleSettings, settings, updates } from '../api';
 import { useSession } from '../session';
 import { HeadingLevel, useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
@@ -29,7 +29,7 @@ export function SettingsPage() {
   const [s, setS] = useState<DirectorySettings | null>(null);
   const [etag, setEtag] = useState<string | undefined>();
   const [error, setError] = useState<unknown>(null);
-  const [tab, setTab] = useState<string | number>('directory');
+  const [tab, setTab] = useState<string | number>(() => new URLSearchParams(location.search).get('tab') ?? 'directory');
   const load = useCallback(() => {
     setError(null);
     api.get().then((r) => { setS(r.data); setEtag(r.etag); }).catch(setError);
@@ -63,6 +63,9 @@ export function SettingsPage() {
             </Tab>
             <Tab eventKey="other" title={<TabTitleText>Other directories</TabTitleText>}>
               <OtherDirectoriesSection />
+            </Tab>
+            <Tab eventKey="updates" title={<TabTitleText>Updates</TabTitleText>}>
+              <UpdatesSection />
             </Tab>
             <Tab eventKey="proxy" title={<TabTitleText>Reverse proxy</TabTitleText>}>
               <ProxySection />
@@ -160,6 +163,55 @@ function DirectorySection({ s, api, etag, onSaved }: {
         </FormSection>
       </Form>
       <Outcome error={error} notice={notice} />
+      {dialog}
+    </div>
+  );
+}
+
+/**
+ * Console-wide: this console's version, and the daily check for a newer release (GitHub's public release
+ * list; nothing about this installation is sent). A check that fails changes nothing else.
+ */
+function UpdatesSection() {
+  const { run, dialog } = useStepUp();
+  const [state, setState] = useState<UpdateState | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { updates.version().then((v) => setState(v.update ?? null), setError); }, []);
+  const go = (call: () => Promise<UpdateState>) => {
+    setBusy(true);
+    setError(null);
+    run(call).then(setState, setError).finally(() => setBusy(false));
+  };
+  return (
+    <div className="dc-tab-body">
+      <p>This applies to the whole console. Once a day the console asks GitHub for the latest Directory Console release, and tells
+        administrators when a newer one is out. Nothing about this installation is sent. If the check fails, the console works as usual.</p>
+      {!state && !error && <Spinner size="md" aria-label="Loading" />}
+      {state && (
+        <>
+          <DescriptionList isHorizontal isCompact className="dc-tab-body">
+            <DescriptionListGroup><DescriptionListTerm>This console</DescriptionListTerm><DescriptionListDescription>{state.current}</DescriptionListDescription></DescriptionListGroup>
+            <DescriptionListGroup><DescriptionListTerm>Latest release</DescriptionListTerm><DescriptionListDescription>
+              {state.latest ? <>{state.latest} {state.newer && <Label isCompact color="blue">newer</Label>}{state.newer === false && <Label isCompact color="green">up to date</Label>}</> : <span className="dc-subtle">not known yet</span>}
+              {state.url && <> · <a href={state.url} target="_blank" rel="noreferrer">release notes</a></>}
+              {' · '}<a href={UPGRADING_URL} target="_blank" rel="noreferrer">how to upgrade</a>
+            </DescriptionListDescription></DescriptionListGroup>
+            <DescriptionListGroup><DescriptionListTerm>Last checked</DescriptionListTerm><DescriptionListDescription>
+              {state.checkedAt ? new Date(state.checkedAt).toLocaleString() : <span className="dc-subtle">not yet</span>}
+            </DescriptionListDescription></DescriptionListGroup>
+          </DescriptionList>
+          {state.enabled && state.error && (
+            <Alert variant="warning" isInline isPlain className="dc-tab-body" title="The last check could not reach the release server">
+              {state.error}. If this console has no internet access, turn the check off. A proxy can be given to the container as HTTPS_PROXY.
+            </Alert>
+          )}
+          <Checkbox id="update-check" className="dc-tab-body" label="Check for new versions once a day" isChecked={state.enabled} isDisabled={busy}
+            onChange={(_e, v) => go(() => updates.setEnabled(v))} />
+          <Button variant="secondary" className="dc-tab-body" isLoading={busy} isDisabled={busy || !state.enabled} onClick={() => go(updates.checkNow)}>Check now</Button>
+        </>
+      )}
+      <ProblemAlert error={error} />
       {dialog}
     </div>
   );
