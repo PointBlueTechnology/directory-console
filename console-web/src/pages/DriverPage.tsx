@@ -17,6 +17,7 @@ import { TracePanel } from '../components/TracePanel';
 import { MappingTablesPanel } from '../components/MappingTables';
 import { MigratePanel } from '../components/Migrate';
 import { CacheInspector } from '../components/CacheInspector';
+import { AssociationInspector } from '../components/AssociationInspector';
 import { DriverPropertiesTab } from '../components/DriverProperties';
 
 type Idm = ReturnType<typeof idm>;
@@ -81,7 +82,7 @@ export function DriverPage({ guid }: { guid: string }) {
             <Tab eventKey="jobs" title={<TabTitleText>Jobs</TabTitleText>}>
               <JobsTable api={api} load={() => api.driverPart<{ jobs: Job[] }>(guid, 'jobs')} />
             </Tab>
-            <Tab eventKey="associations" title={<TabTitleText>Associations</TabTitleText>}><Associations api={api} guid={guid} /></Tab>
+            <Tab eventKey="associations" title={<TabTitleText>Associations</TabTitleText>}><AssociationInspector driverDn={status.dn} /></Tab>
             <Tab eventKey="cache" title={<TabTitleText>Cache</TabTitleText>}><CacheInspector api={api} guid={guid} onChanged={load} /></Tab>
             <Tab eventKey="health" title={<TabTitleText>Health</TabTitleText>}><Health api={api} guid={guid} /></Tab>
             <Tab eventKey="properties" title={<TabTitleText>Properties</TabTitleText>}><DriverPropertiesTab guid={guid} /></Tab>
@@ -209,44 +210,6 @@ function Resync({ api, guid }: { api: Idm; guid: string }) {
       <div><Button type="submit" variant="secondary">Resynchronise</Button></div>
       {dialog}
     </Form>
-  );
-}
-
-type Assoc = { counts?: Record<string, number>; total?: number; listed?: number; objects?: { dn: string; state: string; value: string }[] };
-
-function Associations({ api, guid }: { api: Idm; guid: string }) {
-  const [state, setState] = useState('');
-  const [data, setData] = useState<Assoc | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  useEffect(() => {
-    setData(null);
-    api.driverPart<Assoc>(guid, `associations?limit=200${state ? `&state=${state}` : ''}`).then(setData).catch(setError);
-  }, [api, guid, state]);
-  return (
-    <div className="dc-tab-body">
-      <ProblemAlert error={error} />
-      <FormGroup label="State" fieldId="assoc-state">
-        <FormSelect id="assoc-state" value={state} onChange={(_e, v) => setState(v)}>
-          <FormSelectOption value="" label="All" />
-          {['processed', 'pending', 'disabled', 'manual', 'migrate'].map((s) => (
-            <FormSelectOption key={s} value={s} label={`${s[0].toUpperCase()}${s.slice(1)}${data?.counts?.[s] !== undefined ? ` (${data.counts[s]})` : ''}`} />
-          ))}
-        </FormSelect>
-      </FormGroup>
-      {!data ? <Spinner size="md" aria-label="Loading" /> : (
-        <>
-          <p className="dc-subtle">{data.listed ?? 0} shown of {data.total ?? 0}.</p>
-          {(data.objects ?? []).length > 0 && <Table aria-label="Associations" variant="compact">
-            <Thead><Tr><Th>Object</Th><Th>State</Th><Th>Association</Th></Tr></Thead>
-            <Tbody>
-              {(data.objects ?? []).map((o) => (
-                <Tr key={o.dn + o.value}><Td dataLabel="Object" className="dc-mono">{o.dn}</Td><Td dataLabel="State">{o.state}</Td><Td dataLabel="Association" className="dc-mono">{o.value}</Td></Tr>
-              ))}
-            </Tbody>
-          </Table>}
-        </>
-      )}
-    </div>
   );
 }
 
