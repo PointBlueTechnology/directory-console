@@ -138,3 +138,10 @@
 .dc-gap-left {
   margin-inline-start: var(--pf-t--global--spacer--sm);
 }
+
+/* the console's version, at the foot of the navigation */
+.dc-version {
+  font-size: var(--pf-t--global--font--size--body--sm);
+  color: var(--pf-t--global--text--color--subtle);
+  padding-block-end: var(--pf-t--global--spacer--md);
+}

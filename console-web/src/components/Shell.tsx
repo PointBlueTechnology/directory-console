@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import {
   Dropdown, DropdownItem, DropdownList, Masthead, MastheadBrand, MastheadContent, MastheadLogo, MastheadMain,
   MastheadToggle, MenuToggle, Nav, NavItem, NavList, Page, PageSidebar, PageSidebarBody, PageToggleButton,
-  Alert, AlertActionLink, Bullseye, PageSection, Spinner, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarGroup, ToolbarItem,
+  Alert, AlertActionLink, Bullseye, Button, PageSection, Spinner, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarGroup, ToolbarItem,
 } from '@patternfly/react-core';
 import { MoonIcon, SunIcon, UserIcon } from '@patternfly/react-icons';
 import { useSession } from '../session';
@@ -106,7 +106,7 @@ export function Shell() {
 
   const sidebar = (
     <PageSidebar>
-      <PageSidebarBody>
+      <PageSidebarBody isFilled>
         <Nav aria-label="Main">
           <NavList>
             {NAV.filter((n) => !n.show || n.show(sessionState)).map((n) => (
@@ -116,6 +116,14 @@ export function Shell() {
           </NavList>
         </Nav>
       </PageSidebarBody>
+      {version && (
+        <PageSidebarBody isFilled={false} className="dc-version">
+          Directory Console {version.version}
+          {version.update?.newer && (
+            <> · <Button variant="link" isInline onClick={() => navigate('/settings?tab=updates')}>{version.update.latest} available</Button></>
+          )}
+        </PageSidebarBody>
+      )}
     </PageSidebar>
   );
 
