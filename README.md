@@ -35,6 +35,23 @@ The image is `ghcr.io/pointbluetechnology/directory-console`, for amd64 and arm6
 - `latest` and `<version>`: each release;
 - `main`: the newest commit.
 
+## Upgrade
+
+Administrators see a banner when a newer release is out, and the console's version is at the foot of the
+navigation. To upgrade a compose install, back up the data volume, then run:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+**[docs/UPGRADING.md](docs/UPGRADING.md)** has the full steps:
+- backing up and restoring the data volume, on Windows too;
+- upgrading a `docker run` install;
+- pinning a version;
+- going back;
+- consoles without internet access.
+
 ## Features
 
 - **Directory objects:**
@@ -161,7 +178,9 @@ maintainers' own test trees. `LivePkiStep` writes only to environments named in 
 
 Each release publishes:
 - the image, with its version tag and `latest`;
-- the release itself, with `compose.yaml` and `console-auth-<version>.jar` attached.
+- the release itself, with its notes, `compose.yaml`, `THIRD-PARTY-NOTICES.md` and `console-auth-<version>.jar` attached.
+
+Read the notes of each release you skip before upgrading; see [docs/UPGRADING.md](docs/UPGRADING.md).
 
 ## Security
 
