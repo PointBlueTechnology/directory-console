@@ -54,6 +54,7 @@ public final class Server {
     final ConsoleTls tls;
     final Probe probes = new Probe();
     final OtherDirectory other = new OtherDirectory(this);
+    final Trees trees = new Trees(this);
     final Sessions sessions = new Sessions(Duration.ofMinutes(30), Duration.ofHours(12));
     final DirectLogin login;
     final com.pointblue.console.server.auth.OidcLogin oidc;
@@ -253,6 +254,10 @@ public final class Server {
         }
         if (path.startsWith("/api/v2/trees/")) {
             objects.handle(ex, path, method);
+            return;
+        }
+        if (trees.handles(path)) {
+            trees.handle(ex, method, path);
             return;
         }
         if (other.handles(method, path)) {

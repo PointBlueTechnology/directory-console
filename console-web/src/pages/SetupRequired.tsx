@@ -3,7 +3,7 @@ import {
   ActionGroup, Alert, Button, ExpandableSection, Form, FormGroup, FormHelperText, HelperText, HelperTextItem, LoginPage, TextInput,
 } from '@patternfly/react-core';
 import { ApiError, type Me, type Probe, session, setup } from '../api';
-import { CertificateDetails } from '../components/Certificates';
+import { CertificateOffer, confirmed } from '../components/CertificateOffer';
 
 /** The setup token from the setup link (#token=…), taken out of the address bar once read. */
 function tokenFromLink(): string {
@@ -66,7 +66,6 @@ export function SetupRequired({ onSignedIn }: { onSignedIn: (me: Me) => void }) 
     }
   };
 
-  const shown = offer ? offer.chain[offer.status === 'hostname' ? 0 : offer.recommended] : null;
   return (
     <LoginPage loginTitle="Set up Directory Console" loginSubtitle="Sign in to your eDirectory tree as an administrator to start.">
       {tokenOk !== true ? (
@@ -104,23 +103,11 @@ export function SetupRequired({ onSignedIn }: { onSignedIn: (me: Me) => void }) 
           <FormGroup label="Password" fieldId="setup-password" isRequired>
             <TextInput id="setup-password" type="password" value={password} onChange={(_e, v) => setPassword(v)} autoComplete="current-password" isRequired />
           </FormGroup>
-          {offer && shown && (
-            <section aria-labelledby="setup-offer" className="dc-tab-body">
-              <Alert id="setup-offer" component="h3" variant="warning" isInline title="Check the tree's certificate">
-                The console does not trust this tree's certificate yet. If it is the one you expect (compare its fingerprint with
-                the tree's certificate authority, in iManager or Identity Console), type the last 8 digits to trust it.
-                {!offer.hostnameMatches && ` It names ${offer.chain[0].names.join(', ') || 'no host'}, not ${offer.host}; that is accepted too.`}
-              </Alert>
-              <CertificateDetails cert={shown} />
-              <FormGroup label="Last 8 digits of the fingerprint" fieldId="setup-confirm" isRequired>
-                <TextInput id="setup-confirm" className="dc-mono" value={confirm} onChange={(_e, v) => setConfirm(v)} isRequired />
-              </FormGroup>
-            </section>
-          )}
+          {offer && <CertificateOffer id="setup-offer" offer={offer} confirm={confirm} onConfirm={setConfirm} />}
           {error && <Alert variant="danger" isInline isPlain title={error} />}
           <ActionGroup>
             <Button type="submit" isBlock isLoading={busy}
-              isDisabled={busy || !host.trim() || !(Number(port) > 0) || !dn.trim() || !password || (!!offer && confirm.replace(/[^0-9a-fA-F]/g, '').length !== 8)}>
+              isDisabled={busy || !host.trim() || !(Number(port) > 0) || !dn.trim() || !password || (!!offer && !confirmed(confirm))}>
               {offer ? 'Trust and sign in' : 'Sign in'}
             </Button>
           </ActionGroup>

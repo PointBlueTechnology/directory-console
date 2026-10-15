@@ -246,6 +246,62 @@ public class ServerTest {
         assertEquals(null, call("PUT", at + "/service-account", null, w).body().get("serviceAccount"));
     }
 
+    /** First sign-in to {@code edir}, accepting its CA; the new tree's id. */
+    private String firstSignIn() throws Exception {
+        Map<String, String> t = Map.of("X-Setup-Token", token());
+        Map<String, Object> body = new java.util.HashMap<>(Map.of("host", "127.0.0.1", "port", edir.port(), "dn", "cn=admin,o=system", "password", "admin-pw"));
+        String probeId = (String) Json.asMap(call("POST", "/api/v2/setup/first-sign-in", body, t).body().get("probe")).get("probeId");
+        body.put("accept", Map.of("probeId", probeId, "confirm", Certs.tail(edir.pki.ca, 8)));
+        return (String) call("POST", "/api/v2/setup/first-sign-in", body, t).body().get("directory");
+    }
+
+    private Map<String, String> signedIn(String directory, String dn, String pw) throws Exception {
+        Reply in = call("POST", "/api/v2/session", Map.of("directory", directory, "name", dn, "password", pw), Map.of());
+        assertEquals(String.valueOf(in.body()), 200, in.status());
+        String cookie = in.raw().headers().firstValue("Set-Cookie").orElseThrow();
+        return Map.of("Cookie", cookie.substring(0, cookie.indexOf(';')), "X-CSRF-Token", (String) in.body().get("csrf"));
+    }
+
+    @Test
+    public void severalTrees() throws Exception {
+        String prod = firstSignIn();
+        Map<String, String> w = signedIn(prod, "cn=admin,o=system", "admin-pw");
+        try (FakeEdir test = new FakeEdir("dn: cn=testadmin,o=system\nobjectClass: inetOrgPerson\ncn: testadmin\nsn: t\nuserPassword: test-pw")) {
+            Map<String, Object> add = new java.util.HashMap<>(Map.of("name", "Test", "tier", "lab", "host", "localhost", "port", test.port(),
+                "dn", "cn=testadmin,o=system", "password", "test-pw"));
+            Reply offered = call("POST", "/api/v2/console/trees", add, w);
+            assertEquals(String.valueOf(offered.body()), "untrusted-certificate", offered.body().get("title"));
+            add.put("accept", Map.of("probeId", Json.asMap(offered.body().get("probe")).get("probeId"), "confirm", Certs.tail(test.pki.ca, 8)));
+            add.put("password", "wrong");
+            assertEquals("the new tree's own administrator is needed", 401, call("POST", "/api/v2/console/trees", add, w).status());
+            add.put("password", "test-pw");
+            Reply added = call("POST", "/api/v2/console/trees", add, w);
+            assertEquals(String.valueOf(added.body()), 201, added.status());
+            assertEquals("test", added.body().get("id"));
+            assertEquals("lab", added.body().get("tier"));
+            assertEquals("the same address again", 409, call("POST", "/api/v2/console/trees", add, w).status());
+
+            // the sign-in list offers both; each tree has its own break-glass administrator
+            List<?> dirs = (List<?>) call("GET", "/api/v2/directories", null, Map.of()).body().get("list");
+            assertEquals(2, dirs.size());
+            assertEquals(401, call("POST", "/api/v2/session", Map.of("directory", "test", "name", "cn=admin,o=system", "password", "admin-pw"), Map.of()).status());
+            Map<String, String> onTest = signedIn("test", "cn=testadmin,o=system", "test-pw");
+            Map<String, Object> me = call("GET", "/api/v2/session", null, onTest).body();
+            assertEquals("test", me.get("directory"));
+            assertEquals(List.of("admin"), me.get("roles"));
+            List<?> trees = (List<?>) call("GET", "/api/v2/console/trees", null, onTest).body().get("list");
+            assertEquals(List.of(false, true), trees.stream().map(x -> Json.asMap(x).get("current")).toList());
+
+            assertEquals("Test (lab)", call("PATCH", "/api/v2/console/trees/test", Map.of("name", "Test (lab)"), w).body().get("name"));
+            assertEquals("not the tree you are signed in to", 409, call("DELETE", "/api/v2/console/trees/" + prod, Map.of("name", "x"), w).status());
+            assertEquals("the name typed", 409, call("DELETE", "/api/v2/console/trees/test", Map.of("name", "Test"), w).status());
+            assertEquals(204, call("DELETE", "/api/v2/console/trees/test", Map.of("name", "Test (lab)"), w).status());
+            assertEquals("its sessions end", 401, call("GET", "/api/v2/session", null, onTest).status());
+            assertEquals(1, ((List<?>) call("GET", "/api/v2/directories", null, Map.of()).body().get("list")).size());
+            assertTrue("its certificates go", server.trust.entries().stream().noneMatch(e -> e.scope().equals("directory:test")));
+        }
+    }
+
     @Test
     public void setupTokenAttemptsAreLimited() throws Exception {
         int limited = 0;

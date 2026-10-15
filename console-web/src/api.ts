@@ -1266,6 +1266,30 @@ export interface ConsoleSettings {
   trustedProxies: string[];
 }
 
+export interface ConsoleTree {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  tier: 'production' | 'lab';
+  /** The tree the person is signed in to. */
+  current: boolean;
+}
+
+/** A certificate the person confirmed on the previous try (the last 8 hex digits of its fingerprint). */
+export type Accept = { probeId: string; confirm: string; index?: number };
+
+/** The trees the console knows, for console admins; changes need a recent sign-in. */
+export const trees = {
+  list: () => request<ConsoleTree[]>('GET', '/api/v2/console/trees').then((r) => r.data),
+  /** Proven as at first sign-in: the new tree's own administrator, who becomes its break-glass account. */
+  add: (body: { name?: string; tier: 'production' | 'lab'; host: string; port: number; dn: string; password: string; accept?: Accept }) =>
+    request<ConsoleTree>('POST', '/api/v2/console/trees', body).then((r) => r.data),
+  change: (id: string, body: { name?: string; tier?: 'production' | 'lab' }) =>
+    request<ConsoleTree>('PATCH', `/api/v2/console/trees/${encodeURIComponent(id)}`, body).then((r) => r.data),
+  remove: (id: string, name: string) => request<void>('DELETE', `/api/v2/console/trees/${encodeURIComponent(id)}`, { name }),
+};
+
 export const consoleSettings = {
   get: () => request<ConsoleSettings>('GET', '/api/v2/console/settings').then((r) => r.data),
   /** Either setting, or both; what is left out stays as it is. */

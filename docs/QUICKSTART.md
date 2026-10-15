@@ -6,7 +6,8 @@ Directory Console runs as one container. You need:
 - **Your eDirectory tree:** one of its servers' address, with LDAPS (normally port 636) reachable from this
   machine, and a tree administrator's full name (DN) and password.
 
-Setup is one screen: you start the container, open the link it prints, and sign in to your tree.
+Setup is one screen: you start the container, open the link it prints, and sign in to your tree. You can
+add more trees, such as dev and test, afterwards.
 
 1. [Get the compose file](#1-get-the-compose-file)
 2. [Start the console](#2-start-the-console)
@@ -173,6 +174,12 @@ Then, in **Settings**:
 
 - **Role mappings:** decide who else may use the console. Map an eDirectory group to a role.
 - **Single sign-on:** set it up if you want it.
+
+**Several trees (dev, test, production):** in **Settings**, then **Trees**, choose **Add a tree**. Give it
+a name people will recognize, such as Test, and choose Lab or Production. Then enter the tree's address and
+sign in as that tree's own administrator, who becomes its break-glass account. From then on, the sign-in
+page has a list of trees to choose from. Each tree has its own service account, role mappings and single
+sign-on: sign in to a tree to set those under the other Settings tabs.
 
 **Identity Manager:** the console needs the engine's `dirxml_misc.jar` and `ldap.jar`, from an engine
 server's `lib/dirxml/classes`. They are not in the image.

@@ -12,6 +12,7 @@ import { ProblemAlert } from '../components/Problem';
 import { RoleMappings } from '../components/RoleMappings';
 import { PresetEditor, presetJson } from '../components/PresetEditor';
 import { useStepUp } from '../components/StepUp';
+import { TreesSection } from '../components/TreesSection';
 
 const lines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean);
 
@@ -53,6 +54,9 @@ export function SettingsPage() {
             </Tab>
             <Tab eventKey="sso" title={<TabTitleText>Single sign-on</TabTitleText>}>
               <SsoSection s={s} save={(v) => api.oidc(v, etag)} test={api.testMapping} onSaved={saved} />
+            </Tab>
+            <Tab eventKey="trees" title={<TabTitleText>Trees</TabTitleText>}>
+              <TreesSection />
             </Tab>
             <Tab eventKey="other" title={<TabTitleText>Other directories</TabTitleText>}>
               <OtherDirectoriesSection />

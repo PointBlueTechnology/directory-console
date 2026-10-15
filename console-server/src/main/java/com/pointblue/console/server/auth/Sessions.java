@@ -166,6 +166,13 @@ public final class Sessions {
         }
     }
 
+    /** End every session on the directory {@code directoryId} (it was removed); how many ended. */
+    public int removeDirectory(String directoryId) {
+        List<String> ids = sessions.values().stream().filter(s -> s.principal.directoryId().equals(directoryId)).map(s -> s.id).toList();
+        ids.forEach(this::remove);
+        return ids.size();
+    }
+
     /** Whether the person authenticated within {@code window} (step-up for sensitive changes). */
     public boolean recentlyAuthenticated(Session s, Duration window) {
         return s.authenticatedAt.plus(window).isAfter(clock.instant());

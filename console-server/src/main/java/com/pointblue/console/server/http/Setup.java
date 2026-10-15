@@ -15,7 +15,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import javax.naming.NamingException;
 import javax.naming.directory.SearchControls;
@@ -316,119 +315,21 @@ final class Setup {
     private static final String PROVISIONAL = "setup";
 
     private void firstSignIn(Map<String, Object> b, HttpExchange ex) throws IOException {
-        String newHost = Http.string(b, "host", true).trim();
-        int newPort = Http.integer(b, "port", 636);
-        if (!newHost.matches("[A-Za-z0-9.:\\-\\[\\]]{1,253}") || newPort < 1 || newPort > 65535) {
-            throw new Http.Problem(400, "bad-address", "the address is a host name or IP address, and a port from 1 to 65535");
-        }
-        String dn = Http.string(b, "dn", true).trim();
-        if (!dn.contains("=")) {
-            throw new Http.Problem(400, "full-name-required", "use the administrator's full name (DN), such as cn=admin,o=system");
-        }
-        String scope = "directory:" + PROVISIONAL;
-        List<Runnable> undo = new ArrayList<>();
-        X509Certificate acceptedCa = null;
-        TrustStore.Kind acceptedKind = null;
-        if (b.get("accept") instanceof Map<?, ?> raw) {
-            Map<String, Object> a = com.pointblue.dirxml.dev.json.Json.asMap(raw);
-            Probe.Result r = server.probes.get(Http.string(a, "probeId", true), SESSION);
-            if (r == null || !r.host().equalsIgnoreCase(newHost) || r.port() != newPort) {
-                throw new Http.Problem(409, "probe-expired", "that certificate is no longer on offer; sign in again to see it");
-            }
-            X509Certificate[] chain = r.chain().toArray(new X509Certificate[0]);
-            TrustStore.Evaluation ev = server.trust.evaluate(chain, newHost, newPort, PROVISIONAL, null);
-            String confirm = Http.string(a, "confirm", true);
-            X509Certificate leaf = chain[0];
-            if (ev.reason() != TrustStore.Reason.HOSTNAME) {
-                int index = Http.integer(a, "index", Probe.recommended(r.chain()));
-                if (index < 0 || index >= chain.length) {
-                    throw new Http.Problem(400, "bad-field", "index is 0-" + (chain.length - 1));
-                }
-                X509Certificate cert = chain[index];
-                if (!TrustStore.confirmed(cert, confirm)) {
-                    throw new Http.Problem(400, "confirmation-mismatch", "type the last 8 hex digits of the certificate's SHA-256 fingerprint");
-                }
-                acceptedKind = Certs.selfSigned(cert) || cert.getBasicConstraints() >= 0 ? TrustStore.Kind.CA : TrustStore.Kind.PINNED_SERVER;
-                acceptedCa = cert;
-                String key = TrustStore.keyOf(Certs.id(cert), scope);
-                server.trust.add(cert, acceptedKind, scope, "bootstrap", "first-sign-in");
-                undo.add(() -> quietly(() -> server.trust.remove(key)));
-            } else if (!TrustStore.confirmed(leaf, confirm)) {
-                throw new Http.Problem(400, "confirmation-mismatch", "type the last 8 hex digits of the certificate's SHA-256 fingerprint");
-            }
-            // reached by a name the certificate does not carry (a tunnel, a load balancer, NAT): the person
-            // saw the names with the chain, so the same confirmation accepts exactly this certificate here
-            if (!Certs.matches(leaf, newHost)) {
-                server.trust.addHostException(newHost, newPort, leaf, "bootstrap");
-                undo.add(() -> quietly(() -> server.trust.removeHostException(newHost, newPort)));
-            }
-        }
-        char[] pw = Http.string(b, "password", true).toCharArray();
-        String treeName;
-        try (Ldap l = Ldap.connect(server.trust, new Ldap.Target(PROVISIONAL, newHost, newPort), null, dn, pw, T)) {
-            if (!supervisorOfTree(l, dn)) {
-                undo.forEach(Runnable::run);
-                server.audit.log(new AuditLog.Actor(dn, dn, "setup"), "setup.authority", newHost + ":" + newPort, Map.of(), "refused: not supervisor");
-                throw new Http.Problem(403, "not-tree-admin", dn + " signed in but does not have supervisor rights to the tree; use a tree administrator");
-            }
-            Ldap.Entry root = l.read("", "directoryTreeName");
-            treeName = root == null ? null : root.first("directoryTreeName");
-        } catch (Ldap.Untrusted u) {
-            undo.forEach(Runnable::run);
-            Probe.Result r;
-            try {
-                r = server.probes.probe(newHost, newPort, SESSION, T);
-            } catch (IOException io) {
-                throw new Http.Problem(502, "unreachable", newHost + ":" + newPort + ": " + io.getMessage());
-            }
-            throw new Http.Problem(409, "untrusted-certificate", u.getMessage(),
-                Map.of("reason", u.cause.reason.name().toLowerCase(Locale.ROOT).replace('_', '-'), "probe", server.probeJson(r, PROVISIONAL, null)));
-        } catch (Ldap.BadCredentials e) {
-            undo.forEach(Runnable::run);
-            server.audit.log(new AuditLog.Actor(dn, dn, "setup"), "setup.authority", newHost + ":" + newPort, Map.of(), "refused: bad credentials");
-            throw new Http.Problem(401, "bad-credentials", "the name or password is incorrect");
-        } catch (NamingException e) {
-            undo.forEach(Runnable::run);
-            Throwable why = e.getRootCause() == null ? e : e.getRootCause();
-            throw new Http.Problem(502, "unreachable", "the console could not reach " + newHost + ":" + newPort
-                + (why.getMessage() == null || why.getMessage().contains(newHost) ? "" : " (" + why.getMessage() + ")")
-                + ". Check the address and port, and that the console's container can reach that network.");
-        } finally {
-            java.util.Arrays.fill(pw, '\0');
-        }
+        String dn = Http.string(b, "dn", false);
+        TreeProof.Proven p = TreeProof.prove(server, SESSION, PROVISIONAL, b, new AuditLog.Actor(dn, dn, "setup"));
         // the tree's own name names it in the console; its trust moves from the provisional scope to it
-        String newId = treeName == null ? "" : treeName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]+", "-").replaceAll("^-+|-+$", "");
-        if (newId.isEmpty() || newId.length() > 64) {
-            newId = "tree";
-        }
-        if (acceptedCa != null) {
-            server.trust.remove(TrustStore.keyOf(Certs.id(acceptedCa), scope));
-            server.trust.add(acceptedCa, acceptedKind, "directory:" + newId, "bootstrap", "first-sign-in");
-            server.audit.log(AuditLog.Actor.SYSTEM, "trust.add", newId, Map.of("scope", "directory:" + newId, "kind", acceptedKind.name(),
-                "how", "first-sign-in", "sha256", Certs.sha256(acceptedCa)), "ok");
-        }
+        String newId = TreeProof.idFrom(p.treeName(), "tree");
+        TreeProof.settle(server, p, newId);
         id = newId;
-        name = treeName == null ? newHost : treeName;
-        host = newHost;
-        port = newPort;
+        name = p.treeName() == null ? p.host() : p.treeName();
+        host = p.host();
+        port = p.port();
         tier = "production";
         trusted = true;
-        adminDn = dn;
+        adminDn = p.dn();
         saDn = null;
         saPassword = null;
-        server.audit.log(new AuditLog.Actor(dn, dn, "setup"), "setup.authority", id, Map.of(), "ok");
+        server.audit.log(new AuditLog.Actor(adminDn, adminDn, "setup"), "setup.authority", id, Map.of(), "ok");
         finish(ex);
-    }
-
-    private interface IoAction {
-        void run() throws IOException;
-    }
-
-    private static void quietly(IoAction a) {
-        try {
-            a.run();
-        } catch (IOException e) {
-            // best effort: the entry is left, scoped to setup only
-        }
     }
 }
