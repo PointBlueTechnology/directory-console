@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionGroup, Alert, Button, Checkbox, ClipboardCopy, EmptyState, EmptyStateBody, Form, FormGroup, FormHelperText, FormSection, HelperText,
-  HelperTextItem, Label, LabelGroup, List, ListItem, PageSection, Spinner, Tab, Tabs, TabTitleText, TextArea, TextInput, Title, Toolbar, ToolbarContent, ToolbarItem,
+  HelperTextItem, Label, LabelGroup, List, ListItem, PageSection, Radio, Spinner, Tab, Tabs, TabTitleText, TextArea, TextInput, Title, Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
 import { DownloadIcon, PlusIcon, UploadIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
@@ -25,7 +25,7 @@ export function SettingsPage() {
   const [s, setS] = useState<DirectorySettings | null>(null);
   const [etag, setEtag] = useState<string | undefined>();
   const [error, setError] = useState<unknown>(null);
-  const [tab, setTab] = useState<string | number>('roles');
+  const [tab, setTab] = useState<string | number>('directory');
   const load = useCallback(() => {
     setError(null);
     api.get().then((r) => { setS(r.data); setEtag(r.etag); }).catch(setError);
@@ -42,6 +42,9 @@ export function SettingsPage() {
       {s && (
         <HeadingLevel.Provider value="h2">
           <Tabs activeKey={tab} onSelect={(_e, k) => setTab(k)} aria-label="Settings" mountOnEnter className="dc-tab-body">
+            <Tab eventKey="directory" title={<TabTitleText>Directory</TabTitleText>}>
+              <DirectorySection s={s} api={api} etag={etag} onSaved={saved} />
+            </Tab>
             <Tab eventKey="roles" title={<TabTitleText>Role mappings</TabTitleText>}>
               <RolesSection s={s} etag={etag} save={(v) => api.roles(v, etag)} onSaved={saved} />
             </Tab>
@@ -61,6 +64,77 @@ export function SettingsPage() {
         </HeadingLevel.Provider>
       )}
     </PageSection>
+  );
+}
+
+/**
+ * The directory itself: its tier, how names are found at sign-in, and the console's service account.
+ * First sign-in leaves these for later (production, no search bases, no service account): until a
+ * service account is set, people sign in with their full name (DN) and single sign-on is unavailable.
+ */
+function DirectorySection({ s, api, etag, onSaved }: {
+  s: DirectorySettings; api: ReturnType<typeof settings>; etag?: string; onSaved: (r: { data: DirectorySettings; etag?: string }) => void;
+}) {
+  const { run, dialog } = useStepUp();
+  const [tier, setTier] = useState(s.tier);
+  const [bases, setBases] = useState(s.login.searchBases.join('\n'));
+  const [duplicates, setDuplicates] = useState(s.login.duplicates);
+  const [saDn, setSaDn] = useState(s.serviceAccount ?? '');
+  const [saPassword, setSaPassword] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const go = (what: string, call: () => Promise<{ data: DirectorySettings; etag?: string }>) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    run(call).then((r) => { onSaved(r); setNotice(what); setSaPassword(''); }, setError).finally(() => setBusy(false));
+  };
+  const basesChanged = lines(bases).join('|') !== s.login.searchBases.join('|') || duplicates !== s.login.duplicates;
+  return (
+    <div className="dc-tab-body">
+      <Form onSubmit={(e) => e.preventDefault()}>
+        <FormSection title="Tier" titleElement="h3">
+          <FormGroup role="radiogroup" fieldId="dir-tier" isStack>
+            <Radio id="dir-tier-production" name="dir-tier" label="Production" description="Changes ask for the directory's name to be typed first."
+              isChecked={tier === 'production'} onChange={() => setTier('production')} />
+            <Radio id="dir-tier-lab" name="dir-tier" label="Lab" description="Changes go ahead without that extra step."
+              isChecked={tier === 'lab'} onChange={() => setTier('lab')} />
+          </FormGroup>
+          <ActionGroup><Button variant="secondary" isDisabled={busy || tier === s.tier} onClick={() => go(`The tier is now ${tier}.`, () => api.tier(tier as 'production' | 'lab', etag))}>Save the tier</Button></ActionGroup>
+        </FormSection>
+        <FormSection title="Service account" titleElement="h3">
+          <p className="dc-subtle">
+            {s.serviceAccount ? `The console uses ${s.serviceAccount}.` : 'None yet: people sign in with their full name (DN), and single sign-on is unavailable.'}
+            {' '}The console uses it to find people by their short name at sign-in and for single sign-on. It needs to read the people it finds.
+          </p>
+          <FormGroup label="Full name (DN)" fieldId="dir-sa-dn">
+            <TextInput id="dir-sa-dn" className="dc-mono" value={saDn} onChange={(_e, v) => setSaDn(v)} placeholder="cn=console,ou=services,o=system" />
+          </FormGroup>
+          <FormGroup label="Password" fieldId="dir-sa-pw">
+            <TextInput id="dir-sa-pw" type="password" value={saPassword} onChange={(_e, v) => setSaPassword(v)} autoComplete="new-password" />
+            <FormHelperText><HelperText><HelperTextItem>Checked by signing in as it, then kept encrypted.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+          <ActionGroup>
+            <Button variant="secondary" isDisabled={busy || !saDn.trim() || !saPassword} onClick={() => go('The service account is saved.', () => api.serviceAccount({ dn: saDn.trim(), password: saPassword }, etag))}>Save the service account</Button>
+            {s.serviceAccount && <Button variant="link" isDanger isDisabled={busy} onClick={() => go('The service account is removed.', () => api.serviceAccount(null, etag))}>Remove it</Button>}
+          </ActionGroup>
+        </FormSection>
+        <FormSection title="Finding people at sign-in" titleElement="h3">
+          <FormGroup label="Search bases" fieldId="dir-bases">
+            <TextArea id="dir-bases" className="dc-mono" value={bases} onChange={(_e, v) => setBases(v)} resizeOrientation="vertical" placeholder="ou=users,o=acme" />
+            <FormHelperText><HelperText><HelperTextItem>One DN per line, where a short name is looked for; none searches the whole tree. Needs the service account.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+          <FormGroup role="radiogroup" label="When a name matches several people" fieldId="dir-dup" isStack>
+            <Radio id="dir-dup-choose" name="dir-dup" label="Let them choose their account" isChecked={duplicates === 'choose'} onChange={() => setDuplicates('choose')} />
+            <Radio id="dir-dup-error" name="dir-dup" label="Ask for the full name" isChecked={duplicates === 'error'} onChange={() => setDuplicates('error')} />
+          </FormGroup>
+          <ActionGroup><Button variant="secondary" isDisabled={busy || !basesChanged} onClick={() => go('The sign-in options are saved.', () => api.login({ searchBases: lines(bases), duplicates }, etag))}>Save the sign-in options</Button></ActionGroup>
+        </FormSection>
+      </Form>
+      <Outcome error={error} notice={notice} />
+      {dialog}
+    </div>
   );
 }
 

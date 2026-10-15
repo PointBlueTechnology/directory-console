@@ -32,7 +32,13 @@ import javax.naming.NamingException;
  * GET  /api/v2/directories/{id}/presets         the presets, for export
  * PUT  /api/v2/directories/{id}/oidc            {"issuer", "clientId", "clientSecret"?, …} or null to turn single sign-on off
  * POST /api/v2/directories/{id}/oidc/test       {"value"}: which account that claim value maps to
+ * PUT  /api/v2/directories/{id}/tier            {"tier": production|lab}
+ * PUT  /api/v2/directories/{id}/login           {"searchBases": [DN…], "duplicates": choose|error}
+ * PUT  /api/v2/directories/{id}/service-account {"dn", "password"} (checked by signing in as it), or null for none
  * </pre>
+ *
+ * The tier, sign-in options and service account are what the console's first sign-in leaves for later
+ * (see Setup): it configures a tree with the production tier, no service account and no search bases.
  */
 final class Settings {
 
@@ -61,6 +67,16 @@ final class Settings {
             case "PUT presets" -> save(ex, s, d, "presets", body(ex), v -> validatePresets(d, v));
             case "PUT oidc" -> oidc(ex, s, d);
             case "POST oidc/test" -> test(ex, d);
+            case "PUT tier" -> {
+                String tier = Http.string(Json.asMap(body(ex)), "tier", true);
+                save(ex, s, d, "tier", tier, v -> {
+                    if (!v.equals("production") && !v.equals("lab")) {
+                        throw new IllegalArgumentException("tier is production or lab");
+                    }
+                });
+            }
+            case "PUT login" -> login(ex, s, d);
+            case "PUT service-account" -> serviceAccount(ex, s, d);
             default -> throw new Http.Problem(404, "not-found", method + " " + path);
         }
     }
@@ -87,6 +103,7 @@ final class Settings {
         m.put("tier", d.tier());
         m.put("directLogin", d.directLogin());
         m.put("serviceAccount", d.serviceAccountDn());
+        m.put("login", Map.of("searchBases", d.searchBases(), "duplicates", d.duplicates() == DirectoryConfig.Duplicates.ERROR ? "error" : "choose"));
         m.put("breakGlass", d.breakGlass());
         m.put("roles", d.roles().stream().map(DirectoryConfig.RoleMapping::json).toList());
         m.put("presets", d.presets().values().stream().map(TaskPreset::json).toList());
@@ -305,5 +322,64 @@ final class Settings {
         } catch (Ldap.Untrusted | Ldap.BadCredentials | NamingException e) {
             throw new Http.Problem(502, "directory-error", "the service account could not search: " + e.getMessage());
         }
+    }
+
+    /** The sign-in options: search bases (checked to exist) and what several matches for a name do; the rest of "login" is kept. */
+    private void login(HttpExchange ex, Sessions.Session s, DirectoryConfig d) throws IOException {
+        Map<String, Object> b = Json.asMap(body(ex));
+        Map<String, Object> login = new LinkedHashMap<>();
+        if (rawSection(d.id(), "login", null) instanceof Map<?, ?> was) {
+            login.putAll(Json.asMap(was));
+        }
+        if (b.containsKey("duplicates")) {
+            login.put("duplicates", Http.string(b, "duplicates", true));
+        }
+        if (b.get("searchBases") instanceof List<?> l) {
+            List<String> bases = new ArrayList<>();
+            for (Object o : l) {
+                String dn = String.valueOf(o).trim();
+                if (!dn.isEmpty()) {
+                    bases.add(dn);
+                }
+            }
+            login.put("searchBases", bases);
+        }
+        save(ex, s, d, "login", login, v -> {
+            Object dup = login.get("duplicates");
+            if (dup != null && !"choose".equals(dup) && !"error".equals(dup)) {
+                throw new IllegalArgumentException("duplicates is choose or error");
+            }
+            for (Object base : login.get("searchBases") instanceof List<?> l ? l : List.of()) {
+                try {
+                    Names.parse(String.valueOf(base));
+                } catch (RuntimeException e) {
+                    throw new IllegalArgumentException("not a DN: " + base);
+                }
+            }
+        });
+    }
+
+    /** The console's service account, proven by signing in as it; its password is sealed. Null removes it. */
+    private void serviceAccount(HttpExchange ex, Sessions.Session s, DirectoryConfig d) throws IOException {
+        Object raw = body(ex);
+        if (raw == null) {
+            save(ex, s, d, "serviceAccount", null, v -> { });
+            return;
+        }
+        Map<String, Object> b = Json.asMap(raw);
+        String dn = Http.string(b, "dn", true).trim();
+        String pw = Http.string(b, "password", true);
+        String bound;
+        try (Ldap l = Ldap.connect(server.trust, d.target(), null, dn, pw.toCharArray(), Duration.ofSeconds(10))) {
+            bound = l.boundDn() == null ? dn : l.boundDn();
+        } catch (Ldap.BadCredentials e) {
+            throw new Http.Problem(401, "bad-credentials", "the service account's name or password is incorrect");
+        } catch (Ldap.Untrusted u) {
+            throw new Http.Problem(409, "untrusted-certificate", u.getMessage());
+        } catch (NamingException e) {
+            throw new Http.Problem(502, "directory-error", e.getMessage());
+        }
+        Map<String, Object> account = Map.of("dn", bound, "password", server.config.seal(pw, d.serviceAccountPasswordPath()));
+        save(ex, s, d, "serviceAccount", account, v -> { });
     }
 }

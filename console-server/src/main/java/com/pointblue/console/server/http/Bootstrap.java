@@ -98,7 +98,8 @@ public final class Bootstrap {
         failures = 0;
         String fp = Certs.sha256(tls.certificate());
         String text = """
-            Directory Console is not configured yet. Finish setup within 60 minutes:
+            Directory Console is not configured yet. Within 60 minutes, open the setup URL and
+            sign in to your eDirectory tree as an administrator:
 
               Setup URL:   %s/setup#token=%s
               Setup token: %s

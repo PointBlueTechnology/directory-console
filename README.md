@@ -33,6 +33,8 @@ the console runs and the Identity Manager page says why.
 
 ## Install
 
+**Start here: [docs/QUICKSTART.md](docs/QUICKSTART.md)**, which covers Docker Desktop on Windows too.
+
 The image is published at `ghcr.io/pointbluetechnology/directory-console` for amd64 and arm64:
 `latest` and `<version>` for each release, `main` for the newest commit. With `compose.yaml` from
 this repository:
@@ -57,9 +59,10 @@ Identity Manager needs the engine's `dirxml_misc.jar` and `ldap.jar` (from an en
 To build the image yourself: `container/build.sh` (tests, packages, `docker build` →
 `directory-console:<version>`), then `CONSOLE_IMAGE=directory-console:<version> docker compose up -d`.
 
-Check that your browser shows the printed fingerprint before using the token. Setup is the
-`/api/v2/setup` API (directory, probe, trust, authority, service account, login, finish); after it,
-sign in at `POST /api/v2/session`. The only settings outside the API are `CONSOLE_DATA` (`/data`),
+Open the printed setup link and sign in to your tree as an administrator (check the printed
+fingerprint first): that tree becomes the console's, and the administrator its break-glass account.
+The service account, sign-in options and tier are then set under Settings > Directory. The
+step-by-step `/api/v2/setup` API remains for automation. The only settings outside the API are `CONSOLE_DATA` (`/data`),
 `CONSOLE_PORT` (8443) and `CONSOLE_PUBLIC_URL`.
 
 Host-side commands, from the host only:

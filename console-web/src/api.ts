@@ -333,6 +333,15 @@ export function guidPath(guid: string): string {
   return guid;
 }
 
+/** Setup (bootstrap mode): every call carries the one-time setup token from the console's log. */
+export const setup = {
+  /** Checks the token: the console certificate's fingerprint and what is set up so far. */
+  state: (token: string) => request<{ consoleCertificate: { sha256: string; names: string[] } }>('GET', '/api/v2/setup', undefined, { 'X-Setup-Token': token }).then((r) => r.data),
+  /** The whole of setup in one step: the tree, its certificate and a tree administrator; then sign in as usual. */
+  firstSignIn: (token: string, body: { host: string; port: number; dn: string; password: string; accept?: { probeId: string; confirm: string; index?: number } }) =>
+    request<{ configured: boolean; directory: string }>('POST', '/api/v2/setup/first-sign-in', body, { 'X-Setup-Token': token }).then((r) => r.data),
+};
+
 export const session = {
   me: () => request<Me>('GET', '/api/v2/session').then((r) => r.data),
   directories: () => request<Directory[]>('GET', '/api/v2/directories').then((r) => r.data),
@@ -764,6 +773,7 @@ export interface DirectorySettings {
   tier: string;
   directLogin: boolean;
   serviceAccount: string | null;
+  login: { searchBases: string[]; duplicates: 'choose' | 'error' };
   breakGlass: string[];
   roles: RoleMappingJson[];
   presets: Preset[];
@@ -783,6 +793,10 @@ export function settings(id: string) {
     exportPresets: () => request<Record<string, unknown>>('GET', `${base}/presets`).then((r) => r.data),
     oidc: (o: OidcSettings | null, etag?: string) => put('oidc', o, etag),
     testMapping: (value: string) => request<{ matches: string[]; neverProxy: boolean }>('POST', `${base}/oidc/test`, { value }).then((r) => r.data),
+    tier: (tier: 'production' | 'lab', etag?: string) => put('tier', { tier }, etag),
+    login: (login: { searchBases: string[]; duplicates: 'choose' | 'error' }, etag?: string) => put('login', login, etag),
+    /** Checked by signing in as it; null removes it. */
+    serviceAccount: (account: { dn: string; password: string } | null, etag?: string) => put('service-account', account, etag),
   };
 }
 

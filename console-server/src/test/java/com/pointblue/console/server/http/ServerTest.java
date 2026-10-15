@@ -195,6 +195,58 @@ public class ServerTest {
     }
 
     @Test
+    public void firstSignInSetsUpInOneStep() throws Exception {
+        Map<String, String> t = Map.of("X-Setup-Token", token());
+        Map<String, Object> body = new java.util.HashMap<>(Map.of("host", "127.0.0.1", "port", edir.port(), "dn", "cn=admin,o=system", "password", "admin-pw"));
+
+        // the tree's certificate is not trusted yet: offered, with the probe
+        Reply offered = call("POST", "/api/v2/setup/first-sign-in", body, t);
+        assertEquals(String.valueOf(offered.body()), 409, offered.status());
+        assertEquals("untrusted-certificate", offered.body().get("title"));
+        Map<String, Object> probe = Json.asMap(offered.body().get("probe"));
+        String probeId = (String) probe.get("probeId");
+
+        body.put("accept", Map.of("probeId", probeId, "confirm", "00000000"));
+        assertEquals("a wrong confirmation", 400, call("POST", "/api/v2/setup/first-sign-in", body, t).status());
+        body.put("accept", Map.of("probeId", probeId, "confirm", Certs.tail(edir.pki.ca, 8)));
+        body.put("password", "wrong");
+        assertEquals(401, call("POST", "/api/v2/setup/first-sign-in", body, t).status());
+        assertTrue("a refused sign-in leaves no trust behind", server.trust.entries().isEmpty());
+        assertTrue(server.bootstrapping());
+
+        body.put("password", "admin-pw");
+        Reply done = call("POST", "/api/v2/setup/first-sign-in", body, t);
+        assertEquals(String.valueOf(done.body()), 200, done.status());
+        String id = (String) done.body().get("directory");
+        assertFalse(server.bootstrapping());
+        assertEquals("the CA is trusted for that tree", List.of("directory:" + id), server.trust.entries().stream().map(e -> e.scope()).toList());
+
+        // then the browser signs in as usual, as the break-glass administrator
+        Reply in = call("POST", "/api/v2/session", Map.of("directory", id, "name", "cn=admin,o=system", "password", "admin-pw"), Map.of());
+        assertEquals(200, in.status());
+        assertEquals(List.of("admin"), in.body().get("roles"));
+        Map<String, Object> dir = Json.asMap(Json.asMap(Json.asMap(Json.parse(Files.readString(dataPath.resolve("config/current.json")))).get("directories")).get(id));
+        assertEquals("production", dir.get("tier"));
+        assertEquals(List.of("cn=admin,o=system"), dir.get("breakGlass"));
+        String cookie = in.raw().headers().firstValue("Set-Cookie").orElseThrow();
+        Map<String, String> w = Map.of("Cookie", cookie.substring(0, cookie.indexOf(';')), "X-CSRF-Token", (String) in.body().get("csrf"));
+
+        // what first sign-in leaves for later, in Settings
+        String at = "/api/v2/directories/" + id;
+        assertEquals("lab", call("PUT", at + "/tier", Map.of("tier", "lab"), w).body().get("tier"));
+        assertEquals(400, call("PUT", at + "/tier", Map.of("tier", "staging"), w).status());
+        Map<String, Object> login = Json.asMap(call("PUT", at + "/login", Map.of("searchBases", List.of("o=system", " "), "duplicates", "error"), w).body().get("login"));
+        assertEquals(List.of("o=system"), login.get("searchBases"));
+        assertEquals("error", login.get("duplicates"));
+        assertEquals(401, call("PUT", at + "/service-account", Map.of("dn", "cn=console,o=system", "password", "nope"), w).status());
+        assertEquals("cn=console,o=system", call("PUT", at + "/service-account", Map.of("dn", "cn=console,o=system", "password", "console-pw"), w).body().get("serviceAccount"));
+        assertFalse("sealed on disk", Files.readString(dataPath.resolve("config/current.json")).contains("console-pw"));
+        // with the service account and a search base, a bare name signs in
+        assertEquals(200, call("POST", "/api/v2/session", Map.of("directory", id, "name", "admin", "password", "admin-pw"), Map.of()).status());
+        assertEquals(null, call("PUT", at + "/service-account", null, w).body().get("serviceAccount"));
+    }
+
+    @Test
     public void setupTokenAttemptsAreLimited() throws Exception {
         int limited = 0;
         for (int i = 0; i < 8; i++) {

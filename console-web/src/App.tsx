@@ -47,7 +47,7 @@ export function App() {
         </Bullseye>
       );
     case 'setup':
-      return <SetupRequired />;
+      return <SetupRequired onSignedIn={signedIn} />;
     case 'signed-out':
       return <SignIn reason={state.reason} onSignedIn={signedIn} />;
     case 'signed-in':
