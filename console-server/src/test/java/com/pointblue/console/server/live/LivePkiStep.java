@@ -156,6 +156,8 @@ public final class LivePkiStep {
                     Map.of("events", List.of(Map.of("position", Integer.parseInt(args[4]), "eventId", args[5]))), h));
                 // READ-ONLY: a driver set's statistics on the connected server
                 case "stats" -> show(call("GET", t + "/idm/driversets/" + guid(t, h, args[3]) + "/statistics", null, h));
+                // READ-ONLY: a driver set's properties
+                case "set-props" -> show(call("GET", t + "/idm/driversets/" + guid(t, h, args[3]) + "/properties", null, h));
                 case "ca-config" -> show(new LiveSetupCheck.Reply(200, Json.asMap(Json.asMap(call("GET", t + "/security/pki", null, h).body().get("ca")).get("configuration")), null));
                 case "crl-times" -> {
                     // READ-ONLY: the CRL configuration's own times beside the issued CRL's

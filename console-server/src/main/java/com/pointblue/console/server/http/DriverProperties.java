@@ -48,20 +48,54 @@ final class DriverProperties {
         this.server = server;
     }
 
-    void handle(HttpExchange ex, Sessions.Session s, String guid) throws IOException {
+    private static final String[] SET_ATTRS = {"objectClass", "DirXML-ConfigValues", "DirXML-Policies", "DirXML-JavaEnvironmentParameters", "DirXML-ServerList",
+        "DirXML-LogLimit", "DirXML-pkgGUID", "nspmPasswordPolicyDN"};
+
+    void handle(HttpExchange ex, Sessions.Session s, String guid, boolean driverSet) throws IOException {
         Ldap l = s.ldap();
         if (l == null) {
             throw new Http.Problem(503, "unavailable", "no directory connection");
         }
+        String cls = driverSet ? "DirXML-DriverSet" : "DirXML-Driver";
         try {
-            Ldap.Entry e = server.objects.byGuid(l, guid, ATTRS);
-            if (e == null || e.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("DirXML-Driver"))) {
-                throw new Http.Problem(404, "not-found", guid + " is not a driver");
+            Ldap.Entry e = server.objects.byGuid(l, guid, driverSet ? SET_ATTRS : ATTRS);
+            if (e == null || e.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase(cls))) {
+                throw new Http.Problem(404, "not-found", guid + " is not a " + (driverSet ? "driver set" : "driver"));
             }
-            Http.json(ex, 200, read(l, e));
+            Http.json(ex, 200, driverSet ? readSet(l, e) : read(l, e));
         } catch (NamingException x) {
             throw server.objects.problem(s, Ldap.Failure.of(x));
         }
+    }
+
+    /**
+     * A driver set's properties, read-only: its global configuration values (its own and those of the GCV
+     * objects it links), Java environment ({@code DirXML-JavaEnvironmentParameters}, NAME$value, ig4:
+     * DHOST_JVM_INITIAL_HEAP$3G), servers, linked policies and libraries, log limit and password policy.
+     * Its trace settings and activation have their own tabs.
+     */
+    private Map<String, Object> readSet(Ldap l, Ldap.Entry e) throws NamingException {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> env = new ArrayList<>();
+        for (Object v : e.attributes().getOrDefault("dirxml-javaenvironmentparameters", List.of())) {
+            String raw = String.valueOf(v);
+            int i = raw.indexOf('$');
+            env.add(Map.of("name", i < 0 ? raw : raw.substring(0, i), "value", i < 0 ? "" : raw.substring(i + 1)));
+        }
+        out.put("javaEnvironment", env);
+        out.put("servers", e.attributes().getOrDefault("dirxml-serverlist", List.of()).stream().map(String::valueOf).toList());
+        out.put("logLimit", e.first("DirXML-LogLimit"));
+        out.put("passwordPolicy", e.first("nspmPasswordPolicyDN"));
+        out.put("package", packageName(e.first("DirXML-pkgGUID")));
+        List<Map<String, Object>> gcvs = new ArrayList<>();
+        Element own = root(bytes(e, "DirXML-ConfigValues"));
+        if (own != null) {
+            gcvs.add(Map.of("source", "the driver set", "items", values(own)));
+        }
+        List<Map<String, Object>> policies = policies(l, e, gcvs);
+        out.put("gcvs", gcvs);
+        out.put("policies", policies);
+        return out;
     }
 
     private Map<String, Object> read(Ldap l, Ldap.Entry e) throws NamingException {
@@ -93,6 +127,17 @@ final class DriverProperties {
         if (own != null) {
             gcvs.add(Map.of("source", "the driver", "items", values(own)));
         }
+        List<Map<String, Object>> policies = policies(l, e, gcvs);
+        out.put("gcvs", gcvs);
+        Element ecv = root(bytes(e, "DirXML-EngineControlValues"));
+        out.put("engineControlValues", ecv == null ? List.of() : values(ecv));
+        out.put("filter", filter(root(bytes(e, "DirXML-DriverFilter"))));
+        out.put("policies", policies);
+        return out;
+    }
+
+    /** DirXML-Policies in order by policy set; a linked GCV object's values are added to {@code gcvs}. */
+    private List<Map<String, Object>> policies(Ldap l, Ldap.Entry e, List<Map<String, Object>> gcvs) throws NamingException {
         List<Map<String, Object>> policies = new ArrayList<>();
         for (Object v : e.attributes().getOrDefault("dirxml-policies", List.of())) {
             String raw = String.valueOf(v);
@@ -124,12 +169,7 @@ final class DriverProperties {
             int c = Integer.compare((int) a.get("setNumber"), (int) b.get("setNumber"));
             return c != 0 ? c : Integer.compare((int) a.get("order"), (int) b.get("order"));
         });
-        out.put("gcvs", gcvs);
-        Element ecv = root(bytes(e, "DirXML-EngineControlValues"));
-        out.put("engineControlValues", ecv == null ? List.of() : values(ecv));
-        out.put("filter", filter(root(bytes(e, "DirXML-DriverFilter"))));
-        out.put("policies", policies);
-        return out;
+        return policies;
     }
 
     private static int parseInt(String s) {

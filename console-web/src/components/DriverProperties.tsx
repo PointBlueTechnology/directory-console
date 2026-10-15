@@ -3,7 +3,7 @@ import {
   DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, ExpandableSection, Label, Spinner, Switch, Title, Tooltip,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type ConfigItem, type DriverProperties, idm } from '../api';
+import { type ConfigItem, type DriverProperties, type DriverSetProperties, idm } from '../api';
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
 
@@ -107,6 +107,54 @@ export function DriverPropertiesTab({ guid }: { guid: string }) {
             <ol className="dc-values">{p.policies.filter((x) => x.set === set).map((x) => <li key={x.dn}><span className="dc-mono">{x.name}</span></li>)}</ol>
           </div>
         ))}
+      </ExpandableSection>
+    </div>
+  );
+}
+
+/** Java environment names as Designer labels them; others shown as they are. */
+const JAVA: Record<string, string> = {
+  DHOST_JVM_INITIAL_HEAP: 'Initial heap', DHOST_JVM_MAX_HEAP: 'Maximum heap', DHOST_JVM_OPTIONS: 'JVM options',
+  DHOST_JVM_ADD_CLASSPATH: 'Added class path', DHOST_JVM_JAVA_HOME: 'Java home',
+};
+
+/**
+ * A driver set's properties, read-only: Java environment, servers, log limit, password policy, global
+ * configuration values (its own and those of the objects it links) and the objects linked. Its trace
+ * level is changed on the Trace tab; activation has its own tab.
+ */
+export function DriverSetPropertiesTab({ guid }: { guid: string }) {
+  const { me } = useSession();
+  const api = useMemo(() => idm(me.directory), [me.directory]);
+  const [p, setP] = useState<DriverSetProperties | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [inactive, setInactive] = useState(false);
+  useEffect(() => { api.driverSetProperties(guid).then(setP, setError); }, [api, guid]);
+  if (!p) {
+    return <div className="dc-tab-body">{error ? <ProblemAlert error={error} /> : <Spinner size="md" aria-label="Reading the driver set's properties" />}</div>;
+  }
+  const gcvs = p.gcvs.filter((g) => g.items.length > 0);
+  return (
+    <div className="dc-tab-body">
+      <p className="dc-subtle">Shown as configured; they are changed in Designer. The trace level is changed on the Trace tab.</p>
+      <DescriptionList isHorizontal isCompact className="dc-tab-body">
+        <Item term="Servers">{p.servers.length ? p.servers.map((d) => <div key={d} className="dc-mono">{d}</div>) : <span className="dc-subtle">none</span>}</Item>
+        {p.javaEnvironment.map((j) => <Item key={j.name} term={JAVA[j.name] ?? j.name}><span className="dc-mono">{j.value}</span></Item>)}
+        {p.logLimit && <Item term="Log limit">{p.logLimit} entries</Item>}
+        {p.passwordPolicy && <Item term="Password policy"><span className="dc-mono">{p.passwordPolicy}</span></Item>}
+        {p.package && <Item term="Package">{p.package}</Item>}
+      </DescriptionList>
+      {p.javaEnvironment.length > 0 && <p className="dc-subtle dc-tab-body">Java environment changes take effect when the Identity Vault restarts.</p>}
+      <ExpandableSection toggleText="Global configuration values" isIndented>
+        {gcvs.length > 0 && <Switch id="set-show-inactive" label="Show settings under options that are not chosen" isChecked={inactive} onChange={(_e, v) => setInactive(v)} />}
+        {gcvs.length === 0 ? <p className="dc-subtle">None.</p> : gcvs.map((g) => (
+          <div key={g.source} className="dc-tab-body"><Title headingLevel="h3" size="md">From {g.source}</Title><ConfigTable items={g.items} label={`GCVs from ${g.source}`} showInactive={inactive} /></div>
+        ))}
+      </ExpandableSection>
+      <ExpandableSection toggleText={`Linked objects (${p.policies.length})`} isIndented>
+        {p.policies.length === 0 ? <p className="dc-subtle">None.</p> : (
+          <ol className="dc-values">{p.policies.map((x) => <li key={x.dn}><span className="dc-mono">{x.name}</span> <span className="dc-subtle">({x.set})</span></li>)}</ol>
+        )}
       </ExpandableSection>
     </div>
   );

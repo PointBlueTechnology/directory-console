@@ -53,7 +53,7 @@ import javax.naming.directory.SearchControls;
  * GET, PUT /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/trace                trace settings (see Trace)
  * GET, PATCH /api/v2/trees/{tree}/idm/jobs/{guid}/definition; DELETE …/jobs/{guid}  a job's definition (see Jobs)
  * /api/v2/trees/{tree}/idm/mapping-tables[/{guid}]                                    mapping tables (see MappingTables)
- * GET /api/v2/trees/{tree}/idm/drivers/{guid}/properties                              a driver's properties, read-only (see DriverProperties)
+ * GET /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/properties                a driver's or driver set's properties, read-only (see DriverProperties)
  * </pre>
  */
 final class Idm {
@@ -104,8 +104,8 @@ final class Idm {
         }
         // trace settings are attributes of the driver or driver set: LDAP alone, too
         // a driver's properties, read-only: LDAP alone
-        if (route.equals("GET drivers/{guid}/properties")) {
-            driverProperties.handle(ex, s, guid);
+        if (route.equals("GET drivers/{guid}/properties") || route.equals("GET driversets/{guid}/properties")) {
+            driverProperties.handle(ex, s, guid, route.contains("driversets/"));
             return;
         }
         // mapping tables are resource objects: LDAP alone

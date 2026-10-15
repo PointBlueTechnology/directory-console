@@ -42,7 +42,9 @@ public final class DemoServer {
             "dn: ou=Sales,ou=Users,o=acme\nobjectClass: organizationalUnit\nou: Sales",
             "dn: ou=Engineering,ou=Users,o=acme\nobjectClass: organizationalUnit\nou: Engineering",
             "dn: ou=Groups,o=acme\nobjectClass: organizationalUnit\nou: Groups",
-            "dn: cn=Driver Set,o=system\nobjectClass: DirXML-DriverSet\ncn: Driver Set",
+            "dn: cn=Driver Set,o=system\nobjectClass: DirXML-DriverSet\ncn: Driver Set\nDirXML-JavaEnvironmentParameters: DHOST_JVM_INITIAL_HEAP$512M"
+                + "\nDirXML-JavaEnvironmentParameters: DHOST_JVM_MAX_HEAP$2G\nDirXML-ServerList: cn=edir1,ou=servers,o=system\nDirXML-LogLimit: 500"
+                + "\nDirXML-ConfigValues:: PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48Y29uZmlndXJhdGlvbi12YWx1ZXM+PGRlZmluaXRpb25zPjxkZWZpbml0aW9uIGRpc3BsYXktbmFtZT0iSWRlbnRpdHkgVmF1bHQgbmFtZSIgbmFtZT0iaWR2Lm5hbWUiIHR5cGU9InN0cmluZyI+PHZhbHVlPkFDTUUtSURWPC92YWx1ZT48L2RlZmluaXRpb24+PGRlZmluaXRpb24gZGlzcGxheS1uYW1lPSJOb3RpZmljYXRpb24gZW1haWwiIG5hbWU9Im5vdGlmeS5mcm9tIiB0eXBlPSJzdHJpbmciPjx2YWx1ZT5pZG1AYWNtZS5leGFtcGxlPC92YWx1ZT48L2RlZmluaXRpb24+PC9kZWZpbml0aW9ucz48L2NvbmZpZ3VyYXRpb24tdmFsdWVzPg==",
             "dn: ou=servers,o=system\nobjectClass: organizationalUnit\nou: servers",
             "dn: cn=edir1,ou=servers,o=system\nobjectClass: ncpServer\ncn: edir1\nversion: eDirectory for Linux x86_64 v9.2.8.0000 [DS]\nstatus: 2\nDSRevision: 4020900\n"
                 + "indexDefinition: 0$CN$0$0$1$1$CN\nindexDefinition: 0$CN_SS$0$2$1$1$CN\nindexDefinition: 0$Surname$0$0$1$1$Surname\n"

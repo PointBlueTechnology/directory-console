@@ -458,6 +458,16 @@ export interface DriverSetStatistics {
   drivers: { guid: string | null; name: string; state?: string; error?: string; cache?: CacheSummary | null; subscriber?: ChannelStats; publisher?: ChannelStats }[];
 }
 
+export interface DriverSetProperties {
+  javaEnvironment: { name: string; value: string }[];
+  servers: string[];
+  logLimit: string | null;
+  passwordPolicy: string | null;
+  package: string | null;
+  gcvs: { source: string; items: ConfigItem[] }[];
+  policies: { dn: string; name: string; set: string; setNumber: number; order: number }[];
+}
+
 export interface MigrateResult {
   ok: boolean;
   dryRun?: boolean;
@@ -568,6 +578,8 @@ export function idm(id: string, server?: string) {
       request<unknown>('POST', at(`${base}/drivers/${guidPath(guid)}/migrate/from-app`), body, h(confirm)).then((r) => r.data),
     job: (guid: string, action: 'start' | 'abort', confirm?: string) =>
       request<unknown>('POST', at(`${base}/jobs/${guidPath(guid)}/${action}`), {}, h(confirm)).then((r) => r.data),
+    /** A driver set's properties, read-only: Java environment, servers, log limit, GCVs and linked objects. */
+    driverSetProperties: (guid: string) => request<DriverSetProperties>('GET', `${base}/driversets/${guidPath(guid)}/properties`).then((r) => r.data),
     /** A driver's properties, read-only: shim, authentication, parameters, GCVs, ECVs, filter and policies. */
     driverProperties: (guid: string) => request<DriverProperties>('GET', `${base}/drivers/${guidPath(guid)}/properties`).then((r) => r.data),
     /** The mapping tables under a driver set, driver or library (or the whole tree). */

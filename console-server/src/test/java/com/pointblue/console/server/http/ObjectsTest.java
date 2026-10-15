@@ -392,6 +392,29 @@ public class ObjectsTest {
     }
 
     @Test
+    public void driverSetProperties() throws Exception {
+        String gcvs = "<configuration-values><definitions><definition display-name=\"Vault\" name=\"vault\" type=\"string\"><value>idv</value></definition>"
+            + "</definitions></configuration-values>";
+        edir.add("dn: cn=Set1,o=system", "objectClass: DirXML-DriverSet", "cn: Set1", "DirXML-JavaEnvironmentParameters: DHOST_JVM_MAX_HEAP$3G",
+            "DirXML-ServerList: cn=idm1,o=system", "DirXML-LogLimit: 500", "DirXML-Policies: cn=set-GCVs,cn=Set1,o=system#0#14");
+        edir.add("dn: cn=set-GCVs,cn=Set1,o=system", "objectClass: DirXML-GlobalConfigDef", "cn: set-GCVs");
+        for (String dn : new String[] {"cn=Set1,o=system", "cn=set-GCVs,cn=Set1,o=system"}) {
+            edir.server.modify(dn, new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD, "DirXML-ConfigValues", gcvs.getBytes(StandardCharsets.UTF_8)));
+        }
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String set = (String) resolve(h, "cn=Set1,o=system").body().get("guid");
+        Map<String, Object> p = call("GET", "/api/v2/trees/acme/idm/driversets/" + set + "/properties", null, h).body();
+
+        assertEquals(String.valueOf(p), List.of(Map.of("name", "DHOST_JVM_MAX_HEAP", "value", "3G")), p.get("javaEnvironment"));
+        assertEquals(List.of("cn=idm1,o=system"), p.get("servers"));
+        assertEquals("500", p.get("logLimit"));
+        List<?> g = (List<?>) p.get("gcvs");
+        assertEquals("its own, then the linked GCV object's", List.of("the driver set", "set-GCVs"), g.stream().map(x -> Json.asMap(x).get("source")).toList());
+        assertEquals("idv", Json.asMap(((List<?>) Json.asMap(g.get(0)).get("items")).get(0)).get("value"));
+        assertEquals("set-GCVs", Json.asMap(((List<?>) p.get("policies")).get(0)).get("name"));
+    }
+
+    @Test
     public void browseReadAndSchema() throws Exception {
         Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
         Reply roots = call("GET", "/api/v2/trees/acme/roots", null, h);
