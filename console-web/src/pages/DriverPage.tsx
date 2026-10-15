@@ -80,7 +80,7 @@ export function DriverPage({ guid }: { guid: string }) {
               {servers.length > 1 && <ServerComparison guid={guid} />}
             </Tab>
             <Tab eventKey="jobs" title={<TabTitleText>Jobs</TabTitleText>}>
-              <JobsTable api={api} load={() => api.driverPart<{ jobs: Job[] }>(guid, 'jobs')} />
+              <JobsTable api={api} load={() => api.driverPart<{ jobs: Job[] }>(guid, 'jobs')} owner={{ kind: 'drivers', guid }} />
             </Tab>
             <Tab eventKey="associations" title={<TabTitleText>Associations</TabTitleText>}><AssociationInspector driverDn={status.dn} /></Tab>
             <Tab eventKey="cache" title={<TabTitleText>Cache</TabTitleText>}><CacheInspector api={api} guid={guid} onChanged={load} /></Tab>

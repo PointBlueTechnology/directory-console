@@ -494,6 +494,40 @@ export interface MappingTable extends MappingTableRef {
   rows: string[][];
 }
 
+export interface JobParameter {
+  name: string;
+  label: string;
+  description: string | null;
+  type: 'boolean' | 'string' | 'integer' | 'enum' | 'list' | 'dn' | 'dn-ref' | 'password-ref' | string;
+  value: string | string[];
+  choices?: { value: string; label: string }[];
+  depth: number;
+  /** Shown under this parameter, and used only while it has activeValue. */
+  parent?: string;
+  activeValue?: string;
+}
+
+export interface JobType {
+  type: string;
+  displayName: string;
+  description: string | null;
+  schedule: string | null;
+  scopeRequired: boolean;
+  parameters: JobParameter[];
+}
+
+export type JobScopeKind = 'entry' | 'subordinates' | 'subtree' | 'members';
+
+export interface NewJob {
+  type: string;
+  name: string;
+  disabled: boolean;
+  schedule: string | null;
+  servers: string[];
+  scope: { dn: string; scope: JobScopeKind }[];
+  parameters: Record<string, string | string[]>;
+}
+
 export interface JobDefinition extends Identity {
   owner: { dn: string; name: string; kind: 'driver' | 'driver set' };
   /** A hash of the job's XmlData: a change carries it back. */
@@ -595,6 +629,11 @@ export function idm(id: string, server?: string) {
     deleteMappingTable: (guid: string, name: string, confirm?: string) =>
       request<void>('DELETE', `${base}/mapping-tables/${guidPath(guid)}`, { name }, h(confirm)),
     /** A job's definition, servers and scope (read over LDAP). */
+    /** The job types the chosen server's engine offers for a driver or driver set. */
+    jobTypes: (kind: 'drivers' | 'driversets', guid: string) => get<{ server: { dn: string; name: string }; types: JobType[] }>(`/${kind}/${guidPath(guid)}/job-types`),
+    /** A new job of one of those types under the driver or driver set. */
+    createJob: (kind: 'drivers' | 'driversets', guid: string, body: NewJob, confirm?: string) =>
+      request<JobDefinition & { guid: string | null; notified: boolean }>('POST', at(`${base}/${kind}/${guidPath(guid)}/jobs`), body, h(confirm)).then((r) => r.data),
     jobDefinition: (guid: string) => request<JobDefinition>('GET', `${base}/jobs/${guidPath(guid)}/definition`).then((r) => r.data),
     /** Change a job, as read at {@code version}; refused (409) when it changed meanwhile. A null schedule removes it. */
     changeJob: (guid: string, body: { version: string; disabled?: boolean; schedule?: string | null; servers?: string[] }, confirm?: string) =>

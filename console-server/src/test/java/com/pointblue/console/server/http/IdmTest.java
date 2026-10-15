@@ -181,6 +181,54 @@ public class IdmTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    public void jobTypesAndANewJob() throws Exception {
+        org.junit.Assume.assumeTrue("needs -Dengine.lib (the engine's jars)", engineJars());
+        edir.add("dn: cn=idm1,o=system", "objectClass: ncpServer", "cn: idm1");
+        edir.add("dn: ou=staff,o=system", "objectClass: organizationalUnit", "ou: staff");
+        Map<String, String> h = signIn();
+        String set = (String) Json.asMap(((List<?>) call("GET", "/api/v2/trees/acme/idm/driversets", null, h).body().get("items")).get(0)).get("guid");
+        String ad = (String) Json.asMap(((List<?>) call("GET", "/api/v2/trees/acme/idm/driversets/" + set, null, h).body().get("drivers")).get(0)).get("guid");
+
+        List<Map<String, Object>> types = (List<Map<String, Object>>) call("GET", "/api/v2/trees/acme/idm/drivers/" + ad + "/job-types", null, h).body().get("types");
+        assertEquals(List.of("Subscriber channel trigger"), types.stream().map(t -> t.get("displayName")).toList());
+        List<Map<String, Object>> setTypes = (List<Map<String, Object>>) call("GET", "/api/v2/trees/acme/idm/driversets/" + set + "/job-types", null, h).body().get("types");
+        assertEquals(List.of("Driver Health"), setTypes.stream().map(t -> t.get("displayName")).toList());
+
+        String trigger = "com.novell.nds.dirxml.job.trigger.Trigger";
+        Map<String, Object> job = new HashMap<>(Map.of("type", trigger, "name", "Nightly trigger", "schedule", "0 2 * * *", "servers", List.of("cn=idm1,o=system"),
+            "scope", List.of(Map.of("dn", "ou=staff,o=system", "scope", "subtree")), "parameters", Map.of("submit-method", "submit-direct")));
+        Reply made = call("POST", "/api/v2/trees/acme/idm/drivers/" + ad + "/jobs", job, h);
+        assertEquals(String.valueOf(made.body()), 201, made.status());
+        assertEquals("Nightly trigger", made.body().get("name"));
+        assertEquals("0 2 * * *", made.body().get("schedule"));
+        assertEquals(false, made.body().get("disabled"));
+        assertEquals(true, made.body().get("notified"));
+        assertTrue(engine.actions.contains("notify-job cn=Nightly trigger,cn=AD,cn=Driver Set,o=system"));
+        Map<String, Object> scope = Json.asMap(((List<?>) made.body().get("scope")).get(0));
+        assertEquals("ou=staff,o=system", scope.get("dn"));
+        assertEquals("subtree", scope.get("scope"));
+        String guid = (String) made.body().get("guid");
+        Map<String, Object> read = call("GET", "/api/v2/trees/acme/idm/jobs/" + guid + "/definition", null, h).body();
+        Map<String, Object> method = ((List<Map<String, Object>>) read.get("parameters")).stream().filter(p -> "submit-method".equals(p.get("name"))).findFirst().orElseThrow();
+        assertEquals("submit-direct", method.get("value"));
+
+        assertEquals("the name is taken", 409, call("POST", "/api/v2/trees/acme/idm/drivers/" + ad + "/jobs", job, h).status());
+        job.put("name", "Another");
+        job.put("parameters", Map.of("submit-method", "sideways"));
+        assertEquals(400, call("POST", "/api/v2/trees/acme/idm/drivers/" + ad + "/jobs", job, h).status());
+        job.put("parameters", Map.of());
+        job.put("servers", List.of("ou=staff,o=system"));
+        assertEquals("not a server", 400, call("POST", "/api/v2/trees/acme/idm/drivers/" + ad + "/jobs", job, h).status());
+        job.put("servers", List.of("cn=idm1,o=system"));
+        job.put("type", "com.novell.nds.dirxml.job.ckdrvhealth.CheckDriverHealthJob");
+        Reply wrong = call("POST", "/api/v2/trees/acme/idm/drivers/" + ad + "/jobs", job, h);
+        assertEquals("a driver set's type is not offered for a driver", "unknown-job-type", wrong.body().get("title"));
+        job.put("scope", List.of());
+        assertEquals("Driver Health needs a scope", 400, call("POST", "/api/v2/trees/acme/idm/driversets/" + set + "/jobs", job, h).status());
+    }
+
+    @Test
     public void withoutTheEngineIdmSaysWhy() throws Exception {
         server.login.engines(Engines.none("the Identity Manager engine jars are not mounted at /engine"));
         Map<String, String> h = signIn();

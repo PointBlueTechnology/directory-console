@@ -26,6 +26,41 @@ public final class FakeEngine implements Operate.Engine {
     public final Map<String, String> cache = new ConcurrentHashMap<>();
     public final List<String> actions = java.util.Collections.synchronizedList(new ArrayList<>());
 
+    /** The engine's DiscoverJobs answer, as ig4 gave it (IDM 4.8.7, 2026-10-15), trimmed. */
+    public static final String JOB_TYPES = """
+        <?xml version="1.0" encoding="UTF-8"?><jobs>
+        <job-aggregation>
+          <job-definition auto-delete="false" disabled="false" display-name="xlfid(job-display-name)Subscriber channel trigger" schedule="0 1 * * 0" scope-required="false" type="java">
+            <description>xlfid(job-description)This job submits trigger documents.</description>
+            <containment>DirXML-Driver</containment>
+            <java-class>com.novell.nds.dirxml.job.trigger.Trigger</java-class>
+            <configuration-values><definitions>
+              <definition display-name="xlfid(process-unassociated)Submit for unassociated objects?" name="process-unassociated" type="boolean"><value>false</value></definition>
+              <group>
+                <definition display-name="xlfid(submit-method)Method" name="submit-method" type="enum">
+                  <enum-choice display-name="xlfid(submit-queue)queue (use cache)">submit-queue</enum-choice>
+                  <enum-choice display-name="xlfid(submit-direct)direct (bypass cache)">submit-direct</enum-choice>
+                  <value>submit-queue</value>
+                </definition>
+                <subordinates active-value="submit-direct">
+                  <definition display-name="Start driver if not running" name="start-driver" type="boolean"><value>true</value></definition>
+                </subordinates>
+              </group>
+              <definition display-name="Days" name="days" type="list"><value><item>7</item></value></definition>
+              <definition display-name="Interval" name="interval" type="integer"><value>1</value></definition>
+              <definition display-name="Password" name="pw" type="password-ref"><value>pw</value></definition>
+            </definitions></configuration-values>
+          </job-definition>
+          <xliff version="1.0"><file original="Trigger.xml" source-language="en"><body><trans-unit id="job-display-name"><source>Subscriber channel trigger</source></trans-unit></body></file></xliff>
+        </job-aggregation>
+        <job-aggregation>
+          <job-definition display-name="xlfid(job-display-name)Driver Health" schedule="* * * * *" scope-required="true" type="java">
+            <containment>DirXML-DriverSet</containment>
+            <java-class>com.novell.nds.dirxml.job.ckdrvhealth.CheckDriverHealthJob</java-class>
+          </job-definition>
+        </job-aggregation>
+        </jobs>""".strip();
+
     public FakeEngine(FakeEdir edir) {
         this.edir = edir;
     }
@@ -43,6 +78,18 @@ public final class FakeEngine implements Operate.Engine {
             public Opened open(com.pointblue.console.server.ldap.Ldap ldap, com.pointblue.console.server.tls.TrustStore trust,
                                com.pointblue.console.server.ldap.Ldap.Target target, String dn, char[] password) {
                 return new Opened(self, () -> { });
+            }
+
+            @Override
+            public byte[] discoverJobs(com.pointblue.console.server.ldap.Ldap ldap, String dn) {
+                self.actions.add("discover-jobs " + dn);
+                return JOB_TYPES.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            }
+
+            @Override
+            public boolean notifyJob(com.pointblue.console.server.ldap.Ldap ldap, String jobDn) {
+                self.actions.add("notify-job " + jobDn);
+                return true;
             }
         };
     }

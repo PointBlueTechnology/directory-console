@@ -27,6 +27,16 @@ public interface Engines {
      */
     Opened open(Ldap ldap, TrustStore trust, Ldap.Target target, String dn, char[] password) throws Exception;
 
+    /** The job types the engine on {@code ldap}'s server offers, as its DiscoverJobs answers, for the driver or driver set {@code dn}. */
+    default byte[] discoverJobs(Ldap ldap, String dn) throws javax.naming.NamingException {
+        return JobCatalog.discover(ldap.context(), dn);
+    }
+
+    /** Tell the engine on {@code ldap}'s server that a job was added or changed; false when that failed. */
+    default boolean notifyJob(Ldap ldap, String jobDn) {
+        return JobCatalog.notify(ldap.context(), jobDn);
+    }
+
     /** The real engine when its classes are on the class path; otherwise one that says they are not. */
     static Engines detect() {
         try {

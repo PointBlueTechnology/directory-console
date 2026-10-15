@@ -52,6 +52,8 @@ import javax.naming.directory.SearchControls;
  * GET, POST, PATCH, DELETE /api/v2/trees/{tree}/idm/objects/{guid}/associations   the object inspector (see Associations)
  * GET, PUT /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/trace                trace settings (see Trace)
  * GET, PATCH /api/v2/trees/{tree}/idm/jobs/{guid}/definition; DELETE …/jobs/{guid}  a job's definition (see Jobs)
+ * GET  /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/job-types   the job types the chosen server's engine offers (see JobTypes)
+ * POST /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/jobs        a new job of one of those types (see Jobs)
  * /api/v2/trees/{tree}/idm/mapping-tables[/{guid}]                                    mapping tables (see MappingTables)
  * GET /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/properties                a driver's or driver set's properties, read-only (see DriverProperties)
  * </pre>
@@ -341,6 +343,33 @@ final class Idm {
                     }
                     case "POST drivers/{guid}/passwords", "POST driversets/{guid}/passwords" -> setPassword(ex, s, d, engine, target(l, guid, p[2].equals("driversets")), guid, confirm);
                     case "DELETE drivers/{guid}/passwords", "DELETE driversets/{guid}/passwords" -> removePassword(ex, s, d, engine, target(l, guid, p[2].equals("driversets")), guid, confirm);
+                    // the job types this server's engine offers for the driver or driver set
+                    case "GET drivers/{guid}/job-types", "GET driversets/{guid}/job-types" -> {
+                        boolean set = p[2].equals("driversets");
+                        Target t = target(l, guid, set);
+                        Map<String, Object> out = new LinkedHashMap<>();
+                        out.put("server", Map.of("dn", on.serverDn(), "name", String.valueOf(Names.identity(on.serverDn()).get("name"))));
+                        out.put("types", JobTypes.types(server.login.engines().discoverJobs(l, t.dn()), set ? "DirXML-DriverSet" : "DirXML-Driver"));
+                        Http.json(ex, 200, out);
+                    }
+                    // a new job, from the type as this server's engine offers it (the job object itself is written over LDAP)
+                    case "POST drivers/{guid}/jobs", "POST driversets/{guid}/jobs" -> {
+                        boolean set = p[2].equals("driversets");
+                        Target t = target(l, guid, set);
+                        Map<String, Object> b = Http.body(ex);
+                        String type = Http.string(b, "type", true);
+                        String cls = set ? "DirXML-DriverSet" : "DirXML-Driver";
+                        byte[] answer = server.login.engines().discoverJobs(l, t.dn());
+                        org.w3c.dom.Element agg = JobTypes.aggregation(answer, type, cls);
+                        if (agg == null) {
+                            throw new Http.Problem(400, "unknown-job-type", "the engine on this server offers no job type " + type + " for a " + (set ? "driver set" : "driver"));
+                        }
+                        boolean scopeRequired = JobTypes.types(answer, cls).stream().filter(x -> type.equals(x.get("type"))).anyMatch(x -> Boolean.TRUE.equals(x.get("scopeRequired")));
+                        Ldap.Entry owner = l.read(t.dn(), "objectClass");
+                        Map<String, Object> made = jobs.create(l, s, owner, agg, scopeRequired, b);
+                        made.put("notified", server.login.engines().notifyJob(l, String.valueOf(made.get("dn"))));
+                        Http.json(ex, 201, made);
+                    }
                     case "POST jobs/{guid}/start", "POST jobs/{guid}/abort" -> {
                         Ldap.Entry job = server.objects.byGuid(l, guid, "objectClass", "cn");
                         String parent = Names.parent(job.dn());
@@ -355,6 +384,8 @@ final class Idm {
                 }
             } catch (Vault.VaultException | UnsupportedOperationException e) {
                 throw new Http.Problem(502, "engine-error", String.valueOf(e.getMessage()));
+            } catch (IllegalArgumentException e) {
+                throw new Http.Problem(400, "bad-request", e.getMessage());
             } catch (NamingException e) {
                 throw new Http.Problem(502, "directory-error", Ldap.Failure.of(e).getMessage());
             }

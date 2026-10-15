@@ -123,6 +123,10 @@
   margin-inline-end: var(--pf-t--global--spacer--md);
 }
 
+.dc-gap-bottom {
+  margin-bottom: var(--pf-t--global--spacer--sm);
+}
+
 .dc-pre {
   white-space: pre-wrap;
   max-height: 24rem;

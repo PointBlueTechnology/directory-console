@@ -11,6 +11,7 @@ import { useHeading } from '../heading';
 import { ProblemAlert } from './Problem';
 import { useConfirmed } from './Confirm';
 import { JobDetailsModal } from './JobDetails';
+import { NewJobModal } from './NewJob';
 
 /** A driver's state as a coloured label. */
 export function StateLabel({ state }: { state: string }) {
@@ -20,7 +21,7 @@ export function StateLabel({ state }: { state: string }) {
 }
 
 /** Jobs of a driver or driver set, each startable and abortable by an operator. */
-export function JobsTable({ api, load }: { api: Idm; load: () => Promise<{ jobs: Job[] }> }) {
+export function JobsTable({ api, load, owner }: { api: Idm; load: () => Promise<{ jobs: Job[] }>; owner?: { kind: 'drivers' | 'driversets'; guid: string } }) {
   const level = useHeading();
   const { can, tree } = useSession();
   const { run, dialog } = useConfirmed();
@@ -28,6 +29,7 @@ export function JobsTable({ api, load }: { api: Idm; load: () => Promise<{ jobs:
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   // callers pass an inline loader; load once per mount, not on every parent render
   const loader = useRef(load);
   loader.current = load;
@@ -53,6 +55,7 @@ export function JobsTable({ api, load }: { api: Idm; load: () => Promise<{ jobs:
     <div className="dc-tab-body">
       {notice && <Alert component={level} variant="success" isInline isPlain title={notice} />}
       <ProblemAlert error={error} />
+      {owner && can('operator') && <Button variant="secondary" size="sm" className="dc-gap-bottom" onClick={() => setCreating(true)}>New job</Button>}
       {jobs.length === 0 ? <p className="dc-subtle">No jobs.</p> : (
         <Table aria-label="Jobs" variant="compact">
           <Thead><Tr><Th>Job</Th><Th>Owner</Th><Th>Running</Th><Th>Scheduled</Th><Th>Next run</Th>{can('operator') && <Th screenReaderText="Actions" />}</Tr></Thead>
@@ -76,6 +79,10 @@ export function JobsTable({ api, load }: { api: Idm; load: () => Promise<{ jobs:
         </Table>
       )}
       {open && <JobDetailsModal api={api} guid={open} onClose={() => setOpen(null)} onChanged={refresh} />}
+      {creating && owner && (
+        <NewJobModal api={api} kind={owner.kind} guid={owner.guid} onClose={() => setCreating(false)}
+          onCreated={(name, notified) => { setNotice(`${name}: created${notified ? '' : '; the engine schedules it when it next reads its jobs'}`); refresh(); }} />
+      )}
       {dialog}
     </div>
   );

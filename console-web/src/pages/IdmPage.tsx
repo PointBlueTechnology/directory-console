@@ -119,7 +119,7 @@ function DriverSetView({ api: connected, guid }: { api: ReturnType<typeof idm>; 
         <Tabs activeKey={tab} onSelect={(_e, k) => setTab(k)} aria-label="Driver set" mountOnEnter>
           <Tab eventKey="drivers" title={<TabTitleText>Drivers</TabTitleText>}><DriversTable api={api} drivers={set.drivers} onChanged={load} server={server} serverName={on?.name} /></Tab>
           <Tab eventKey="jobs" title={<TabTitleText>Jobs</TabTitleText>}>
-            <JobsTable api={api} load={() => api.setPart<{ jobs: Job[] }>(guid, 'jobs')} />
+            <JobsTable api={api} load={() => api.setPart<{ jobs: Job[] }>(guid, 'jobs')} owner={{ kind: 'driversets', guid }} />
           </Tab>
           <Tab eventKey="servers" title={<TabTitleText>Servers and activation</TabTitleText>}><ServersPanel api={api} guid={guid} /></Tab>
           <Tab eventKey="properties" title={<TabTitleText>Properties</TabTitleText>}><DriverSetPropertiesTab guid={guid} /></Tab>

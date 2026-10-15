@@ -121,6 +121,14 @@ public final class LivePkiStep {
                 case "trace-read" -> show(call("GET", t + "/idm/" + (args.length > 4 ? args[4] : "drivers") + "/" + guid(t, h, args[3]) + "/trace", null, h));
                 // READ-ONLY: a driver set's jobs, as the engine lists them
                 case "jobs" -> show(call("GET", t + "/idm/driversets/" + guid(t, h, args[3]) + "/jobs", null, h));
+                // READ-ONLY: the job types the engine offers for a driver or driver set (args[4]: drivers|driversets)
+                case "job-types" -> show(call("GET", t + "/idm/" + (args.length > 4 ? args[4] : "driversets") + "/" + guid(t, h, args[3]) + "/job-types", null, h));
+                // a disabled, unscheduled Subscriber channel trigger job under a driver, on the connected server, with one changed value
+                case "job-create" -> show(call("POST", t + "/idm/drivers/" + guid(t, h, args[3]) + "/jobs", Map.of("type", "com.novell.nds.dirxml.job.trigger.Trigger",
+                    "name", args[4], "disabled", true, "schedule", "", "servers", List.of(args[5]), "scope", List.of(),
+                    "parameters", Map.of("process-unassociated", "true")), h));
+                // a job, its name typed
+                case "job-delete" -> show(call("DELETE", t + "/idm/jobs/" + guid(t, h, args[3]), Map.of("name", args[4]), h));
                 // READ-ONLY: a job's definition, as the console reads it
                 case "job-read" -> show(call("GET", t + "/idm/jobs/" + guid(t, h, args[3]) + "/definition", null, h));
                 // READ-ONLY: the DNs an LDAP filter finds, with the named attributes

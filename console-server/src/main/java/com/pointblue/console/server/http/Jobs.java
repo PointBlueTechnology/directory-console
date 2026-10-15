@@ -4,6 +4,7 @@ import com.pointblue.console.server.auth.Role;
 import com.pointblue.console.server.auth.Sessions;
 import com.pointblue.console.server.ldap.Ldap;
 import com.pointblue.console.server.ldap.Names;
+import com.pointblue.dirxml.dev.json.Json;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -36,6 +37,9 @@ import org.w3c.dom.NodeList;
  *
  * <pre>
  * GET    /api/v2/trees/{tree}/idm/jobs/{guid}/definition    summary, schedule, servers, scope, parameters, version
+ * POST   /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/jobs   a new job of a type the engine offers (see Idm, JobTypes)
+ *        {"type", "name", "disabled"?, "schedule"? (cron, or null for none; the type's own when absent),
+ *         "servers" [server DN…], "scope"? [{"dn", "scope": entry|subordinates|subtree|members}], "parameters"? {name: value}}
  * PATCH  same   {"version", "disabled"?, "schedule"? (cron, or null for none), "servers"? [server DN…]}
  * DELETE /api/v2/trees/{tree}/idm/jobs/{guid}               {"name"}: the job's name, typed
  * </pre>
@@ -287,6 +291,104 @@ final class Jobs {
             throw x;
         }
         server.objects.audit(s, "idm.job.change", guid, detail, null);
+    }
+
+    static final java.util.Set<String> SCOPES = java.util.Set.of("entry", "subordinates", "subtree", "members");
+
+    /**
+     * A new job under {@code owner} (a driver or driver set) from the type's aggregation as the engine gave
+     * it: the object's XmlData is the aggregation with the chosen values, beside its servers and scope.
+     */
+    Map<String, Object> create(Ldap l, Sessions.Session s, Ldap.Entry owner, Element aggregation, boolean scopeRequired, Map<String, Object> b)
+            throws IOException, NamingException {
+        String name = Http.string(b, "name", true).trim();
+        if (name.isEmpty() || name.length() > 64) {
+            throw new IllegalArgumentException("a job's name is 1 to 64 characters");
+        }
+        String cron = null;
+        boolean keepSchedule = !b.containsKey("schedule");
+        if (!keepSchedule) {
+            Object v = b.get("schedule");
+            cron = v == null || String.valueOf(v).isBlank() ? null : String.valueOf(v).trim().replaceAll("\\s+", " ");
+            if (cron != null && !CRON.matcher(cron).matches()) {
+                throw new IllegalArgumentException("a schedule is five cron fields: minute hour day-of-month month day-of-week, such as 0 2 * * 6");
+            }
+        }
+        boolean disabled = b.get("disabled") instanceof Boolean on && on;
+        if (!(b.get("servers") instanceof List<?> serverList) || serverList.isEmpty()) {
+            throw new IllegalArgumentException("servers is a list of at least one server DN");
+        }
+        List<Object> servers = new ArrayList<>();
+        for (Object o : serverList) {
+            String dn = String.valueOf(o);
+            Ldap.Entry srv = l.read(dn, "objectClass");
+            if (srv == null || srv.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(c -> String.valueOf(c).equalsIgnoreCase("ncpServer"))) {
+                throw new IllegalArgumentException("not a server: " + dn);
+            }
+            servers.add(dn);
+        }
+        List<Object> scope = new ArrayList<>();
+        if (b.get("scope") instanceof List<?> list) {
+            for (Object o : list) {
+                Map<String, Object> sc = Json.asMap(o);
+                String dn = Http.string(sc, "dn", true);
+                String kind = Http.string(sc, "scope", true);
+                if (!SCOPES.contains(kind)) {
+                    throw new IllegalArgumentException("a scope is entry, subordinates, subtree or members");
+                }
+                if (l.read(dn, "objectClass") == null) {
+                    throw new IllegalArgumentException("no object " + dn);
+                }
+                scope.add(dn + "#0#<scope-def scope=\"" + kind + "\"/>");
+            }
+        }
+        if (scopeRequired && scope.isEmpty()) {
+            throw new IllegalArgumentException("this type of job needs a scope: the objects it works on");
+        }
+        Map<String, Object> values = b.get("parameters") == null ? Map.of() : Json.asMap(b.get("parameters"));
+        String schedule = keepSchedule ? (child(aggregation, "job-definition").hasAttribute("schedule") ? child(aggregation, "job-definition").getAttribute("schedule") : null) : cron;
+        byte[] xml = JobTypes.build(aggregation, disabled, schedule, values);
+        String dn = Names.child(owner.dn(), "cn", name);
+        if (l.read(dn, "cn") != null) {
+            throw new Http.Problem(409, "exists", "there is already an object named " + name + " there");
+        }
+        Map<String, List<Object>> attrs = new LinkedHashMap<>();
+        attrs.put("objectClass", List.of("Top", "DirXML-Job"));
+        attrs.put("cn", List.of(name));
+        attrs.put("XmlData", List.of(xml));
+        attrs.put("DirXML-ServerList", servers);
+        if (!scope.isEmpty()) {
+            attrs.put("DirXML-Scope", scope);
+        }
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("dn", dn);
+        detail.put("type", Http.string(b, "type", true));
+        detail.put("disabled", disabled);
+        detail.put("schedule", schedule);
+        detail.put("servers", servers);
+        detail.put("scope", scope);
+        detail.put("parameters", values.keySet());
+        try {
+            l.create(dn, attrs);
+        } catch (NamingException x) {
+            server.objects.audit(s, "idm.job.create", null, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        Ldap.Entry made = l.read(dn, "objectClass", "cn", "XmlData", "DirXML-ServerList", "DirXML-Scope", "GUID");
+        Object guid = made == null ? null : made.attributes().get("guid") == null ? null : Names.guidHex(made.attributes().get("guid").get(0));
+        server.objects.audit(s, "idm.job.create", guid == null ? null : String.valueOf(guid), detail, null);
+        Map<String, Object> out = made == null ? new LinkedHashMap<>(Map.of("dn", dn)) : read(l, made);
+        out.put("guid", guid);
+        return out;
+    }
+
+    private static Element child(Element parent, String tag) {
+        for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
+            if (n instanceof Element e && e.getTagName().equals(tag)) {
+                return e;
+            }
+        }
+        return null;
     }
 
     private void delete(HttpExchange ex, Ldap l, Sessions.Session s, String guid, Ldap.Entry e) throws IOException, NamingException {
