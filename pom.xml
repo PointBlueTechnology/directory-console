@@ -6,7 +6,7 @@
 
     <groupId>com.pointblue.console</groupId>
     <artifactId>directory-console</artifactId>
-    <version>0.3.2</version>
+    <version>0.3.3</version>
     <packaging>pom</packaging>
     <name>Directory Console</name>
     <description>An eDirectory and Identity Manager console built on the DirXMLDev core
