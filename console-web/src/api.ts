@@ -447,6 +447,10 @@ export interface Versions {
   packages: { driver: string; package: string | null; packageVersion: string | null }[];
 }
 
+export interface CacheSummary { size?: number | null; unprocessedSize?: number | null; oldest?: string | null; newest?: string | null; counts?: Record<string, number> }
+export interface CacheEvent { position: number; type: string; className: string | null; srcDn: string | null; eventId: string | null; cachedTime: string | null; attributes: string[]; xml: string | null }
+export interface CacheEvents { events: CacheEvent[]; next: number | null }
+
 export interface MigrateResult {
   ok: boolean;
   dryRun?: boolean;
@@ -538,6 +542,14 @@ export function idm(id: string, server?: string) {
       request<{ before: string; after: string }>('PUT', at(`${base}/drivers/${guidPath(guid)}/start-option`), { option }, h(confirm)).then((r) => r.data),
     logLevel: (guid: string, level: number | null, events: number[] | null, confirm?: string) =>
       request<unknown>('PUT', at(`${base}/drivers/${guidPath(guid)}/log-level`), { level, events }, h(confirm)).then((r) => r.data),
+    /** The cache in summary (size, oldest and newest, counts by type): from the driver statistics, for a running driver too. */
+    cacheSummary: (guid: string) => get<CacheSummary>(`/drivers/${guidPath(guid)}/cache/summary`),
+    /** Cached events from {@code position}, each with its position (a stopped driver only). */
+    cacheEvents: (guid: string, position = 0, count = 25) => get<CacheEvents>(`/drivers/${guidPath(guid)}/cache/events?position=${position}&count=${count}`),
+    /** Delete chosen events; each must still be the one read at its position, or it is skipped. */
+    deleteCacheEvents: (guid: string, events: { position: number; eventId: string }[], confirm?: string) =>
+      request<{ results: { position: number; eventId: string; status: 'deleted' | 'skipped' | 'failed'; detail?: string }[]; deleted: number }>(
+        'POST', at(`${base}/drivers/${guidPath(guid)}/cache/delete`), { events }, h(confirm)).then((r) => r.data),
     clearCache: (guid: string, confirm?: string) => request<unknown>('POST', at(`${base}/drivers/${guidPath(guid)}/cache/clear`), {}, h(confirm)).then((r) => r.data),
     resync: (guid: string, since: string | null, confirm?: string) =>
       request<unknown>('POST', at(`${base}/drivers/${guidPath(guid)}/resync`), since ? { since } : {}, h(confirm)).then((r) => r.data),

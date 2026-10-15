@@ -39,6 +39,8 @@ import javax.naming.directory.SearchControls;
  * GET  /api/v2/trees/{tree}/idm/drivers/{guid}/jobs | health | log-level | password-sync
  * GET  /api/v2/trees/{tree}/idm/drivers/{guid}/associations     ?state=&limit=
  * GET  /api/v2/trees/{tree}/idm/drivers/{guid}/cache            ?count=
+ * GET  /api/v2/trees/{tree}/idm/drivers/{guid}/cache/summary | cache/events ?position=&count=   (see Cache)
+ * POST /api/v2/trees/{tree}/idm/drivers/{guid}/cache/delete     {"events": [{"position", "eventId"}]}
  * POST /api/v2/trees/{tree}/idm/drivers/{guid}/cache/clear | resync {"since"}
  * POST /api/v2/trees/{tree}/idm/drivers/{guid}/migrate/to-app     {"base", "class", "filter"?, "max"?, "dryRun"?}
  * POST /api/v2/trees/{tree}/idm/drivers/{guid}/migrate/from-app   {"class", "search"?: [{"attribute", "value"}]}
@@ -244,6 +246,27 @@ final class Idm {
                         }
                         Http.json(ex, 200, Map.of("empty", page.empty, "xds", page.xds, "next", page.nextToken));
                     }
+                    // the cache in summary: from the driver statistics, which the engine gives for a running driver too
+                    case "GET drivers/{guid}/cache/summary" -> {
+                        Target t = target(l, guid, false);
+                        Map<String, Object> sum = Cache.summary(engine.driverStats(t.dn(), 0));
+                        Http.json(ex, 200, sum == null ? Map.of() : sum);
+                    }
+                    // the cached events, each with its position (a stopped driver only)
+                    case "GET drivers/{guid}/cache/events" -> {
+                        Target t = target(l, guid, false);
+                        Map<String, String> q = Http.query(ex);
+                        int position = Math.max(0, parseInt(q.get("position"), 0));
+                        int count = Math.max(1, Math.min(parseInt(q.get("count"), 25), 100));
+                        try {
+                            Http.json(ex, 200, Cache.events(engine, t.dn(), position, count));
+                        } catch (Vault.VaultException e) {
+                            throw new Http.Problem(409, "cache-unreadable", "the engine would not show this driver's cache (" + e.getMessage()
+                                + "); stop the driver to read it");
+                        }
+                    }
+                    // delete chosen events: each must still be the event read at its position
+                    case "POST drivers/{guid}/cache/delete" -> deleteEvents(ex, s, engine, d, target(l, guid, false), guid, confirm);
                     case "POST drivers/{guid}/cache/clear" -> {
                         Target t = target(l, guid, false);
                         acted(ex, s, "idm.driver.cache-clear", guid, t, Operate.cacheClear(engine, env(d, t), t.name(), true, confirm, tree(d)));
@@ -436,6 +459,72 @@ final class Idm {
 
     private static String xmlAttr(String v) {
         return v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
+    private static int parseInt(String s, int otherwise) {
+        try {
+            return s == null ? otherwise : Integer.parseInt(s.trim());
+        } catch (NumberFormatException x) {
+            return otherwise;
+        }
+    }
+
+    /**
+     * {@code {"events": [{"position", "eventId"}…]}}: from the last to the first, each event is read again
+     * at its position and must have that event-id, then that one event is deleted. On production the
+     * directory's name is confirmed as for the other driver operations.
+     */
+    private void deleteEvents(HttpExchange ex, Sessions.Session s, Operate.Engine engine, DirectoryConfig d, Target t, String guid, String confirm)
+            throws IOException {
+        if (d != null && d.production() && (confirm == null || !confirm.trim().equalsIgnoreCase(d.name()))) {
+            throw new Http.Problem(409, "confirm-directory", "this changes the production directory " + d.name() + "; type its name to confirm");
+        }
+        Map<String, Object> b = Http.body(ex);
+        if (!(b.get("events") instanceof List<?> list) || list.isEmpty()) {
+            throw new Http.Problem(400, "bad-request", "events is a list of {position, eventId}");
+        }
+        List<Map<String, Object>> chosen = new ArrayList<>();
+        for (Object o : list) {
+            Map<String, Object> m = Json.asMap(o);
+            if (m.get("eventId") == null || Json.asInt(m.get("position"), -1) < 0) {
+                throw new Http.Problem(400, "bad-request", "each event has a position and an eventId");
+            }
+            chosen.add(m);
+        }
+        chosen.sort((a, c) -> Integer.compare(Json.asInt(c.get("position"), 0), Json.asInt(a.get("position"), 0)));
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (Map<String, Object> m : chosen) {
+            int position = Json.asInt(m.get("position"), 0);
+            String id = String.valueOf(m.get("eventId"));
+            Map<String, Object> r = new LinkedHashMap<>(Map.of("position", position, "eventId", id));
+            String now;
+            try {
+                now = Cache.eventIdAt(engine, t.dn(), position);
+            } catch (RuntimeException x) {
+                r.put("status", "failed");
+                r.put("detail", "the cache could not be read: " + x.getMessage());
+                results.add(r);
+                continue;
+            }
+            if (!id.equals(now)) {
+                r.put("status", "skipped");
+                r.put("detail", now == null ? "no event is there any more" : "another event is there now");
+                results.add(r);
+                continue;
+            }
+            try {
+                engine.deleteCacheEntries(t.dn(), position, 1, "", 0);
+                r.put("status", "deleted");
+            } catch (RuntimeException x) {
+                r.put("status", "failed");
+                r.put("detail", x.getMessage());
+            }
+            results.add(r);
+        }
+        long deleted = results.stream().filter(r -> "deleted".equals(r.get("status"))).count();
+        server.audit.log(new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via()), "idm.driver.cache-delete", guid,
+            Map.of("dn", t.dn(), "directory", s.principal.directoryId(), "events", results), deleted == results.size() ? "ok" : deleted == 0 ? "failed" : "partial");
+        Http.json(ex, 200, Map.of("results", results, "deleted", deleted));
     }
 
     /** The driver set or driver with this GUID; 404 when it is something else. */

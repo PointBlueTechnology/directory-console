@@ -141,6 +141,19 @@ public final class LivePkiStep {
                 // READ-ONLY: version discovery for a driver set, on the named server (or the connected one)
                 case "versions" -> show(call("GET", t + "/idm/driversets/" + guid(t, h, args[3]) + "/versions"
                     + (args.length > 4 ? "?server=" + serverNamed(call("GET", t + "/edir/servers", null, h), args[4]) : ""), null, h));
+                // READ-ONLY: a driver set's drivers with state and cache sizes
+                case "set-status" -> show(call("GET", t + "/idm/driversets/" + guid(t, h, args[3]), null, h));
+                // READ-ONLY: a stopped driver's cache, as the console reads it
+                case "cache-read" -> show(call("GET", t + "/idm/drivers/" + guid(t, h, args[3]) + "/cache?count=" + (args.length > 4 ? args[4] : "5"), null, h));
+                // READ-ONLY: the cache summary and events with their positions
+                case "cache-events" -> {
+                    String g = guid(t, h, args[3]);
+                    show(call("GET", t + "/idm/drivers/" + g + "/cache/summary", null, h));
+                    show(call("GET", t + "/idm/drivers/" + g + "/cache/events?count=" + (args.length > 4 ? args[4] : "10"), null, h));
+                }
+                // one cached event, named by position and event-id (a stopped driver)
+                case "cache-delete" -> show(call("POST", t + "/idm/drivers/" + guid(t, h, args[3]) + "/cache/delete",
+                    Map.of("events", List.of(Map.of("position", Integer.parseInt(args[4]), "eventId", args[5]))), h));
                 case "ca-config" -> show(new LiveSetupCheck.Reply(200, Json.asMap(Json.asMap(call("GET", t + "/security/pki", null, h).body().get("ca")).get("configuration")), null));
                 case "crl-times" -> {
                     // READ-ONLY: the CRL configuration's own times beside the issued CRL's

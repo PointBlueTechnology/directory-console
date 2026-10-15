@@ -16,6 +16,7 @@ import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../compone
 import { TracePanel } from '../components/TracePanel';
 import { MappingTablesPanel } from '../components/MappingTables';
 import { MigratePanel } from '../components/Migrate';
+import { CacheInspector } from '../components/CacheInspector';
 import { DriverPropertiesTab } from '../components/DriverProperties';
 
 type Idm = ReturnType<typeof idm>;
@@ -81,7 +82,7 @@ export function DriverPage({ guid }: { guid: string }) {
               <JobsTable api={api} load={() => api.driverPart<{ jobs: Job[] }>(guid, 'jobs')} />
             </Tab>
             <Tab eventKey="associations" title={<TabTitleText>Associations</TabTitleText>}><Associations api={api} guid={guid} /></Tab>
-            <Tab eventKey="cache" title={<TabTitleText>Cache</TabTitleText>}><Cache api={api} guid={guid} onChanged={load} /></Tab>
+            <Tab eventKey="cache" title={<TabTitleText>Cache</TabTitleText>}><CacheInspector api={api} guid={guid} onChanged={load} /></Tab>
             <Tab eventKey="health" title={<TabTitleText>Health</TabTitleText>}><Health api={api} guid={guid} /></Tab>
             <Tab eventKey="properties" title={<TabTitleText>Properties</TabTitleText>}><DriverPropertiesTab guid={guid} /></Tab>
             <Tab eventKey="trace" title={<TabTitleText>Trace</TabTitleText>}><TracePanel kind="drivers" guid={guid} /></Tab>
@@ -245,46 +246,6 @@ function Associations({ api, guid }: { api: Idm; guid: string }) {
           </Table>}
         </>
       )}
-    </div>
-  );
-}
-
-function Cache({ api, guid, onChanged }: { api: Idm; guid: string; onChanged: () => void }) {
-  const level = useHeading();
-  const { can } = useSession();
-  const { run, dialog } = useConfirmed();
-  const sure = useAreYouSure();
-  const [page, setPage] = useState<{ empty: boolean; xds: string } | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const load = useCallback(() => { setError(null); api.driverPart<{ empty: boolean; xds: string }>(guid, 'cache?count=20').then(setPage).catch(setError); }, [api, guid]);
-  useEffect(load, [load]);
-  return (
-    <div className="dc-tab-body">
-      {can('operator') && (
-        <div><Button variant="danger" onClick={() => sure.ask('Clear the cache?', 'Every event waiting in this driver\'s cache is discarded; the connected system will not receive them.', 'Clear', async () => {
-          setError(null);
-          try {
-            await run((c) => api.clearCache(guid, c));
-            setNotice('Cache cleared.');
-            onChanged();
-            load();
-          } catch (x) {
-            setError(x);
-          }
-        })}>Clear the cache</Button></div>
-      )}
-      {notice && <Alert component={level} variant="success" isInline isPlain title={notice} />}
-      <ProblemAlert error={error} />
-      {page && (page.empty ? <p>The cache is empty.</p> : (
-        <>
-          <p className="dc-subtle">The first 20 events, as XDS.</p>
-          <pre className="dc-mono dc-pre">{page.xds}</pre>
-        </>
-      ))}
-      {!page && !error && <Spinner size="md" aria-label="Loading" />}
-      {dialog}
-      {sure.dialog}
     </div>
   );
 }
