@@ -3,7 +3,7 @@ package com.pointblue.console.server.auth;
 import java.util.Locale;
 
 /**
- * What the console offers a person (DESIGN-directory-console.md section 7.4). eDirectory's own rights
+ * What the console offers a person. eDirectory's own rights
  * still decide what an operation can do: both must allow it.
  */
 public enum Role {

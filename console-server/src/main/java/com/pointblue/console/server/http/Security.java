@@ -35,9 +35,9 @@ import javax.naming.directory.ModificationItem;
 import javax.naming.directory.SearchControls;
 
 /**
- * Security services (Phase 6a, inventory section 5): the tree's PKI as LDAP objects (read-only),
- * password policies and their assignments, challenge sets, and the NMAS Login Policy. Verified on ig4
- * by spikes/Phase6Probe and Phase6Assign (2026-10-12).
+ * Security services: the tree's PKI as LDAP objects (read-only),
+ * password policies and their assignments, challenge sets, and the NMAS Login Policy. Verified on a lab tree
+ *.
  *
  * <pre>
  * GET    /api/v2/trees/{tree}/security/pki                                   CA, server certificates, trusted roots, CRLs
@@ -296,7 +296,7 @@ final class Security {
         }
         List<String> ips = new ArrayList<>();
         for (Object a : srv.attributes().getOrDefault("networkaddress", List.of())) {
-            // IPv4 only: eDirectory's own default certificates name the IPv4 address and no other (ig4, 2026-10-14)
+            // IPv4 only: eDirectory's own default certificates name the IPv4 address and no other (a lab tree, 2026-10-14)
             String ip = a instanceof byte[] b ? NetAddress.ipOnly(b) : null;
             if (ip != null && !ip.contains(":") && !ip.startsWith("127.") && !ips.contains(ip)) {
                 ips.add(ip);
@@ -323,7 +323,7 @@ final class Security {
         if (dns.isEmpty()) {
             dns.add(serverName);
         }
-        // the CA's default RSA key size, as eDirectory's own default certificates have it (4096 on ig4)
+        // the CA's default RSA key size, as eDirectory's own default certificates have it (4096 on a lab tree)
         int bits = List.of("2048", "3072", "4096").contains(String.valueOf(ca.first("ndspkiDefaultRSAKeySize"))) ? Integer.parseInt(ca.first("ndspkiDefaultRSAKeySize")) : 2048;
         return new DefaultsState(srv, tree, rsa, ec, bits, ips, dns, existing);
     }
@@ -439,7 +439,7 @@ final class Security {
      * Nothing is deleted: a certificate that is missing is made under its standard name; one that is
      * there gets a successor named "<standard name> <date>", which an LDAP server can then be given as a
      * separate step ({@code PUT pki/ldap-servers/{guid}/certificate}). Deleting a key material object and
-     * making another under the same name crashed ndsd on ig4 (eDirectory 9.2.8, 2026-10-14); eDirectory's
+     * making another under the same name crashed ndsd on a lab tree (eDirectory 9.2.8, 2026-10-14); eDirectory's
      * own renewal (the PKI Health Check, with server self-provisioning on) replaces them in place, which
      * no LDAP operation offers. {@code replace} is "invalid" (only those with a problem, the default) or
      * "all"; {@code kinds} which to consider (dns, ec, ip); {@code dnsNames} and {@code ips} what they
@@ -509,7 +509,7 @@ final class Security {
             boolean ipCert = d == DefaultCert.IP;
             String host = ipCert ? ips.get(0) : dnsNames.isEmpty() ? String.valueOf(st.server().first("cn")) : dnsNames.get(0);
             // subject O=<tree>, CN=<host>, in that order, as eDirectory's own default certificates have it
-            // (ig4); Pki sends a DN's RDNs in its written order, so the tree comes first here
+            // (lab); Pki sends a DN's RDNs in its written order, so the tree comes first here
             String subject = "o=" + javax.naming.ldap.Rdn.escapeValue(tree) + ",cn=" + javax.naming.ldap.Rdn.escapeValue(host);
             // RSA at the CA's default size and EC P-384, both signed with SHA-384, as eDirectory makes them
             Pki.Spec spec = new Pki.Spec(name, d == DefaultCert.EC ? "ec384" : "rsa", st.rsaBits(), "sha384", years,
@@ -1103,7 +1103,7 @@ final class Security {
             }
         }
         // a server's SAS Service lists every key material object on that server (eDirectory adds each new
-        // one itself, ig4 2026-10-13): that is not a use, and is not shown as one
+        // one itself, lab 2026-10-13): that is not a use, and is not shown as one
         List<Map<String, Object>> kmos = new ArrayList<>();
         for (Ldap.Entry k : l.search("", "(objectClass=nDSPKIKeyMaterial)", null, SearchControls.SUBTREE_SCOPE, KMO, 2000)) {
             Map<String, Object> m = ref(k);
@@ -1268,7 +1268,7 @@ final class Security {
         return Names.canonical(Names.child(container, "cn", cn));
     }
 
-    /** A value of nDSPKICertificateChain: four bytes of header (seen on ig4: 00000100, 01000100), then the DER certificate. */
+    /** A value of nDSPKICertificateChain: four bytes of header (seen on a lab tree: 00000100, 01000100), then the DER certificate. */
     static byte[] chainValue(byte[] v) {
         if (v.length > 6 && v[4] == 0x30 && (v[5] & 0xff) == 0x82) {
             return Arrays.copyOfRange(v, 4, v.length);
@@ -1646,7 +1646,7 @@ final class Security {
         Http.json(ex, 200, policy(l, guid));
     }
 
-    /** eDirectory allows deleting an assigned policy and silently clears every target's nspmPasswordPolicyDN (ig4): the count is confirmed first. */
+    /** eDirectory allows deleting an assigned policy and silently clears every target's nspmPasswordPolicyDN (lab): the count is confirmed first. */
     private void deletePolicy(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
         Ldap.Entry e = policyEntry(l, guid);
         int assigned = e.attributes().getOrDefault("nsimassignments", List.of()).size();
@@ -1668,7 +1668,7 @@ final class Security {
 
     /**
      * Assign (or unassign) a policy: eDirectory does not link the target's nspmPasswordPolicyDN and the
-     * policy's nsimAssignments (ig4), so both are written, as iManager does. A target already assigned
+     * policy's nsimAssignments (lab), so both are written, as iManager does. A target already assigned
      * another policy is taken off that policy's list. The Login Policy object counts as the tree.
      */
     private void assign(HttpExchange ex, Ldap l, Sessions.Session s, String guid, String targetGuid, boolean on) throws IOException, NamingException {

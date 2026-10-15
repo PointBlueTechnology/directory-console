@@ -23,22 +23,23 @@ import java.util.regex.Pattern;
 
 /**
  * ONE PKI operation through the console's API against a lab tree, per run, so that a run that upsets
- * eDirectory is known exactly (ig4's ndsd crashed after a batch of PKI calls, 2026-10-13). Writes run
- * on ig4 only. Not a JUnit test.
+ * eDirectory is known exactly (a lab ndsd crashed after a batch of PKI calls). Writes run
+ * only on environments listed in -Dlive.writable. Not a JUnit test.
  *
- *   java -cp … LivePkiStep <environments.properties> ig4 server-create <name>
- *   java -cp … LivePkiStep <environments.properties> ig4 server-delete <name>
- *   java -cp … LivePkiStep <environments.properties> ig4 user-create <user DN> <name>
- *   java -cp … LivePkiStep <environments.properties> ig4 user-list <user DN>
- *   java -cp … LivePkiStep <environments.properties> ig4 defaults-read <server name>
- *   java -cp … LivePkiStep <environments.properties> ig4 defaults-repair <server name> <invalid|all> <dns,ec,ip>
+ *   java -cp … LivePkiStep <environments.properties> <env> server-create <name>
+ *   java -cp … LivePkiStep <environments.properties> <env> server-delete <name>
+ *   java -cp … LivePkiStep <environments.properties> <env> user-create <user DN> <name>
+ *   java -cp … LivePkiStep <environments.properties> <env> user-list <user DN>
+ *   java -cp … LivePkiStep <environments.properties> <env> defaults-read <server name>
+ *   java -cp … LivePkiStep <environments.properties> <env> defaults-repair <server name> <invalid|all> <dns,ec,ip>
  */
 public final class LivePkiStep {
 
     public static void main(String[] args) throws Exception {
         LegacyTls.enable();
-        if (!args[1].equals("ig4")) {
-            throw new IllegalStateException("PKI steps run on ig4 only");
+        // writes go only to environments named in -Dlive.writable (comma-separated): pure test trees
+        if (!List.of(System.getProperty("live.writable", "").split(",")).contains(args[1])) {
+            throw new IllegalStateException("PKI steps run only on environments listed in -Dlive.writable");
         }
         Environments.Environment env = Environments.load(Path.of(args[0])).get(args[1]);
         URI u = URI.create(env.url);

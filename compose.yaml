@@ -1,8 +1,7 @@
 # Directory Console on one host: `docker compose up -d` pulls the published image; then
 # `docker compose logs console` shows the setup URL, the one-time token and the console certificate's
-# fingerprint (DESIGN section 5.1). To run a local build instead: container/build.sh, then
+# fingerprint. To run a local build instead: container/build.sh, then
 # CONSOLE_IMAGE=directory-console:<version> docker compose up -d.
-# Port 80 is only for ACME HTTP-01 (Phase 5); leave it out until then.
 services:
   console:
     image: ${CONSOLE_IMAGE:-ghcr.io/pointbluetechnology/directory-console:latest}

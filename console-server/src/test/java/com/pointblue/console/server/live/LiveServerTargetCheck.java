@@ -32,8 +32,7 @@ import java.util.regex.Pattern;
  * the servers holding the user's replica, signs in to the second, reads from it and compares both; a
  * running driver's status and named passwords are compared, and its start option on the second server
  * is set to the value that server already has; a single sign-on session reaches the second server by
- * itself. Everything made for the run is deleted. Engine jars must be on the class path for the IDM
- * part. Not a JUnit test.
+ * itself. Everything made for the run is deleted. Not a JUnit test.
  *
  *   java -cp … LiveServerTargetCheck <environments.properties> <env> <parent DN> <second server DN>
  */

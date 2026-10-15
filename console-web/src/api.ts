@@ -1,4 +1,4 @@
-// The console's API (DESIGN-directory-console.md section 8). Objects are addressed by GUID; a DN is
+// The console's API. Objects are addressed by GUID; a DN is
 // only ever a value in JSON or a query parameter encoded by URLSearchParams, never part of a path.
 
 export interface Problem {
@@ -384,7 +384,7 @@ export function isGroup(o: Pick<Row, 'objectClasses'>): boolean {
   return o.objectClasses.some((c) => GROUP_CLASSES.includes(c.toLowerCase()) || c.toLowerCase() === 'dynamicgroupaux');
 }
 
-// ---- Identity Manager (Phase 4) ----------------------------------------------------------------
+// ---- Identity Manager ----------------------------------------------------------------
 
 export interface IdmStatus {
   available: boolean;
@@ -703,7 +703,7 @@ export interface ObjectComparison extends Comparison<{ revision?: unknown }> {
   attributes: { name: string; perReplica: boolean; differs: boolean; values: Record<string, Value[]> }[];
 }
 
-// ---- Task presets and settings (Phase 3) -------------------------------------------------------
+// ---- Task presets and settings -------------------------------------------------------
 
 export type PresetAction = 'password' | 'unlock' | 'enable' | 'disable' | 'attributes';
 
@@ -800,7 +800,7 @@ export function settings(id: string) {
   };
 }
 
-// ---- eDirectory administration (Phase 5) -------------------------------------------------------
+// ---- eDirectory administration -------------------------------------------------------
 
 export type ReplicaType = 'master' | 'read-write' | 'read-only' | 'subordinate-reference' | 'sparse-write' | 'sparse-read';
 
@@ -883,7 +883,7 @@ export function edir(id: string) {
 
 export type Edir = ReturnType<typeof edir>;
 
-// ---- Security services (Phase 6a) --------------------------------------------------------------
+// ---- Security services --------------------------------------------------------------
 
 export interface Certificate {
   subject: string;

@@ -16,7 +16,7 @@ import { CertificateDetails, ExpiryLabel, ScopeSelect, TrustCertificateModal, Tr
 type Live = { directory: Directory; probe?: Probe; error?: string };
 
 /**
- * The certificates the console trusts for its directory connections (DESIGN section 6): each
+ * The certificates the console trusts for its directory connections: each
  * directory's live certificate, the trusted certificates with their expiry, and the host exceptions.
  * Administrators only; every change needs a sign-in within the last 10 minutes and is audited.
  */

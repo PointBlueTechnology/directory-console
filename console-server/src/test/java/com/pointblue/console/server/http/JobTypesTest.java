@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.Test;
 
-/** Job types from the engine's DiscoverJobs answer (FakeEngine's, trimmed from ig4's). */
+/** Job types from the engine's DiscoverJobs answer (FakeEngine's, in the engine's shape). */
 public class JobTypesTest {
 
     private static byte[] answer() {
@@ -38,7 +38,7 @@ public class JobTypesTest {
         assertEquals(List.of("process-unassociated", "submit-method", "start-driver", "days", "interval", "pw"), p.stream().map(x -> x.get("name")).toList());
         Map<String, Object> method = p.get(1);
         assertEquals("submit-queue", method.get("value"));
-        assertEquals(List.of(Map.of("value", "submit-queue", "label", "queue (use cache)"), Map.of("value", "submit-direct", "label", "direct (bypass cache)")), method.get("choices"));
+        assertEquals(List.of(Map.of("value", "submit-queue", "label", "queue (through the cache)"), Map.of("value", "submit-direct", "label", "direct (skipping the cache)")), method.get("choices"));
         Map<String, Object> start = p.get(2);
         assertEquals(1, start.get("depth"));
         assertEquals("submit-method", start.get("parent"));

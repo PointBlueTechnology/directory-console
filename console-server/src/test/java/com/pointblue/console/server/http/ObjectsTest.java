@@ -155,7 +155,7 @@ public class ObjectsTest {
         assertEquals(2, ((List<?>) got.get("drivers")).size());
         String hr = (String) ((List<?>) got.get("drivers")).stream().map(Json::asMap).filter(d -> "HR".equals(d.get("name"))).findFirst().orElseThrow().get("guid");
         assertEquals(List.of(), got.get("passwordSync"));
-        // the engine's record of each driver's last password synchronization (ig4's form)
+        // the engine's record of each driver's last password synchronization (as the engine writes it)
         edir.server.modify("cn=viewer,ou=Users,o=acme", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD,
             "DirXML-PasswordSyncStatus", hr.toUpperCase() + "20261007155444953000000000001Code(-8032) Operation vetoed by policy.",
             "0123456789ABCDEF0123456789ABCDEF20261008010203004000000000005Password Synchronization is pending."));
@@ -285,7 +285,7 @@ public class ObjectsTest {
 
     @Test
     public void mappingTablesAreReadEditedCreatedAndDeleted() throws Exception {
-        // Designer writes each column definition among the rows, as on ig4
+        // Designer writes each column definition among the rows, as on a lab tree
         String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><mapping-table>\n\t<col-def name=\"key\" type=\"nocase\"/>\n\t<row>\n\t\t<col>dept1</col>\n"
             + "\t\t<col>Sales &amp; Marketing</col>\n\t</row>\n\t<col-def name=\"value\" type=\"case\"/>\n\t<row>\n\t\t<col>dept2</col>\n\t\t<col>Support</col>\n\t</row>\n</mapping-table>";
         edir.add("dn: cn=Set1,o=system", "objectClass: DirXML-DriverSet", "cn: Set1");

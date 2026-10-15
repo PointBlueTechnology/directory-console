@@ -33,7 +33,7 @@ function StateCell({ c }: { c?: DefaultCertificates['certificates'][number] }) {
  * choose what to renew, review, then each server in turn. Nothing is deleted: a missing certificate is
  * made under its standard name, an existing one gets a successor "<name> <date>" beside it, and an LDAP
  * server is moved to the successor as a separate step at the end. (Deleting and re-making a certificate
- * under the same name crashed ndsd on ig4; eDirectory's own renewal replaces in place, which no LDAP
+ * under the same name crashed ndsd on a lab tree; eDirectory's own renewal replaces in place, which no LDAP
  * operation can.)
  */
 export function DefaultCertificatesModal({ servers, onClose, onChanged }: { servers: EdirServer[]; onClose: () => void; onChanged: () => void }) {

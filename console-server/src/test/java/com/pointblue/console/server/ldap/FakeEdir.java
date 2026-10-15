@@ -37,7 +37,7 @@ import javax.net.ssl.SSLContext;
  * no schema checking (eDirectory attributes such as groupMembership and loginDisabled), and the
  * GetEffectivePrivileges extended operation answering a fixed value and recording what it was asked.
  * Like eDirectory, every entry gets a 16-byte {@code GUID} and a {@code revision} that changes on each
- * modify; {@code cn=subschema,o=system} (named by the root DSE) holds eDirectory-style class and attribute descriptions (a sample of ig4's).
+ * modify; {@code cn=subschema,o=system} (named by the root DSE) holds eDirectory-style class and attribute descriptions (a sample from a lab tree).
  */
 public final class FakeEdir implements AutoCloseable {
 
@@ -149,7 +149,7 @@ public final class FakeEdir implements AutoCloseable {
         server.startListening();
     }
 
-    /** A sample of eDirectory 9.2.8's schema (ig4), enough for the console's container and syntax decisions. */
+    /** A sample of eDirectory 9.2.8's schema (lab), enough for the console's container and syntax decisions. */
     public static final String[] SCHEMA = {
         "dn: cn=subschema,o=system",
         "objectClass: subschema",

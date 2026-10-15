@@ -6,10 +6,9 @@ import java.util.List;
 import javax.naming.NamingException;
 
 /**
- * eDirectory partitions and replicas over LDAP extended operations (DESIGN-directory-console.md
- * section 4.1 of the inventory). The encodings are Novell JLDAP's ({@code com.novell.ldap.extensions}),
+ * eDirectory partitions and replicas over LDAP extended operations. The encodings are Novell JLDAP's ({@code com.novell.ldap.extensions}),
  * the authoritative client: a request value is BER elements back to back, not a SEQUENCE. Verified on
- * ig4 (two servers, eDirectory 9.2.8 and 9.3.2), 2026-10-11:
+ * a lab tree (two servers, eDirectory 9.2.8 and 9.3.2), 2026-10-11:
  * <ul>
  * <li>List replicas includes subordinate references (type 3): a server whose replica was removed keeps
  *     listing the partition as one.</li>
@@ -76,8 +75,8 @@ public final class Partitions {
     }
 
     /**
-     * eDirectory 9.2.8 answers with a SEQUENCE OF OCTET STRING (ig4); 9.3.3 with one OCTET STRING holding
-     * JSON, {@code {"partitions":["", "o=data"]}} (test3, 2026-10-12). Novell's JLDAP reads only the first.
+     * eDirectory 9.2.8 answers with a SEQUENCE OF OCTET STRING (lab); 9.3.3 with one OCTET STRING holding
+     * JSON, {@code {"partitions":["", "o=data"]}} (a second lab tree, 2026-10-12). Novell's JLDAP reads only the first.
      */
     static List<String> decodeList(byte[] r) {
         List<String> out = new ArrayList<>();
@@ -121,7 +120,7 @@ public final class Partitions {
 
     /**
      * One {@code Replica} value: SEQUENCE { serverDN, type (state in the high 16 bits), partition ID on
-     * that server, replica number, SEQUENCE OF SEQUENCE { address type, address } }. Read on ig4: the
+     * that server, replica number, SEQUENCE OF SEQUENCE { address type, address } }. Read on a lab tree: the
      * third integer is 1 on the master and 2 on the read/write replica, and the second equals that
      * server's partition ID from get replica info. URL addresses (type 13) are UTF-16LE.
      */
@@ -188,7 +187,7 @@ public final class Partitions {
      * Run a background process (limber, janitor or skulker) on {@code serverDn} now. The request value
      * is the server's DN as a BER octet string: with no value (as JLDAP's TriggerBackgroundProcessRequest
      * sends) eDirectory 9.2.8 answers "Could not convert to NDS Name" over JNDI; with another server's DN
-     * it runs there (ig4, 2026-10-11).
+     * it runs there (a lab tree, 2026-10-11).
      */
     public static void trigger(Ldap l, String process, String serverDn) throws NamingException {
         String oid = switch (process) {

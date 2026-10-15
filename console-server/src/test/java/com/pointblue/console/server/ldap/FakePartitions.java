@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * eDirectory's partition operations for the fake directory: partitions and their replicas kept in
  * memory, answered in JLDAP's encodings (see Partitions). Operations complete at once; a removed
- * replica becomes a subordinate reference, as on ig4. Background processes and LDAP refresh are
+ * replica becomes a subordinate reference, as on a lab tree. Background processes and LDAP refresh are
  * recorded in {@link #triggered}.
  */
 public final class FakePartitions extends InMemoryExtendedOperationHandler {

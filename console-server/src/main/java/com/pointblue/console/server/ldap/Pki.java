@@ -18,7 +18,7 @@ import javax.naming.ldap.Rdn;
  * {@code {"code": -NNN, "message": …}} with LDAP success. DNs are in eDirectory's dotted form
  * ({@code cn=a.ou=b.o=c}).
  *
- * <p>Measured on ig4 (9.2.8): server certificates (create, list) and user certificates (create, list)
+ * <p>Measured on a lab tree (9.2.8): server certificates (create, list) and user certificates (create, list)
  * work. A run that also revoked a user certificate, sent a {@code deleteCertificate} eDirectory could
  * not decode, and issued a CRL was followed by ndsd crashing (heap corruption): those verbs are not used
  * here until each has been tried on its own.
@@ -133,7 +133,7 @@ public final class Pki {
         revoke(l, SERVER_CERTIFICATES, p, crlConfigurationDn, reason, comment);
     }
 
-    /** As {@link #revokeServerCertificate}, for one of a user's certificates (tried on ig4, 2026-10-13). */
+    /** As {@link #revokeServerCertificate}, for one of a user's certificates (tried on a lab tree, 2026-10-13). */
     public static void revokeUserCertificate(Ldap l, String userDn, String name, String crlConfigurationDn, int reason, String comment)
             throws NamingException, Refused {
         Map<String, Object> p = new LinkedHashMap<>();
@@ -215,7 +215,7 @@ public final class Pki {
                 m.put("subject", c.get("subjectDN"));
                 m.put("issuer", c.get("issuerName"));
                 m.put("serial", c.get("serialNumber"));
-                // the JSON's dates were six hours ahead of the certificate's on ig4 (CDT, 2026-10-13): read the certificate's own
+                // the JSON's dates were six hours ahead of the certificate's on a lab tree (CDT, 2026-10-13): read the certificate's own
                 java.security.cert.X509Certificate x = parse(c.get("certificate"));
                 m.put("notBefore", x != null ? x.getNotBefore().toInstant().toString() : epoch(c.get("effectiveDate")));
                 m.put("notAfter", x != null ? x.getNotAfter().toInstant().toString() : epoch(c.get("expiryDate")));

@@ -33,7 +33,7 @@ import org.w3c.dom.NodeList;
  * A job's definition, read and changed over LDAP with the person's own rights (no engine needed): the
  * job object's {@code XmlData} ({@code <job-aggregation><job-definition disabled schedule …>}), its
  * servers ({@code DirXML-ServerList}) and scope ({@code DirXML-Scope}, {@code <dn>#<n>#<scope-def …/>}),
- * as on ig4 (2026-10-14). Running and aborting a job stay with the engine (Idm).
+ * as on a lab tree (2026-10-14). Running and aborting a job stay with the engine (Idm).
  *
  * <pre>
  * GET    /api/v2/trees/{tree}/idm/jobs/{guid}/definition    summary, schedule, servers, scope, parameters, version

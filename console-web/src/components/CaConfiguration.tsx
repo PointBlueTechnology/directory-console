@@ -23,7 +23,7 @@ const OPTIONS: { key: Key; label: string; help?: string }[] = [
 
 /**
  * The Organizational CA's settings, each switched on its own. Server self-provisioning is the switch
- * that lets eDirectory renew its default certificates itself (DESIGN 8.4).
+ * that lets eDirectory renew its default certificates itself.
  */
 export function CaConfigurationPanel({ value, certificates, editor, save }: {
   value: CaConfiguration; certificates: Certificate[]; editor: boolean; save: (change: Partial<CaConfiguration>) => Promise<CaConfiguration>;

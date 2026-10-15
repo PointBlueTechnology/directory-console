@@ -25,8 +25,8 @@ import javax.naming.directory.ModificationItem;
 import javax.naming.directory.SearchControls;
 
 /**
- * eDirectory administration (Phase 5, inventory section 4): servers, partitions and replicas, indexes,
- * schema changes, background processes. Verified on ig4 by spikes/Phase5Writes (2026-10-11).
+ * eDirectory administration: servers, partitions and replicas, indexes,
+ * schema changes, background processes. Verified on a lab tree.
  *
  * <pre>
  * GET    /api/v2/trees/{tree}/edir/servers                         NCP servers
@@ -211,7 +211,7 @@ final class Edir {
     }
 
     /**
-     * networkAddress over LDAP: the address type in ASCII digits, '#', then the raw address (ig4:
+     * networkAddress over LDAP: the address type in ASCII digits, '#', then the raw address (lab:
      * {@code 9#} and six bytes, port then IPv4, for TCP). Only TCP and UDP IPv4 and URLs are shown.
      */
     static String networkAddress(byte[] b) {
@@ -308,7 +308,7 @@ final class Edir {
     // ---- indexes ------------------------------------------------------------------------------------
 
     /**
-     * {@code indexDefinition}: version$name$state$rule$type$value-state$attribute[$attribute…]. On ig4 every
+     * {@code indexDefinition}: version$name$state$rule$type$value-state$attribute[$attribute…]. On a lab tree every
      * index in use reads state 0 and value state 1; rule 0 value, 1 presence, 2 substring; type 0 user
      * defined, 1 added with an attribute, 2 required by the system, 3 operational.
      */
@@ -503,7 +503,7 @@ final class Edir {
         return root.first("subschemaSubentry");
     }
 
-    /** An OID under 2.25 (a random 63-bit integer: eDirectory refused a full 128-bit UUID with -649 on ig4). */
+    /** An OID under 2.25 (a random 63-bit integer: eDirectory refused a full 128-bit UUID with -649 on a lab tree). */
     static String newOid() {
         return "2.25." + (RANDOM.nextLong() >>> 1);
     }
@@ -613,7 +613,7 @@ final class Edir {
 
     private static final Pattern MAY = Pattern.compile("\\sMAY\\s+(\\(\\s*([^)]*)\\)|(\\S+))");
 
-    /** Add optional attributes to a class: the definition's old value removed and the extended one added, in one modify (ig4). */
+    /** Add optional attributes to a class: the definition's old value removed and the extended one added, in one modify (lab). */
     private void addMay(HttpExchange ex, Ldap l, Sessions.Session s, String cls) throws IOException, NamingException {
         List<String> add = names(Http.body(ex).get("attributes"));
         if (add.isEmpty()) {

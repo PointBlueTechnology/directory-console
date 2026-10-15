@@ -23,7 +23,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Live check of Phase 6a against a lab tree: the PKI read (CA, server certificates, trusted roots,
+ * Live check of the security services against a lab tree: the PKI read (CA, server certificates, trusted roots,
  * CRLs) with private keys withheld; a test password policy and challenge set created, linked,
  * assigned to a test OU (both sides checked), seen from a user in it, changed, and deleted (the
  * deletion of an assigned policy asks for the count first); the Login Policy read. Everything made for
@@ -53,7 +53,7 @@ public final class LivePhase6Check {
             LiveSetupCheck.base = "https://127.0.0.1:" + server.port();
             LiveSetupCheck.http = ServerClient.trusting(server);
             setUp(dataPath, u.getHost(), u.getPort() > 0 ? u.getPort() : 636, env.bindDn, env.password);
-            System.out.println("# Phase 6a live check: " + args[1]);
+            System.out.println("# Security services live check: " + args[1]);
 
             LiveSetupCheck.Reply pki = call("GET", T + "/security/pki", null, admin);
             Map<String, Object> ca = Json.asMap(pki.body().get("ca"));

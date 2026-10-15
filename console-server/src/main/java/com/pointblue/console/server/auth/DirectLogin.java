@@ -21,7 +21,7 @@ import javax.naming.directory.SearchControls;
 import javax.naming.ldap.LdapName;
 
 /**
- * Direct login (DESIGN-directory-console.md section 7.2): the person's name and password, an LDAPS bind
+ * Direct login: the person's name and password, an LDAPS bind
  * as them, and console roles from their eDirectory group membership.
  *
  * <p>A full DN is used as given. A bare name is resolved contextlessly, as the directory's console

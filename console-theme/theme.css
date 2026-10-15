@@ -1,5 +1,5 @@
 /*
- * Point Blue theme for PatternFly 6 (DESIGN-directory-console.md section 13.1).
+ * Point Blue theme for PatternFly 6.
  * Import after @patternfly/patternfly's CSS. Only design tokens are overridden, so PatternFly
  * upgrades keep working; components are never restyled here.
  *

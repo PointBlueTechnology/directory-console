@@ -26,20 +26,20 @@ public final class FakeEngine implements Operate.Engine {
     public final Map<String, String> cache = new ConcurrentHashMap<>();
     public final List<String> actions = java.util.Collections.synchronizedList(new ArrayList<>());
 
-    /** The engine's DiscoverJobs answer, as ig4 gave it (IDM 4.8.7, 2026-10-15), trimmed. */
+    /** The engine's DiscoverJobs answer, in the shape IDM 4.8.7 gives it, with our own wording. */
     public static final String JOB_TYPES = """
         <?xml version="1.0" encoding="UTF-8"?><jobs>
         <job-aggregation>
           <job-definition auto-delete="false" disabled="false" display-name="xlfid(job-display-name)Subscriber channel trigger" schedule="0 1 * * 0" scope-required="false" type="java">
-            <description>xlfid(job-description)This job submits trigger documents.</description>
+            <description>xlfid(job-description)Sends trigger documents to the subscriber channel.</description>
             <containment>DirXML-Driver</containment>
             <java-class>com.novell.nds.dirxml.job.trigger.Trigger</java-class>
             <configuration-values><definitions>
               <definition display-name="xlfid(process-unassociated)Submit for unassociated objects?" name="process-unassociated" type="boolean"><value>false</value></definition>
               <group>
                 <definition display-name="xlfid(submit-method)Method" name="submit-method" type="enum">
-                  <enum-choice display-name="xlfid(submit-queue)queue (use cache)">submit-queue</enum-choice>
-                  <enum-choice display-name="xlfid(submit-direct)direct (bypass cache)">submit-direct</enum-choice>
+                  <enum-choice display-name="xlfid(submit-queue)queue (through the cache)">submit-queue</enum-choice>
+                  <enum-choice display-name="xlfid(submit-direct)direct (skipping the cache)">submit-direct</enum-choice>
                   <value>submit-queue</value>
                 </definition>
                 <subordinates active-value="submit-direct">
@@ -210,7 +210,7 @@ public final class FakeEngine implements Operate.Engine {
 
     @Override
     public int engineVersion() {
-        return 0x48070003; // 4.8.7.0 build 3, as ig4 reports
+        return 0x48070003; // 4.8.7.0 build 3, as a lab engine reports
     }
 
     @Override

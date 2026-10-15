@@ -16,7 +16,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 
 /**
- * Bootstrap mode's one-time setup token (DESIGN-directory-console.md section 5.1): 128 random bits,
+ * Bootstrap mode's one-time setup token: 128 random bits,
  * valid 60 minutes, printed to the container log and written to {@code bootstrap.txt} (owner-only)
  * together with the console certificate's fingerprint, so the person setting up can check that the
  * browser reached this console before typing anything. Being able to read either is the root of trust.

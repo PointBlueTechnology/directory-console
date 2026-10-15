@@ -30,7 +30,7 @@ import org.w3c.dom.Node;
  * Identity Manager mapping tables, read and changed over LDAP with the person's own rights: a
  * {@code DirXML-Resource} whose {@code DirXML-ContentType} is a mapping table and whose
  * {@code DirXML-Data} is {@code <mapping-table>} with a {@code <col-def name type/>} per column (written
- * among the rows by Designer) and a {@code <row>} of {@code <col>} values each (ig4, 2026-10-14).
+ * among the rows by Designer) and a {@code <row>} of {@code <col>} values each (a lab tree, 2026-10-14).
  *
  * <pre>
  * GET    /api/v2/trees/{tree}/idm/mapping-tables?under={guid}   the tables under a driver set, driver or library

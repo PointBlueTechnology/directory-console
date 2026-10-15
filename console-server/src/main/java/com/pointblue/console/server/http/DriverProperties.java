@@ -24,7 +24,7 @@ import org.w3c.dom.Node;
  * changed here, on the Trace tab): what it runs, how it authenticates, its driver parameters, global
  * configuration values (its own and those of the GCV objects it links), engine control values, filter
  * and policies. Read over LDAP with the person's own rights; the shim's password is never read, only
- * whether one is set. Attributes and the policy-set numbers are as on ig4 (2026-10-14).
+ * whether one is set. Attributes and the policy-set numbers are as on a lab tree (2026-10-14).
  *
  * <pre>
  * GET /api/v2/trees/{tree}/idm/drivers/{guid}/properties
@@ -70,7 +70,7 @@ final class DriverProperties {
 
     /**
      * A driver set's properties, read-only: its global configuration values (its own and those of the GCV
-     * objects it links), Java environment ({@code DirXML-JavaEnvironmentParameters}, NAME$value, ig4:
+     * objects it links), Java environment ({@code DirXML-JavaEnvironmentParameters}, NAME$value, such as
      * DHOST_JVM_INITIAL_HEAP$3G), servers, linked policies and libraries, log limit and password policy.
      * Its trace settings and activation have their own tabs.
      */
@@ -157,7 +157,7 @@ final class DriverProperties {
             policies.add(p);
             // a package's GCV object: its values are the driver's too
             if (set == 14) {
-                // a DirXML-GlobalConfigDef keeps them in DirXML-ConfigValues, as the driver does (ig4)
+                // a DirXML-GlobalConfigDef keeps them in DirXML-ConfigValues, as the driver does (lab)
                 Ldap.Entry g = l.read(dn, "DirXML-ConfigValues", "DirXML-Data");
                 Element cv = g == null ? null : root(first(bytes(g, "DirXML-ConfigValues"), bytes(g, "DirXML-Data")));
                 if (cv != null) {

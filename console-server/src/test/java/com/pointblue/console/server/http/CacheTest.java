@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.Test;
 
-/** The Cache Inspector's parsing: the driver statistics' cache section and a cached event, as ig4 gives them. */
+/** The Cache Inspector's parsing: the driver statistics' cache section and a cached event, as the engine gives them. */
 public class CacheTest {
 
     @Test
@@ -25,13 +25,13 @@ public class CacheTest {
 
     @Test
     public void anEventsParts() {
-        String xds = "<nds dtdversion=\"4.0\"><source/><input><add cached-time=\"20261013151206.041Z\" class-name=\"User\" event-id=\"idm-ig4#1\""
+        String xds = "<nds dtdversion=\"4.0\"><source/><input><add cached-time=\"20261013151206.041Z\" class-name=\"User\" event-id=\"idm1#1\""
             + " src-dn=\"\\T\\data\\u1\"><add-attr attr-name=\"Surname\"><value>a</value></add-attr><add-attr attr-name=\"Surname\"><value>b</value></add-attr>"
             + "</add></input></nds>";
         List<org.w3c.dom.Element> events = Cache.events(xds);
         Map<String, Object> e = Cache.event(events.get(0));
         assertEquals("add", e.get("type"));
-        assertEquals("idm-ig4#1", e.get("eventId"));
+        assertEquals("idm1#1", e.get("eventId"));
         assertEquals("\\T\\data\\u1", e.get("srcDn"));
         assertEquals("each attribute once", List.of("Surname"), e.get("attributes"));
         assertEquals("2026-10-13T15:12:06.041Z", e.get("cachedTime"));

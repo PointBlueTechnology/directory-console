@@ -27,9 +27,9 @@ import javax.naming.directory.SearchControls;
 import javax.naming.ldap.Rdn;
 
 /**
- * Object tasks (Phase 2b): password, account, intruder lockout, group membership kept on both sides,
+ * Object tasks: password, account, intruder lockout, group membership kept on both sides,
  * aliases after a move or rename, subtree delete, and the guard against an Inherited Rights Filter that
- * would lock the editor out. What eDirectory does for each was measured on ig4 (spikes/Phase2bProbe).
+ * would lock the editor out. What eDirectory does for each was measured on a lab tree.
  */
 final class Tasks {
 
@@ -284,7 +284,7 @@ final class Tasks {
 
     /**
      * Add or remove one membership on both sides: the group's {@code member} and {@code equivalentToMe},
-     * the member's {@code groupMembership} and {@code securityEquals}. Measured on ig4: eDirectory does not
+     * the member's {@code groupMembership} and {@code securityEquals}. Measured on a lab tree: eDirectory does not
      * link {@code member} and {@code groupMembership}, but does add or remove {@code securityEquals} when
      * {@code equivalentToMe} changes. Only missing (or present) values are written. When the member side
      * fails after the group side succeeded, the group side is put back.
@@ -326,7 +326,7 @@ final class Tasks {
             return result;
         }
         try {
-            // eDirectory keeps securityEquals in step with the group's equivalentToMe (ig4), so the
+            // eDirectory keeps securityEquals in step with the group's equivalentToMe (lab), so the
             // member side is worked out again after the group side is written
             Ldap.Entry after = groupSide.isEmpty() ? m : l.read(memberDn, "groupMembership", "securityEquals");
             memberSide = after == null ? memberSide : sideChanges(after, add, groupDn, "groupMembership", "securityEquals");
@@ -401,7 +401,7 @@ final class Tasks {
     // ---- alias, subtree -------------------------------------------------------------------------
 
     /**
-     * An alias at {@code oldDn} pointing to {@code newDn}, created as soon as eDirectory allows (ig4 took
+     * An alias at {@code oldDn} pointing to {@code newDn}, created as soon as eDirectory allows (a lab tree took
      * one attempt, 52 ms after a move); retried briefly while the move settles. Returns "created" or why not.
      */
     String leaveAlias(Ldap l, String oldDn, String newDn) {
@@ -503,7 +503,7 @@ final class Tasks {
     /**
      * Refuse ACL changes that leave an Inherited Rights Filter blocking Supervisor (entry rights), or
      * write or Supervisor on all attributes, while no trustee holds explicit Supervisor on the object:
-     * nobody could then manage it (an ig4 test container was lost this way on 2026-10-09). Explicit
+     * nobody could then manage it (a test container was lost this way during development). Explicit
      * rights are not filtered, so an explicit Supervisor trustee keeps the object manageable.
      */
     void guardInheritanceMask(Ldap l, String dn, List<ModificationItem> mods) throws NamingException {

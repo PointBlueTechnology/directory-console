@@ -1,5 +1,5 @@
 # Directory Console: the server on a distroless Java 21 runtime, as the nonroot user (65532), with a
-# read-only root file system. /data is the only writable path (DESIGN-directory-console.md section 12).
+# read-only root file system. /data is the only writable path.
 # Build with container/build.sh, which gathers the artifacts.
 
 # distroless has no shell: this stage only makes /data owned by the nonroot user
@@ -13,6 +13,7 @@ LABEL org.opencontainers.image.source="https://github.com/PointBlueTechnology/di
 COPY --from=prep --chown=65532:65532 /out/data /data
 COPY artifacts/lib/ /app/lib/
 COPY artifacts/console.jar /app/console.jar
+COPY artifacts/LICENSE artifacts/THIRD-PARTY-NOTICES.md /app/
 USER 65532:65532
 ENV CONSOLE_DATA=/data CONSOLE_PORT=8443
 EXPOSE 8443

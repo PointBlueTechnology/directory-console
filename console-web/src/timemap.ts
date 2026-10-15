@@ -1,6 +1,6 @@
 // loginAllowedTimeMap: 42 bytes, 336 bits = 7 days x 48 half-hours, Sunday 00:00 UTC first (eDirectory
 // keeps times in UTC; iManager shows the grid in the workstation's time zone). Bit n is in
-// byte n >> 3, least significant bit first (measured on ig4: the first half-hour is 0x01 in byte 0,
+// byte n >> 3, least significant bit first (measured on a lab tree: the first half-hour is 0x01 in byte 0,
 // the last is 0x80 in byte 41). A set bit allows login.
 
 export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

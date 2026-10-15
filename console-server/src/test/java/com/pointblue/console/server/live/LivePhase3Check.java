@@ -27,7 +27,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Live check of Phase 3 single sign-on against a lab tree: the environment's account is the console's
+ * Live check of single sign-on against a lab tree: the environment's account is the console's
  * service account, a fake identity provider on loopback vouches for a test user made for the run, and
  * the console must act with that user's own eDirectory rights (RFC 4370). In a new container under
  * {@code parent}: a user with a uid, then sign-in through the provider, reads, a write the admin can
@@ -56,7 +56,7 @@ public final class LivePhase3Check {
             LiveSetupCheck.base = "https://127.0.0.1:" + server.port();
             LiveSetupCheck.http = ServerClient.trusting(server);
             setUp(dataPath, u.getHost(), u.getPort() > 0 ? u.getPort() : 636, env.bindDn, env.password);
-            System.out.println("# Phase 3 live check: " + args[1] + " (service account and admin: the environment's account)");
+            System.out.println("# Single sign-on live check: " + args[1] + " (service account and admin: the environment's account)");
 
             String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
             String uid = "dcp3-" + ts;

@@ -186,7 +186,7 @@ function route(path: string) {
   return <NotFound />;
 }
 
-/** Administrators are told of changed pinned certificates, and of trusted ones expired or expiring within 30 days (DESIGN 6.3, 6.5). */
+/** Administrators are told of changed pinned certificates, and of trusted ones expired or expiring within 30 days. */
 function ExpiryBanner() {
   const [soon, setSoon] = useState<{ expired: number; expiring: number; changed: number } | null>(null);
   useEffect(() => {

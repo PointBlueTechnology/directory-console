@@ -23,7 +23,7 @@ import javax.naming.NamingException;
 import javax.naming.directory.SearchControls;
 
 /**
- * Identity Manager (Phase 4), on the signed-in person's own engine connection through DirXMLDev's
+ * Identity Manager, on the signed-in person's own engine connection through DirXMLDev's
  * {@code Operate}: the same operations the {@code idm} CLI performs, verified on its labs. Any console
  * role reads; {@code operator} acts. On a production directory {@code Operate} also wants the
  * directory's name typed ({@code X-Confirm-Directory}).
@@ -270,7 +270,7 @@ final class Idm {
                         try {
                             page = engine.viewCache(t.dn(), 0, count);
                         } catch (Vault.VaultException e) {
-                            // ig4 (IDM 4.8.7) answers "Other" for a running driver; IDC documents the cache as readable only when stopped
+                            // IDM 4.8.7 answers "Other" for a running driver; Identity Console documents the cache as readable only when stopped
                             throw new Http.Problem(409, "cache-unreadable", "the engine would not show this driver's cache (" + e.getMessage()
                                 + "); stop the driver to read it");
                         }
@@ -395,7 +395,7 @@ final class Idm {
     /**
      * A driver's (or driver set's) per-replica values on every server that runs its driver set: the
      * driver's state and start option, or the named passwords. A server not signed in to yet, or
-     * without an engine connection, is reported as such. (On ig4 the engine of a server that does not
+     * without an engine connection, is reported as such. (On a lab tree the engine of a server that does not
      * run the driver set answers "Protocol Error".)
      */
     private void compare(HttpExchange ex, Sessions.Session s, String route, String guid) throws IOException {

@@ -47,7 +47,7 @@ function fileName(s: string) {
   return s.replace(/[^A-Za-z0-9._-]+/g, '_');
 }
 
-/** Security services: the tree's certificates, password policies, challenge sets and login methods (DESIGN Phase 6). */
+/** Security services: the tree's certificates, password policies, challenge sets and login methods. */
 export function SecurityPage({ tab = 'certificates' }: { tab?: string }) {
   const go = (k: string | number) => navigate(k === 'certificates' ? '/security' : `/security/${k}`);
   return (

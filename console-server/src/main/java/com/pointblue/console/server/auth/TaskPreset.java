@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * A named, restricted task (DESIGN-directory-console.md section 7.4), such as "reset password and
+ * A named, restricted task, such as "reset password and
  * unlock" for a help desk or "edit phone and title" for HR. It applies to objects of one class and
  * allows only its {@link #ACTIONS} and its attributes, each with field rules. Who may run it, and
  * where, comes from role mappings that grant it.

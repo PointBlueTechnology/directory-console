@@ -422,7 +422,7 @@ public final class Ldap implements AutoCloseable {
     /**
      * A sorted window over every matching entry, not only those that have the sort attribute.
      *
-     * <p>eDirectory's server-side sort depends on its indexes (ig4, 2026-10-09): sorting on some
+     * <p>eDirectory's server-side sort depends on its indexes (a lab tree, 2026-10-09): sorting on some
      * attributes leaves out entries without a value ({@code cn}, {@code sn}), on others keeps them
      * ({@code ou}, {@code l}), and on unindexed ones fails with "dib error (-785)" ({@code o},
      * {@code c}, {@code description}). So the list is split into segments: entries with

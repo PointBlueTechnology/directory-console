@@ -20,7 +20,7 @@ type Row = { obj: DirObject; raw: string; state: string; value: string };
 
 /**
  * The driver's associations across the tree: how many objects are in each state (eDirectory matches
- * DirXML-Associations on "<driver DN>#*", and on "<driver DN>#<state>#*" for a state; ig4), the objects
+ * DirXML-Associations on "<driver DN>#*", and on "<driver DN>#<state>#*" for a state; lab), the objects
  * a page at a time, filtered by state, each linked to its object; an operator may delete the chosen
  * associations or set their state, each through the object inspector's checked change. Read over LDAP,
  * so it needs no engine and has no cap.
@@ -44,7 +44,7 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
   const [busy, setBusy] = useState(false);
   const operator = canAt('operator', driverDn);
 
-  // "<driver DN>#*" matched every association of the driver on ig4, as the bare DN does
+  // "<driver DN>#*" matched every association of the driver on a lab tree, as the bare DN does
   const filter = useCallback((s: AssociationState | '') => `(DirXML-Associations=${esc(driverDn)}#${s ? `${CODE[s]}#` : ''}*)`, [driverDn]);
   const countAll = useCallback(() => {
     Promise.all(['' as const, ...STATES].map((s) => tree.search({ ldapFilter: filter(s), scope: 'subtree', page: { offset: 1, count: 1 } })))

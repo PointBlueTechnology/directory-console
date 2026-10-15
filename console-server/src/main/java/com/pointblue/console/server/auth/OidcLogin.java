@@ -19,7 +19,7 @@ import javax.naming.directory.SearchControls;
 import javax.net.ssl.SSLContext;
 
 /**
- * OpenID Connect sign-in (DESIGN-directory-console.md section 7.3). The provider proves who the person
+ * OpenID Connect sign-in. The provider proves who the person
  * is; the directory's console service account then finds their eDirectory object from a claim
  * (exactly one, active), and the session acts as them: every operation on the service account's
  * connection carries the RFC 4370 proxied-authorization control, so eDirectory applies the person's

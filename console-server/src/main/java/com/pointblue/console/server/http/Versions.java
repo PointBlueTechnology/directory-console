@@ -21,8 +21,8 @@ import org.w3c.dom.NodeList;
  * Version discovery for one server: the engine's version as it answers now, and what the driver set's
  * statistics job last collected on that server (the job's per-replica {@code DirXML-uiXMLBigPerReplica},
  * {@code <TelemetryResults>}: Identity Manager's version and edition, the host, and each driver's shim
- * version, driver ID and usage counts, as on ig4, 2026-10-14). The engine's driver statistics carry no
- * shim version (ig4, every flag tried). Each driver's base package, from {@code DirXML-pkgGUID}, too.
+ * version, driver ID and usage counts, as on a lab tree, 2026-10-14). The engine's driver statistics carry no
+ * shim version (a lab tree, every flag tried). Each driver's base package, from {@code DirXML-pkgGUID}, too.
  */
 final class Versions {
 

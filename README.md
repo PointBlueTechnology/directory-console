@@ -1,5 +1,9 @@
 # Directory Console
 
+> **Beta.** Directory Console is a beta release. It is in active use against lab and test trees, but expect rough
+> edges and changes between versions. Try it on a non-production tree first, and see
+> [docs/STATUS.md](docs/STATUS.md) for what works and what does not yet.
+
 A web console for NetIQ/OpenText **eDirectory** and **Identity Manager**. It runs as one container.
 
 - **Directory objects:** browse, search, edit and manage objects.
@@ -146,12 +150,27 @@ Sign in as `cn=admin,o=system` / `admin-pw`, or `viewer` / `viewer-pw` for the r
 | `container` | The image and its build script. |
 | `docs` | The [quickstart](docs/QUICKSTART.md), [status](docs/STATUS.md) and [API notes](docs/API.md). |
 
+### Lab checks
+
+The `Live*Check` and `LivePkiStep` classes in the server's test sources are not unit tests. They drive the
+real server against a lab tree described in a DirXMLDev `environments.properties` file, and are for the
+maintainers' own test trees. `LivePkiStep` writes only to environments named in `-Dlive.writable`.
+
 ## Releases
 
 Each release publishes:
 - the image, with its version tag and `latest`;
 - the release itself, with `compose.yaml` and `console-auth-<version>.jar` attached.
 
+## Security
+
+Please report vulnerabilities privately; see [SECURITY.md](SECURITY.md).
+
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE). The image and the web UI also contain third-party components under their own licenses; see
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+Directory Console is made by [Point Blue Technology](https://pointbluetech.com). It is not affiliated with,
+endorsed by or supported by OpenText. NetIQ, eDirectory, Identity Manager and OpenText are trademarks of
+OpenText or its affiliates; other names belong to their owners.

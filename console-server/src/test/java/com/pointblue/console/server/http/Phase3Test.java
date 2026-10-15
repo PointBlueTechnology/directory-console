@@ -29,7 +29,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-/** Phase 3: scoped roles, task presets, OpenID Connect sign-in acting through the service account, and their settings. */
+/** Access: scoped roles, task presets, OpenID Connect sign-in acting through the service account, and their settings. */
 public class Phase3Test {
 
     @Rule

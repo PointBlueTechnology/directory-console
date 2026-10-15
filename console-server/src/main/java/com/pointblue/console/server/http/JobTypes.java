@@ -22,7 +22,7 @@ import org.w3c.dom.Node;
  * com.pointblue.console.server.idm.JobCatalog}): {@code <jobs>} holding one {@code <job-aggregation>} per
  * type, its {@code <job-definition>} (display name, default schedule, scope-required, containment, Java
  * class and configuration values) and its translations ({@code <xliff>}). A job object keeps the whole
- * aggregation, with its own values, in {@code XmlData} (ig4, IDM 4.8.7, 2026-10-15), so a new job is the
+ * aggregation, with its own values, in {@code XmlData} (a lab tree, IDM 4.8.7, 2026-10-15), so a new job is the
  * type's aggregation with the chosen values set. Every type is offered whatever object is named, so the
  * types are filtered here by their {@code <containment>}.
  */

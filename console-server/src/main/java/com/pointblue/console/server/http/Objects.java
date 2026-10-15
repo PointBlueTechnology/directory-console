@@ -35,8 +35,7 @@ import javax.naming.directory.SearchControls;
 import javax.naming.ldap.Rdn;
 
 /**
- * The directory object API (DESIGN-directory-console.md section 8; Design Proposal for Safe Object
- * Identity, section 5). Objects are addressed by GUID; DNs appear only in JSON. Every operation runs on
+ * The directory object API. Objects are addressed by GUID; DNs appear only in JSON. Every operation runs on
  * the signed-in person's own directory connection, so eDirectory applies their rights; the console's
  * roles gate what is offered (any role reads, {@code editor} writes).
  *
@@ -285,7 +284,7 @@ final class Objects {
     /**
      * Under the proxied-authorization control (single sign-on), eDirectory can answer a write the
      * person has no right to with 16 ("no such attribute", -602) instead of 50, because it hides what
-     * they cannot write (measured on ig4). Then the person's effective rights on each attribute decide:
+     * they cannot write (measured on a lab tree). Then the person's effective rights on each attribute decide:
      * without write (or supervisor), the refusal is reported as what it is.
      */
     Exception explainRefusal(Sessions.Session s, Ldap l, String dn, List<String> attributes, NamingException x) {

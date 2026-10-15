@@ -27,7 +27,7 @@ import javax.net.ssl.TrustManagerFactory;
  *
  * <pre>
  *   admin health            exit 0 when this host's console answers /api/v2/health/live (the container HEALTHCHECK)
- *   admin reset-bootstrap   return to bootstrap mode on the next start (DESIGN section 5.3)
+ *   admin reset-bootstrap   return to bootstrap mode on the next start
  *   admin verify-audit      check the audit chain
  * </pre>
  */

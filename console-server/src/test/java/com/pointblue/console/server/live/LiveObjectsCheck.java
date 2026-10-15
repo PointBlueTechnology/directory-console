@@ -23,7 +23,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Live check of Phase 2's object API against a lab vault, through the real server: set up and sign in as
+ * Live check of the object API against a lab vault, through the real server: set up and sign in as
  * the environment's admin, then browse, search, read the schema, and (inside one new container under
  * {@code parentDN}, removed at the end) create, modify, rename, move and delete. Not a JUnit test. Prints
  * outcomes, never a password.
@@ -45,7 +45,7 @@ public final class LiveObjectsCheck {
         String host = u.getHost();
         int port = u.getPort() > 0 ? u.getPort() : 636;
         Path dataPath = Files.createTempDirectory("dc-live-");
-        System.out.println("# Directory Console Phase 2 live check: " + args[1] + " (" + host + ":" + port + ")");
+        System.out.println("# Directory Console object API live check: " + args[1] + " (" + host + ":" + port + ")");
         Server server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         String container = null;
         try {
@@ -138,7 +138,7 @@ public final class LiveObjectsCheck {
             ok("move into itself refused", into.status() == 409, into.status() + " " + into.body().get("title"));
             LiveSetupCheck.Reply nonLeaf = call("DELETE", "/api/v2/trees/" + tree + "/objects/" + b.body().get("guid"), null, csrf("*"));
             ok("delete non-leaf refused", nonLeaf.status() == 409, nonLeaf.status() + " " + nonLeaf.body().get("title") + " nds=" + nonLeaf.body().get("ndsError"));
-            // ---- Phase 2b tasks, inside the same container ----
+            // ---- object tasks, inside the same container ----
             LiveSetupCheck.Reply tu = call("POST", "/api/v2/trees/" + tree + "/objects/" + container + "/children",
                 Map.of("objectClass", "inetOrgPerson", "name", Map.of("type", "cn", "value", "dc task user"), "attributes", Map.of("sn", List.of("Task"))), csrf());
             String user = (String) tu.body().get("guid");

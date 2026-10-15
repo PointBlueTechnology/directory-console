@@ -12,7 +12,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Server-side sessions (DESIGN-directory-console.md section 7.1): a 256-bit id in a {@code __Host-}
+ * Server-side sessions: a 256-bit id in a {@code __Host-}
  * cookie, a CSRF token, an idle and an absolute limit. A direct-login session owns the person's bound
  * LDAP connection; the password itself is never kept, so a lost connection means signing in again.
  */

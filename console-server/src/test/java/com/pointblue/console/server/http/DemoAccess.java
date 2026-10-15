@@ -22,7 +22,7 @@ public final class DemoAccess {
     }
 
     /**
-     * Phase 3 for the demo: a scoped editor group (Sales only), a help desk with task presets only,
+     * Access settings for the demo: a scoped editor group (Sales only), a help desk with task presets only,
      * two presets, and single sign-on through the demo identity provider at {@code issuer}.
      */
     public static void phase3(Server server, String issuer) throws Exception {

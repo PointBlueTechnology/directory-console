@@ -28,7 +28,7 @@ import javax.naming.directory.SearchControls;
 import javax.naming.ldap.LdapName;
 
 /**
- * Live check of Phase 1 against a lab vault: the real server, in-process, driven through its setup and
+ * Live check of setup and sign-in against a lab vault: the real server, in-process, driven through its setup and
  * sign-in API exactly as a person would, against the environment named on the command line. Not a JUnit
  * test (CI never runs it). Read-only towards eDirectory: binds, searches, GetEffectivePrivileges. It never
  * tries a wrong password against a real account (no intruder-lockout risk) and prints outcomes only, never
@@ -53,7 +53,7 @@ public final class LiveSetupCheck {
         String adminDn = env.bindDn;
         String adminPw = env.password;
         Path dataPath = Files.createTempDirectory("dc-live-");
-        System.out.println("# Directory Console Phase 1 live check: " + args[1] + " (" + host + ":" + port + ")");
+        System.out.println("# Directory Console setup live check: " + args[1] + " (" + host + ":" + port + ")");
         Server server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         try {
             server.start();

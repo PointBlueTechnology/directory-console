@@ -21,12 +21,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Live check of the Identity Manager API (Phase 4) against a lab vault, with the engine jars on the
- * class path: reads everything for the first driver set and one running driver, then restarts that
+ * Live check of the Identity Manager API against a lab vault: reads everything for the first driver set and one running driver, then restarts that
  * driver and sets its start option to the value it already has. Prints the JSON (shortened), never a
  * password. Not a JUnit test.
  *
- *   java -cp …:<engine jars> LiveIdmCheck <environments.properties> <env>
+ *   java -cp … LiveIdmCheck <environments.properties> <env>
  */
 public final class LiveIdmCheck {
 

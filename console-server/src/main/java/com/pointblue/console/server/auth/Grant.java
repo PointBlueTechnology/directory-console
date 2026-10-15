@@ -4,7 +4,7 @@ import com.pointblue.console.server.ldap.Names;
 import java.util.List;
 
 /**
- * What one role mapping gives a person (DESIGN-directory-console.md section 7.4): a role, task presets,
+ * What one role mapping gives a person: a role, task presets,
  * or both, limited to {@code scopes} (containers) when there are any. A scoped grant applies to objects
  * at or under one of its containers; eDirectory's own rights still apply on top. {@code admin} is
  * console-wide and ignores scopes.

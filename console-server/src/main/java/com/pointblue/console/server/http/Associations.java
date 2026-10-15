@@ -20,7 +20,7 @@ import javax.naming.directory.SearchControls;
 /**
  * The Object Inspector: an object's Identity Manager associations ({@code DirXML-Associations}), read
  * and changed over LDAP with the person's own rights, so it needs no engine connection. A value is
- * {@code <driver DN>#<state>#<association>} (ig4); the states are 0 disabled, 1 processed, 2 pending,
+ * {@code <driver DN>#<state>#<association>} (lab); the states are 0 disabled, 1 processed, 2 pending,
  * 3 manual and 4 migrate, as DirXMLDev and the engine name them.
  *
  * <pre>
@@ -63,7 +63,7 @@ final class Associations {
 
     /**
      * A {@code DirXML-PasswordSyncStatus} value: the driver's GUID (32 hex), the time (yyyyMMddHHmmssSSS,
-     * UTC), a 12-digit status code, then the message (ig4: 1 with a veto, 5 "pending", 4 with none). Codes
+     * UTC), a 12-digit status code, then the message (lab: 1 with a veto, 5 "pending", 4 with none). Codes
      * not seen are given as their number.
      */
     static Map<String, Object> passwordSync(String raw) {

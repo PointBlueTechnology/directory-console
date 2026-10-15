@@ -13,7 +13,7 @@
     <artifactId>console-server</artifactId>
     <name>console-server</name>
     <description>The Directory Console service: bootstrap, console TLS, trust store, configuration,
-        audit, sign-in and the API (DESIGN-directory-console.md).</description>
+        audit, sign-in and the API.</description>
 
     <dependencies>
         <dependency>

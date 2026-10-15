@@ -24,7 +24,7 @@ import javax.naming.directory.DirContext;
 import javax.naming.directory.ModificationItem;
 
 /**
- * Task presets (DESIGN-directory-console.md section 7.4): the presets a person may run, and running
+ * Task presets: the presets a person may run, and running
  * one on an object. A run is checked against the preset (its class, actions and field rules) and the
  * grants that give it (their containers), then written as one modification, so it applies entirely
  * or not at all. eDirectory's own rights still decide whether that modification is allowed.

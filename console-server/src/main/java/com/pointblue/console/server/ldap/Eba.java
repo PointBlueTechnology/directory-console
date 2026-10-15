@@ -11,7 +11,7 @@ import javax.naming.NamingException;
  * eDirectory's EBA (enhanced background authentication) operations, as Identity Console 26.1 calls
  * them: the PKI operations' encoding (see Pki) with {@code {"serverIP": "address:port"}}, the address
  * being an NCP server's (port 524). A server that is not the tree's EBA CA answers -2104 "EBA invalid
- * EBA Server" (measured on test3, eDirectory 9.3.3, 2026-10-13; a bare address without the port gets
+ * EBA Server" (measured on a lab tree, eDirectory 9.3.3, 2026-10-13; a bare address without the port gets
  * the same answer).
  */
 public final class Eba {

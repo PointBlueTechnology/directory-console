@@ -18,7 +18,7 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
 /**
- * The Cache Inspector's reads and its delete, on one server's engine (ig4, IDM 4.8.7, 2026-10-15):
+ * The Cache Inspector's reads and its delete, on one server's engine (a lab tree, IDM 4.8.7, 2026-10-15):
  * <ul>
  * <li>The summary comes from the engine's driver statistics ({@code <driver-info><subscriber><cache>}:
  *     size, unprocessed size, oldest and newest transaction, counts by type), which it gives for a running

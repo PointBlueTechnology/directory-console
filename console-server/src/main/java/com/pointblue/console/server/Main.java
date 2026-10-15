@@ -6,8 +6,8 @@ import com.pointblue.dirxml.dev.LegacyTls;
 import java.nio.file.Path;
 
 /**
- * Starts Directory Console. Its only inputs are the data volume and the port (DESIGN-directory-console.md
- * section 12.1); everything else is configured through the API.
+ * Starts Directory Console. Its only inputs are the data volume and the port; everything else is
+ * configured through the API.
  *
  * <pre>
  *   CONSOLE_DATA        data volume (default /data)

@@ -23,7 +23,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Live check of the Phase 5 API against a lab tree with two servers: reads (servers, a server's
+ * Live check of the eDirectory administration API against a lab tree with two servers: reads (servers, a server's
  * replicas and indexes, partitions); a test attribute and class (with an optional attribute added)
  * created and deleted; an index on the second server added and removed; and a test OU under
  * {@code parent} split into a partition, its replica on the second server removed, added back, made
@@ -54,7 +54,7 @@ public final class LivePhase5Check {
             LiveSetupCheck.base = "https://127.0.0.1:" + server.port();
             LiveSetupCheck.http = ServerClient.trusting(server);
             setUp(dataPath, u.getHost(), u.getPort() > 0 ? u.getPort() : 636, env.bindDn, env.password);
-            System.out.println("# Phase 5 live check: " + args[1]);
+            System.out.println("# eDirectory administration live check: " + args[1]);
 
             // ---- reads ----
             LiveSetupCheck.Reply servers = call("GET", T + "/servers", null, admin);

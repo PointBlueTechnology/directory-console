@@ -10,7 +10,7 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
 /**
- * A driver's statistics from the engine's GetDriverStats ({@code <driver-info>}, ig4 IDM 4.8.7,
+ * A driver's statistics from the engine's GetDriverStats ({@code <driver-info>}, lab IDM 4.8.7,
  * 2026-10-15): the subscriber's cache (see {@link Cache#summary}) and, for each channel, its operation
  * counters since the last reset, grouped as the engine groups them (reported events, after the event
  * transformation, before the output transformation, commands, command results).

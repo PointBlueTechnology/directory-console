@@ -30,7 +30,7 @@ export function ReplicaLabels({ r }: { r: ReplicaState }) {
   );
 }
 
-/** eDirectory administration: partitions and their replicas, and the servers (DESIGN Phase 5). */
+/** eDirectory administration: partitions and their replicas, and the servers. */
 export function EdirPage({ tab = 'partitions' }: { tab?: 'partitions' | 'servers' }) {
   return (
     <PageSection isFilled>

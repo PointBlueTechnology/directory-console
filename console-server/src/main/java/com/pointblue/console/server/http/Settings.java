@@ -20,8 +20,7 @@ import java.util.function.Consumer;
 import javax.naming.NamingException;
 
 /**
- * A directory's sign-in and authorization settings, for console admins (DESIGN-directory-console.md
- * sections 7.3 and 7.4). Every change needs a sign-in within the last 10 minutes, is validated as a
+ * A directory's sign-in and authorization settings, for console admins. Every change needs a sign-in within the last 10 minutes, is validated as a
  * whole before it is saved, becomes a new configuration version and is audited. The OIDC client
  * secret is write-only.
  *

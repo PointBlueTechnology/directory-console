@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
  * Attributes whose values the console never returns, whoever asks and however they are read: private
  * keys, NMAS login secrets and configuration keys, password values and distribution passwords, driver
  * passwords, stored challenge responses. eDirectory returns several of them to an administrator over
- * LDAP (NICI-wrapped, but still key material): on ig4 an admin read returned {@code nDSPKIPrivateKey}
+ * LDAP (NICI-wrapped, but still key material): on a lab tree an admin read returned {@code nDSPKIPrivateKey}
  * on the Organizational CA and every key material object, and {@code sASLoginSecret} on users. The
  * console reports that such an attribute is set and how many values it has, and refuses to write it
  * through the generic object editor.

@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.Test;
 
-/** Decoding what eDirectory sends for partitions, replicas, indexes and addresses (shapes read on ig4, 2026-10-11). */
+/** Decoding what eDirectory sends for partitions, replicas, indexes and addresses (shapes read on a lab tree, 2026-10-11). */
 public class PartitionsTest {
 
     private static byte[] seq(byte[]... parts) {
@@ -28,16 +28,16 @@ public class PartitionsTest {
 
     @Test
     public void listReplicasInBothServerVersionsForms() {
-        // ig4, eDirectory 9.2.8: SEQUENCE OF OCTET STRING
+        // a lab tree, eDirectory 9.2.8: SEQUENCE OF OCTET STRING
         assertEquals(List.of("", "o=data"), Partitions.decodeList(HexFormat.of().parseHex("30840000000a040004066f3d64617461")));
-        // test3, eDirectory 9.3.3: one OCTET STRING holding JSON
+        // a lab tree, eDirectory 9.3.3: one OCTET STRING holding JSON
         assertEquals(List.of(""), Partitions.decodeList(HexFormat.of().parseHex("04137b22706172746974696f6e73223a5b22225d7d")));
         assertEquals(List.of(), Partitions.decodeList(new byte[0]));
     }
 
     @Test
     public void replicaInfoFromEdirectory933() {
-        // test3b's replica of the tree root partition: unchanged from 9.2.8
+        // another server's replica of the tree root partition: unchanged from 9.2.8
         Partitions.ReplicaInfo i = Partitions.decodeInfo(HexFormat.of().parseHex("020300806602010002046acd197e02046acd197e0201040400020101020100"));
         assertEquals("", i.partitionDn());
         assertEquals(Partitions.Type.READ_WRITE, Partitions.Type.of(i.type()));
@@ -61,17 +61,17 @@ public class PartitionsTest {
 
     @Test
     public void aReplicaValueDecodesServerTypeNumberAndAddresses() {
-        byte[] tcp = HexFormat.of().parseHex("020cac110251");
-        byte[] url = "http://172.17.2.81:8028/portal".getBytes(StandardCharsets.UTF_16LE);
-        byte[] v = seq(str("cn=idm-ig4,ou=servers,o=system"), i(0), i(32866), i(1),
+        byte[] tcp = HexFormat.of().parseHex("020cc0000251");
+        byte[] url = "http://192.0.2.81:8028/portal".getBytes(StandardCharsets.UTF_16LE);
+        byte[] v = seq(str("cn=idm1,ou=servers,o=system"), i(0), i(32866), i(1),
             seq(seq(i(9), Ber.tlv(0x04, tcp)), seq(i(8), Ber.tlv(0x04, tcp)), seq(i(13), Ber.tlv(0x04, url))));
         Partitions.ReplicaPointer p = Partitions.decodePointer(v);
-        assertEquals("cn=idm-ig4,ou=servers,o=system", p.serverDn());
+        assertEquals("cn=idm1,ou=servers,o=system", p.serverDn());
         assertEquals(0, p.type());
         assertEquals(32866, p.partitionId());
         assertEquals(1, p.number());
-        assertEquals(List.of(new Partitions.Address(9, "172.17.2.81:524"), new Partitions.Address(8, "172.17.2.81:524"),
-            new Partitions.Address(13, "http://172.17.2.81:8028/portal")), p.addresses());
+        assertEquals(List.of(new Partitions.Address(9, "192.0.2.81:524"), new Partitions.Address(8, "192.0.2.81:524"),
+            new Partitions.Address(13, "http://192.0.2.81:8028/portal")), p.addresses());
     }
 
     @Test
@@ -87,8 +87,8 @@ public class PartitionsTest {
         assertEquals(false, sys.get("removable"));
         assertNull(EdirAccess.index("garbage"));
 
-        byte[] na = Ber.concat("9#".getBytes(StandardCharsets.US_ASCII), HexFormat.of().parseHex("020cac110251"));
-        assertEquals("tcp 172.17.2.81:524", EdirAccess.networkAddress(na));
+        byte[] na = Ber.concat("9#".getBytes(StandardCharsets.US_ASCII), HexFormat.of().parseHex("020cc0000251"));
+        assertEquals("tcp 192.0.2.81:524", EdirAccess.networkAddress(na));
         assertNull("IPX and others are not shown", EdirAccess.networkAddress(Ber.concat("0#".getBytes(StandardCharsets.US_ASCII), new byte[12])));
         assertTrue(EdirAccess.newOid().matches("2\\.25\\.[0-9]{1,19}"));
     }

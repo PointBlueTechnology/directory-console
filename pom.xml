@@ -10,7 +10,7 @@
     <packaging>pom</packaging>
     <name>Directory Console</name>
     <description>An eDirectory and Identity Manager console built on the DirXMLDev core
-        (DESIGN-directory-console.md). Libraries here are shared with DirXMLDevWeb.</description>
+       . Libraries here are shared with DirXMLDevWeb.</description>
     <licenses>
         <license>
             <name>MIT License</name>
@@ -74,7 +74,7 @@
                 <version>${project.version}</version>
             </dependency>
             <!-- certificates and CSRs for the console's own TLS (the JDK has no public API to make them);
-                 acme4j uses the same library in Phase 5 -->
+                 acme4j will use the same library -->
             <dependency>
                 <groupId>org.bouncycastle</groupId>
                 <artifactId>bcpkix-jdk18on</artifactId>

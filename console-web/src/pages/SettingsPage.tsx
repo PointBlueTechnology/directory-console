@@ -143,7 +143,7 @@ function DirectorySection({ s, api, etag, onSaved }: {
 }
 
 /**
- * Console-wide: whether people may sign in to directories they enter themselves (DESIGN 6.3). They
+ * Console-wide: whether people may sign in to directories they enter themselves. They
  * work there with their own eDirectory rights only, and the certificates they accept are their own.
  */
 function OtherDirectoriesSection() {

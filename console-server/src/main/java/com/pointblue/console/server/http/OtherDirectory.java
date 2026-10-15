@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import javax.naming.NamingException;
 
 /**
- * Directories a person enters at sign-in (DESIGN 6.3): when an administrator allows it, someone signs
+ * Directories a person enters at sign-in: when an administrator allows it, someone signs
  * in to any LDAPS address with their full DN and password, and works there with their own eDirectory
  * rights only (an editor grant over the whole tree; eDirectory decides). No role mappings, presets,
  * Identity Manager or console settings; changes ask for the address to be typed, as production does.

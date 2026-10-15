@@ -122,7 +122,7 @@ public class SecurityTest {
 
     @Test
     public void optionsDecodeAsIdentityConsoleDoes() {
-        // 884 = 0x374, ig4's Sample Password Policy: two of the bits mean "do not synchronize"
+        // 884 = 0x374, the sample password policy: two of the bits mean "do not synchronize"
         Map<String, Object> o = Security.options(884);
         assertEquals(true, o.get("universalPassword"));
         assertEquals(true, o.get("advancedRules"));
@@ -139,9 +139,9 @@ public class SecurityTest {
         List<Map<String, Object>> back = Security.questions(xml);
         assertEquals("user-defined slots come first, as iManager writes them", "user", back.get(0).get("kind"));
         assertEquals("Tricky ]]> text?", back.get(1).get("text").toString().replace("]]]]><![CDATA[>", "]]>"));
-        String ig4 = "<RequiredQuestions><UserDefined MaxLength=\"255\" MinLength=\"2\"/><AdminDefined><Question MaxLength=\"255\" MinLength=\"2\"><![CDATA[What is your mother's maiden name?]]></Question></AdminDefined></RequiredQuestions>";
-        assertEquals(2, Security.questions(ig4).size());
-        assertEquals("What is your mother's maiden name?", Security.questions(ig4).get(1).get("text"));
+        String sample = "<RequiredQuestions><UserDefined MaxLength=\"255\" MinLength=\"2\"/><AdminDefined><Question MaxLength=\"255\" MinLength=\"2\"><![CDATA[What is your mother's maiden name?]]></Question></AdminDefined></RequiredQuestions>";
+        assertEquals(2, Security.questions(sample).size());
+        assertEquals("What is your mother's maiden name?", Security.questions(sample).get(1).get("text"));
     }
 
     @Test

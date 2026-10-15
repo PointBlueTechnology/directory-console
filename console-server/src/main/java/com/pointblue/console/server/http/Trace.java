@@ -27,10 +27,10 @@ import javax.naming.directory.ModificationItem;
  * PUT same
  * </pre>
  *
- * Attributes (ig4 schema, 2026-10-14): a driver's DirXML-TraceLevel, -TraceFile, -TraceName,
+ * Attributes (eDirectory schema, 2026-10-14): a driver's DirXML-TraceLevel, -TraceFile, -TraceName,
  * -TraceFileEncoding and -TraceSizeLimit; a driver set's DirXML-DriverTraceLevel, -XSLTraceLevel,
  * -JavaDebugPort, -JavaTraceFile, -TraceFileEncoding and -TraceSizeLimit. The size limit is in KB
- * (ig4's drivers have 100000 and 200000); 0 is unlimited.
+ * (drivers seen in a lab have 100000 and 200000); 0 is unlimited.
  */
 final class Trace {
 

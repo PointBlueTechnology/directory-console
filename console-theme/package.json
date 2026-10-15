@@ -2,8 +2,8 @@
   "name": "@pointblue/console-theme",
   "version": "0.1.0",
   "private": true,
-  "description": "Point Blue branding for PatternFly 6: design-token overrides and the wordmark. Shared by Directory Console and DirXMLDevWeb (DESIGN-directory-console.md section 13.1).",
-  "license": "Apache-2.0",
+  "description": "Point Blue branding for PatternFly 6: design-token overrides and the wordmark. Shared by Directory Console and DirXMLDevWeb.",
+  "license": "MIT",
   "main": "theme.css",
   "files": ["theme.css"],
   "peerDependencies": {

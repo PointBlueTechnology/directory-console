@@ -20,7 +20,7 @@ import javax.naming.NamingException;
 import javax.naming.directory.SearchControls;
 
 /**
- * The setup wizard's API (DESIGN-directory-console.md section 5.2), served only in bootstrap mode and
+ * The setup wizard's API, served only in bootstrap mode and
  * only to requests carrying the setup token ({@code X-Setup-Token}). The steps build a draft in memory;
  * {@code finish} writes the first configuration, ends bootstrap mode and switches the server to normal
  * operation. Trust entries added during setup are written as they are accepted.
@@ -183,7 +183,7 @@ final class Setup {
             TrustStore.Evaluation ev = server.trust.evaluate(chain.toArray(new X509Certificate[0]), host, port, id, null);
             if (!ev.trusted() && ev.reason() == TrustStore.Reason.HOSTNAME && Boolean.TRUE.equals(b.get("hostException"))) {
                 // reached by a name the certificate does not carry (a tunnel, a load balancer, NAT): accept exactly
-                // this certificate at exactly this host and port, as the host exceptions of DESIGN 6.4 do after setup
+                // this certificate at exactly this host and port, as host exceptions do after setup
                 server.trust.addHostException(host, port, chain.get(0), "bootstrap");
                 server.audit.log(AuditLog.Actor.SYSTEM, "trust.host-exception", host + ":" + port, Map.of("sha256", Certs.sha256(chain.get(0)),
                     "names", Certs.names(chain.get(0))), "ok");
