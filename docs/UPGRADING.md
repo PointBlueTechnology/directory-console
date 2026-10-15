@@ -4,7 +4,7 @@ Directory Console keeps everything it needs in its data volume: settings, certif
 audit log. Upgrading replaces the container with a newer image and keeps the volume.
 
 Administrators see a banner when a newer release is out, if the daily update check is on
-(**Settings > Updates**). From version 0.3.3, your current version is in the user menu, top right.
+(**Settings > Updates**). From version 0.3.4, your current version is at the foot of the navigation (in 0.3.3, in the user menu, top right).
 
 ## Before you upgrade
 
