@@ -159,7 +159,7 @@ public final class Server {
             } catch (RuntimeException e) {
                 Http.problem(ex, new Http.Problem(500, "internal", "unexpected error: " + e.getClass().getSimpleName()));
             } catch (LinkageError e) {
-                // a library class is missing (an engine jar not mounted): answer, never drop the connection
+                // a library class is missing: answer, never drop the connection
                 Http.problem(ex, new Http.Problem(500, "missing-library", "a library this needs is not installed: " + e.getMessage()));
             }
         } catch (IOException e) {

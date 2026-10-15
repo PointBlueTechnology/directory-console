@@ -14,8 +14,6 @@ services:
       CONSOLE_PUBLIC_URL: https://localhost:8443
     volumes:
       - console-data:/data
-      # Identity Manager: copy dirxml_misc.jar and ldap.jar from an engine's lib/dirxml/classes into ./engine
-      # - ./engine:/engine:ro
     read_only: true
     tmpfs:
       - /tmp

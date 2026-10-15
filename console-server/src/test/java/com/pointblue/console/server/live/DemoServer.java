@@ -102,16 +102,12 @@ public final class DemoServer {
         // the address browsers use: the Vite dev server, which proxies /api here (so single sign-on comes back there)
         String publicUrl = System.getProperty("demo.publicUrl", "http://localhost:5173");
         Server server = new Server(new DataDir(data), port, publicUrl, new PrintStream(System.out));
-        // Identity Manager needs the engine's jars on the class path (DirXMLDev's lib); without them the IDM page says why
-        try {
-            Class.forName("com.novell.nds.dirxml.ldap.GetDriverStateRequest");
+        {
             FakeEngine engine = new FakeEngine(edir);
             engine.states.put("cn=activedirectory,cn=driverset,o=system", com.pointblue.dirxml.dev.deploy.Vault.STATE_RUNNING);
             engine.startOptions.put("cn=activedirectory,cn=driverset,o=system", com.pointblue.dirxml.dev.deploy.Vault.START_AUTO);
             engine.startOptions.put("cn=delimitedtext,cn=driverset,o=system", com.pointblue.dirxml.dev.deploy.Vault.START_DISABLED);
             DemoAccess.engines(server, engine.engines());
-        } catch (ClassNotFoundException e) {
-            DemoAccess.engines(server, com.pointblue.console.server.idm.Engines.none("the Identity Manager engine jars are not on the demo's class path"));
         }
         server.start();
         HttpClient http = ServerClient.trusting(server);

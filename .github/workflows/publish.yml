@@ -1,7 +1,7 @@
 # The container image, to ghcr.io/pointbluetechnology/directory-console: every push to main (tags
 # main and sha-<commit>) and every version tag (tags <version> and latest), for amd64 and arm64.
-# container/build.sh gathers the artifacts and refuses any of OpenText's classes; the image never
-# carries the engine's jars (they are mounted at /engine).
+# container/build.sh gathers the artifacts and refuses any of OpenText's classes; Identity Manager
+# needs no engine jars (DirXMLDev uses JLDAP).
 name: publish
 on:
   push:

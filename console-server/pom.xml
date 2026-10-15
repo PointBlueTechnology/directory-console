@@ -25,6 +25,10 @@
             <artifactId>dirxml-dev</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.novell.ldap</groupId>
+            <artifactId>jldap</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.pointblue.dirxml</groupId>
             <artifactId>dirxml-simulator</artifactId>
             <scope>runtime</scope>
@@ -43,34 +47,6 @@
         </dependency>
     </dependencies>
 
-    <profiles>
-        <!-- Identity Manager tests run against a fake engine, but DirXMLDev's Vault class itself needs the
-             engine's jars to load. They are OpenText's and never in this repository or CI:
-             mvn test -Dengine.lib=/path/to/idm/lib/dirxml/classes runs those tests; without it they are skipped. -->
-        <profile>
-            <id>engine</id>
-            <activation>
-                <property>
-                    <name>engine.lib</name>
-                </property>
-            </activation>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <configuration>
-                            <additionalClasspathElements>
-                                <additionalClasspathElement>${engine.lib}/dirxml_misc.jar</additionalClasspathElement>
-                                <additionalClasspathElement>${engine.lib}/dirxml.jar</additionalClasspathElement>
-                                <additionalClasspathElement>${engine.lib}/ldap.jar</additionalClasspathElement>
-                            </additionalClasspathElements>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
 
     <build>
         <finalName>console</finalName>

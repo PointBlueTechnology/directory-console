@@ -19,6 +19,5 @@ EXPOSE 8443
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD ["java", "-jar", "/app/console.jar", "admin", "health"]
-# /engine: the customer's Identity Manager engine jars (dirxml_misc.jar, ldap.jar), mounted read-only;
-# OpenText's code never ships in this image. Without them everything but Identity Manager works.
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-cp", "/app/console.jar:/app/lib/*:/engine/*", "com.pointblue.console.server.Main"]
+# Identity Manager needs nothing mounted: DirXMLDev speaks to the engine over JLDAP. No OpenText code is here.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-cp", "/app/console.jar:/app/lib/*", "com.pointblue.console.server.Main"]

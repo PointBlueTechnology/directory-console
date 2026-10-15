@@ -103,20 +103,8 @@ public class IdmTest {
         return h;
     }
 
-    /** DirXMLDev's Vault class loads only with the engine's jars (mvn test -Dengine.lib=…); CI has none. */
-    static boolean engineJars() {
-        try {
-            Class.forName("com.novell.ldap.LDAPExtendedOperation");
-            Class.forName("com.novell.nds.dirxml.ldap.GetDriverStateRequest");
-            return true;
-        } catch (ClassNotFoundException e) {
-            return false;
-        }
-    }
-
     @Test
     public void driverSetsDriversAndTheirOperations() throws Exception {
-        org.junit.Assume.assumeTrue("needs -Dengine.lib (the engine's jars)", engineJars());
         Map<String, String> h = signIn();
         assertEquals(true, call("GET", "/api/v2/trees/acme/idm", null, h).body().get("available"));
         List<?> sets = (List<?>) call("GET", "/api/v2/trees/acme/idm/driversets", null, h).body().get("items");
@@ -183,7 +171,6 @@ public class IdmTest {
     @Test
     @SuppressWarnings("unchecked")
     public void jobTypesAndANewJob() throws Exception {
-        org.junit.Assume.assumeTrue("needs -Dengine.lib (the engine's jars)", engineJars());
         edir.add("dn: cn=idm1,o=system", "objectClass: ncpServer", "cn: idm1");
         edir.add("dn: ou=staff,o=system", "objectClass: organizationalUnit", "ou: staff");
         Map<String, String> h = signIn();
@@ -230,11 +217,11 @@ public class IdmTest {
 
     @Test
     public void withoutTheEngineIdmSaysWhy() throws Exception {
-        server.login.engines(Engines.none("the Identity Manager engine jars are not mounted at /engine"));
+        server.login.engines(Engines.none("the engine could not be reached"));
         Map<String, String> h = signIn();
         Reply st = call("GET", "/api/v2/trees/acme/idm", null, h);
         assertEquals(false, st.body().get("available"));
-        assertTrue(String.valueOf(st.body().get("problem")).contains("/engine"));
+        assertTrue(String.valueOf(st.body().get("problem")).contains("could not be reached"));
         assertEquals(503, call("GET", "/api/v2/trees/acme/idm/driversets", null, h).status());
         assertEquals("the rest of the console still works", 200, call("GET", "/api/v2/trees/acme/roots", null, h).status());
     }

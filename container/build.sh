@@ -18,9 +18,10 @@ CTX="$HERE/container"
 rm -rf "$CTX/artifacts" && mkdir -p "$CTX/artifacts/lib"
 cp console-server/target/console.jar "$CTX/artifacts/console.jar"
 cp console-server/target/lib/*.jar "$CTX/artifacts/lib/"
-# the engine's jars are OpenText's and are never in the image (Phase 4 mounts the customer's at /engine)
+# none of OpenText's code goes in the image: Identity Manager runs through DirXMLDev over JLDAP (com.novell.ldap,
+# open source), so only the engine's own packages are refused
 for j in "$CTX"/artifacts/console.jar "$CTX"/artifacts/lib/*.jar; do
-  if unzip -l "$j" | grep -qE ' com/novell/nds/dirxml/| com/netiq/| com/novell/ldap/'; then
+  if unzip -l "$j" | grep -qE ' com/novell/nds/| com/netiq/| novell/jclient/'; then
     echo "ERROR: $j carries OpenText classes; not publishable" >&2
     exit 1
   fi

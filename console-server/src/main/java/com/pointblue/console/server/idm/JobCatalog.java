@@ -1,7 +1,7 @@
 package com.pointblue.console.server.idm;
 
+import com.pointblue.dirxml.dev.deploy.IdmOps;
 import java.io.ByteArrayOutputStream;
-import java.lang.reflect.Constructor;
 import javax.naming.NamingException;
 import javax.naming.ldap.ExtendedRequest;
 import javax.naming.ldap.ExtendedResponse;
@@ -9,57 +9,44 @@ import javax.naming.ldap.LdapContext;
 
 /**
  * The engine's job catalogue: DiscoverJobs (IDM extended operation 51), which reads the job definitions
- * packaged in the job jars on that server, and NotifyJobUpdate. DiscoverJobs answers with a chunked
- * result, read as DirXMLDev's Vault reads one (64 512 bytes a chunk, then closed).
- *
- * <p>The engine's request classes ({@code dirxml_misc.jar}) are on the class path only when the customer
- * mounts them, so they are reached by name; they implement JNDI's {@link ExtendedRequest}, so the person's
- * own connection to that server sends them.
+ * packaged in the job jars on that server, and NotifyJobUpdate. Encoded and decoded with DirXMLDev's
+ * {@link IdmOps} (no engine jars) and sent on the person's own JNDI connection to that server. DiscoverJobs
+ * answers with a chunked result (a handle and a size), read as DirXMLDev's Vault reads one: 64 512 bytes a
+ * chunk, then closed.
  */
 public final class JobCatalog {
 
-    private static final String PKG = "com.novell.nds.dirxml.ldap.";
     private static final int CHUNK = 64512;
+    private static final String DISCOVER_JOBS = IdmOps.OID_BASE + "51";
 
     private JobCatalog() {
     }
 
     /** The engine's answer, as it sends it, for the driver or driver set {@code dn}. */
     public static byte[] discover(LdapContext ctx, String dn) throws NamingException {
-        try {
-            for (String r : new String[] {"DiscoverJobsResponse", "GetChunkedResultResponse"}) {
-                Class.forName(PKG + r).getMethod("register").invoke(null);
-            }
-            ExtendedResponse first = ctx.extendedOperation(request("DiscoverJobsRequest", new Class<?>[] {String.class, boolean.class, int.class}, dn, false, 0));
-            int handle = (int) first.getClass().getMethod("getDataHandle").invoke(first);
-            int size = (int) first.getClass().getMethod("getDataSize").invoke(first);
-            ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(size, 0));
-            try {
-                for (int left = size; left > 0;) {
-                    ExtendedResponse chunk = ctx.extendedOperation(request("GetChunkedResultRequest", new Class<?>[] {int.class, int.class, int.class}, handle, Math.min(left, CHUNK), 0));
-                    byte[] data = (byte[]) chunk.getClass().getMethod("getData").invoke(chunk);
-                    if (data == null || data.length == 0) {
-                        break;
-                    }
-                    out.write(data, 0, data.length);
-                    left -= data.length;
-                }
-            } finally {
-                if (size > 0) {
-                    ctx.extendedOperation(request("CloseChunkedResultRequest", new Class<?>[] {int.class}, handle));
-                }
-            }
-            return out.toByteArray();
-        } catch (NamingException x) {
-            throw x;
-        } catch (java.lang.reflect.InvocationTargetException x) {
-            if (x.getCause() instanceof NamingException n) {
-                throw n;
-            }
-            throw new IllegalStateException("the engine's DiscoverJobs failed: " + x.getCause(), x.getCause());
-        } catch (ReflectiveOperationException | LinkageError x) {
-            throw new UnsupportedOperationException("job discovery needs the engine's jars: " + x);
+        // the arguments as the engine reads them: the object, 0 (its containment decides), the default timeout
+        IdmOps.Reply first = call(ctx, DISCOVER_JOBS, dn, 0, 0);
+        if (first.size() < 2) {
+            return new byte[0];
         }
+        int handle = first.integer(0);
+        int size = first.integer(1);
+        ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(size, 0));
+        try {
+            for (int left = size; left > 0;) {
+                byte[] data = call(ctx, IdmOps.Op.GET_CHUNKED_RESULT.oid(), handle, Math.min(left, CHUNK), 0).bytes(0);
+                if (data == null || data.length == 0) {
+                    break;
+                }
+                out.write(data, 0, data.length);
+                left -= data.length;
+            }
+        } finally {
+            if (size > 0) {
+                call(ctx, IdmOps.Op.CLOSE_CHUNKED_RESULT.oid(), handle);
+            }
+        }
+        return out.toByteArray();
     }
 
     /**
@@ -68,16 +55,45 @@ public final class JobCatalog {
      */
     public static boolean notify(LdapContext ctx, String jobDn) {
         try {
-            ctx.extendedOperation(request("NotifyJobUpdateRequest", new Class<?>[] {String.class}, jobDn));
+            call(ctx, IdmOps.Op.NOTIFY_JOB_UPDATE.oid(), jobDn);
             return true;
-        } catch (NamingException | ReflectiveOperationException | LinkageError | RuntimeException x) {
+        } catch (NamingException | RuntimeException x) {
             return false;
         }
     }
 
-    private static ExtendedRequest request(String name, Class<?>[] types, Object... args) throws ReflectiveOperationException {
-        Constructor<?> c = Class.forName(PKG + name).getConstructor(types);
-        return (ExtendedRequest) c.newInstance(args);
+    private static IdmOps.Reply call(LdapContext ctx, String oid, Object... args) throws NamingException {
+        ExtendedResponse r = ctx.extendedOperation(new Request(oid, IdmOps.encode(args)));
+        byte[] value = r.getEncodedValue();
+        return IdmOps.decode(value == null ? new byte[0] : value);
     }
 
+    /** An IDM extended request: its OID and the BER value IdmOps encoded; the reply is read by {@link IdmOps#decode}. */
+    private record Request(String oid, byte[] value) implements ExtendedRequest {
+        @Override
+        public String getID() {
+            return oid;
+        }
+
+        @Override
+        public byte[] getEncodedValue() {
+            return value;
+        }
+
+        @Override
+        public ExtendedResponse createExtendedResponse(String id, byte[] berValue, int offset, int length) {
+            byte[] copy = berValue == null ? null : java.util.Arrays.copyOfRange(berValue, offset, offset + length);
+            return new ExtendedResponse() {
+                @Override
+                public String getID() {
+                    return id;
+                }
+
+                @Override
+                public byte[] getEncodedValue() {
+                    return copy;
+                }
+            };
+        }
+    }
 }

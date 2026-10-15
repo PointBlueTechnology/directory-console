@@ -20,9 +20,8 @@ proxied-authorization control, so eDirectory applies their own rights; the servi
 Supervisor over exactly those people (DESIGN section 7.3). Identity Manager operations still need a
 direct sign-in.
 
-Identity Manager needs the engine's jars (`dirxml_misc.jar`, `dirxml.jar`, `ldap.jar` from an IDM
-install), which are not redistributable: mount them at `/engine` (see `compose.yaml`). Without them
-the console runs and the Identity Manager page says why.
+Identity Manager needs no engine jars: the console reaches the engine through DirXMLDev, which uses
+the open-source JLDAP library. The image holds no OpenText code.
 
 | Module | What |
 |---|---|
@@ -53,8 +52,6 @@ docker run -d --name directory-console --read-only --tmpfs /tmp --cap-drop ALL -
 docker logs directory-console
 ```
 
-Identity Manager needs the engine's `dirxml_misc.jar` and `ldap.jar` (from an engine's
-`lib/dirxml/classes`) mounted read-only at `/engine`; they are OpenText's and never in the image.
 
 To build the image yourself: `container/build.sh` (tests, packages, `docker build` →
 `directory-console:<version>`), then `CONSOLE_IMAGE=directory-console:<version> docker compose up -d`.

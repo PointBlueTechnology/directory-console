@@ -7,10 +7,8 @@ import com.pointblue.dirxml.dev.operate.Operate;
 
 /**
  * Identity Manager's engine operations (DirXML extended operations) for a signed-in person, through
- * DirXMLDev's {@code Vault} and {@code Operate}. They need the customer's engine jars
- * ({@code dirxml_misc.jar}, {@code ldap.jar}) on the class path, mounted at {@code /engine} in the
- * container: OpenText's code never ships in the image. Without them the console works and says why
- * Identity Manager is unavailable.
+ * DirXMLDev's {@code Vault} and {@code Operate}, which encode them with the open-source JLDAP library
+ * (since DirXMLDev 0.36.0): no engine jars are needed, and none of OpenText's code is in the image.
  */
 public interface Engines {
 
@@ -37,14 +35,8 @@ public interface Engines {
         return JobCatalog.notify(ldap.context(), jobDn);
     }
 
-    /** The real engine when its classes are on the class path; otherwise one that says they are not. */
+    /** The real engine: DirXMLDev's Vault over JLDAP, a dependency of the console like any other. */
     static Engines detect() {
-        try {
-            Class.forName("com.novell.nds.dirxml.ldap.GetDriverStateRequest", false, Engines.class.getClassLoader());
-            Class.forName("com.novell.ldap.LDAPConnection", false, Engines.class.getClassLoader());
-        } catch (ClassNotFoundException | LinkageError e) {
-            return none("the Identity Manager engine jars (dirxml_misc.jar, ldap.jar) are not mounted at /engine");
-        }
         return new Engines() {
             @Override
             public String unavailable() {

@@ -48,7 +48,6 @@ services:
       CONSOLE_PUBLIC_URL: https://localhost:8443
     volumes:
       - console-data:/data
-      # - ./engine:/engine:ro
     read_only: true
     tmpfs:
       - /tmp
@@ -76,7 +75,6 @@ services:
       CONSOLE_PUBLIC_URL: https://localhost:8443
     volumes:
       - console-data:/data
-      # - ./engine:/engine:ro
     read_only: true
     tmpfs:
       - /tmp
@@ -181,11 +179,8 @@ sign in as that tree's own administrator, who becomes its break-glass account. F
 page has a list of trees to choose from. Each tree has its own service account, role mappings and single
 sign-on: sign in to a tree to set those under the other Settings tabs.
 
-**Identity Manager:** the console needs the engine's `dirxml_misc.jar` and `ldap.jar`, from an engine
-server's `lib/dirxml/classes`. They are not in the image.
-1. Put them in an `engine` folder beside `compose.yaml`.
-2. Remove the `# ` in front of `- ./engine:/engine:ro` in `compose.yaml`.
-3. Run `docker compose up -d` again.
+**Identity Manager** works with nothing else to install: the console talks to the engine on the
+server you signed in to.
 
 **Everyday commands,** run in the folder with `compose.yaml`:
 
