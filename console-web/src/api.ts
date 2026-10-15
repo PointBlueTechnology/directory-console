@@ -434,6 +434,19 @@ export interface DriverProperties {
   policies: { dn: string; name: string; set: string; setNumber: number; order: number }[];
 }
 
+/** Version discovery for one server: the engine now, and what the statistics job last collected there. */
+export interface Versions {
+  server: { dn: string; name: string };
+  engineVersion: string | null;
+  statisticsJobFound: boolean;
+  collected: {
+    when: string | null; whenText: string | null; product: string | null; version: string | null; edition: string | null; patch: string | null;
+    host: string | null; hostIp: string | null; os: string | null; hostType: string | null; job: { dn: string; name: string };
+    drivers: { name: string | null; version: string | null; driverId: string | null; usage?: { active: number | null; inactive: number | null; system: number | null; total: number | null } }[];
+  } | null;
+  packages: { driver: string; package: string | null; packageVersion: string | null }[];
+}
+
 export interface MigrateResult {
   ok: boolean;
   dryRun?: boolean;
@@ -516,7 +529,7 @@ export function idm(id: string, server?: string) {
     status: () => get<IdmStatus>(''),
     driverSets: () => get<{ items: Row[] }>('/driversets').then((r) => r.items),
     driverSet: (guid: string) => get<DriverSet>(`/driversets/${guidPath(guid)}`),
-    setPart: <T>(guid: string, part: 'activation' | 'servers' | 'jobs' | 'log-level' | 'passwords') => get<T>(`/driversets/${guidPath(guid)}/${part}`),
+    setPart: <T>(guid: string, part: 'activation' | 'servers' | 'jobs' | 'log-level' | 'passwords' | 'versions') => get<T>(`/driversets/${guidPath(guid)}/${part}`),
     driver: (guid: string) => get<Record<string, unknown> & Identity>(`/drivers/${guidPath(guid)}`),
     driverPart: <T>(guid: string, part: string) => get<T>(`/drivers/${guidPath(guid)}/${part}`),
     lifecycle: (guid: string, action: 'start' | 'stop' | 'restart', confirm?: string) =>

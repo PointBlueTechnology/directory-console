@@ -15,6 +15,7 @@ import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../compone
 import { BulkLifecycleModal } from '../components/BulkLifecycle';
 import { TracePanel } from '../components/TracePanel';
 import { MappingTablesPanel } from '../components/MappingTables';
+import { VersionsPanel } from '../components/VersionsPanel';
 import { plan } from '../lifecycle';
 
 /** Identity Manager: the engine, the driver sets, and each set's drivers with their state. */
@@ -119,6 +120,7 @@ function DriverSetView({ api: connected, guid }: { api: ReturnType<typeof idm>; 
             <JobsTable api={api} load={() => api.setPart<{ jobs: Job[] }>(guid, 'jobs')} />
           </Tab>
           <Tab eventKey="servers" title={<TabTitleText>Servers and activation</TabTitleText>}><ServersPanel api={api} guid={guid} /></Tab>
+          <Tab eventKey="versions" title={<TabTitleText>Versions</TabTitleText>}><VersionsPanel api={api} guid={guid} /></Tab>
           <Tab eventKey="trace" title={<TabTitleText>Trace</TabTitleText>}><TracePanel kind="driversets" guid={guid} /></Tab>
           <Tab eventKey="mapping-tables" title={<TabTitleText>Mapping tables</TabTitleText>}><MappingTablesPanel under={guid} canCreate /></Tab>
           <Tab eventKey="log" title={<TabTitleText>Log level</TabTitleText>}>

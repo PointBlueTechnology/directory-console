@@ -32,7 +32,7 @@ import javax.naming.directory.SearchControls;
  * GET  /api/v2/trees/{tree}/idm                                 engine status
  * GET  /api/v2/trees/{tree}/idm/driversets                      driver sets
  * GET  /api/v2/trees/{tree}/idm/driversets/{guid}               its drivers: state, start option, cache, trace
- * GET  /api/v2/trees/{tree}/idm/driversets/{guid}/activation | servers | jobs | log-level
+ * GET  /api/v2/trees/{tree}/idm/driversets/{guid}/activation | servers | jobs | log-level | versions
  * GET  /api/v2/trees/{tree}/idm/drivers/{guid}                  status
  * POST /api/v2/trees/{tree}/idm/drivers/{guid}/start | stop | restart
  * PUT  /api/v2/trees/{tree}/idm/drivers/{guid}/start-option     {"option": "auto|manual|disabled"}
@@ -153,6 +153,19 @@ final class Idm {
                         Target t = target(l, guid, true);
                         Map<String, Object> out = new LinkedHashMap<>(identity(t, guid));
                         out.put("drivers", withGuids(l, t.dn(), Json.parse(Operate.driversetStatus(engine, env(d, t)).json())));
+                        Http.json(ex, 200, out);
+                    }
+                    // version discovery on the chosen server: the engine now, and what its statistics job last collected there
+                    case "GET driversets/{guid}/versions" -> {
+                        Target t = target(l, guid, true);
+                        Object engineVersion;
+                        try {
+                            engineVersion = Json.asMap(Json.parse(Operate.engineVersion(engine).json())).get("version");
+                        } catch (RuntimeException | LinkageError e) {
+                            engineVersion = null;
+                        }
+                        Map<String, Object> out = new LinkedHashMap<>(Versions.read(l, t.dn(), engineVersion));
+                        out.put("server", Map.of("dn", on.serverDn(), "name", String.valueOf(Names.identity(on.serverDn()).get("name"))));
                         Http.json(ex, 200, out);
                     }
                     case "GET driversets/{guid}/activation" -> result(ex, Operate.driversetActivation(engine, env(d, target(l, guid, true))));

@@ -138,6 +138,9 @@ public final class LivePkiStep {
                 case "mt-read" -> show(call("GET", t + "/idm/mapping-tables/" + guid(t, h, args[3]), null, h));
                 // READ-ONLY: a driver's properties
                 case "props" -> show(call("GET", t + "/idm/drivers/" + guid(t, h, args[3]) + "/properties", null, h));
+                // READ-ONLY: version discovery for a driver set, on the named server (or the connected one)
+                case "versions" -> show(call("GET", t + "/idm/driversets/" + guid(t, h, args[3]) + "/versions"
+                    + (args.length > 4 ? "?server=" + serverNamed(call("GET", t + "/edir/servers", null, h), args[4]) : ""), null, h));
                 case "ca-config" -> show(new LiveSetupCheck.Reply(200, Json.asMap(Json.asMap(call("GET", t + "/security/pki", null, h).body().get("ca")).get("configuration")), null));
                 case "crl-times" -> {
                     // READ-ONLY: the CRL configuration's own times beside the issued CRL's
