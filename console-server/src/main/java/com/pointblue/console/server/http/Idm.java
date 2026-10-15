@@ -32,7 +32,7 @@ import javax.naming.directory.SearchControls;
  * GET  /api/v2/trees/{tree}/idm                                 engine status
  * GET  /api/v2/trees/{tree}/idm/driversets                      driver sets
  * GET  /api/v2/trees/{tree}/idm/driversets/{guid}               its drivers: state, start option, cache, trace
- * GET  /api/v2/trees/{tree}/idm/driversets/{guid}/activation | servers | jobs | log-level | versions
+ * GET  /api/v2/trees/{tree}/idm/driversets/{guid}/activation | servers | jobs | log-level | versions | statistics
  * GET  /api/v2/trees/{tree}/idm/drivers/{guid}                  status
  * POST /api/v2/trees/{tree}/idm/drivers/{guid}/start | stop | restart
  * PUT  /api/v2/trees/{tree}/idm/drivers/{guid}/start-option     {"option": "auto|manual|disabled"}
@@ -155,6 +155,34 @@ final class Idm {
                         Target t = target(l, guid, true);
                         Map<String, Object> out = new LinkedHashMap<>(identity(t, guid));
                         out.put("drivers", withGuids(l, t.dn(), Json.parse(Operate.driversetStatus(engine, env(d, t)).json())));
+                        Http.json(ex, 200, out);
+                    }
+                    // the driver set's statistics on the chosen server: the engine's JVM, and each driver's cache and counters
+                    case "GET driversets/{guid}/statistics" -> {
+                        Target t = target(l, guid, true);
+                        Map<String, Object> out = new LinkedHashMap<>();
+                        out.put("server", Map.of("dn", on.serverDn(), "name", String.valueOf(Names.identity(on.serverDn()).get("name"))));
+                        try {
+                            out.put("jvm", Json.asMap(Json.parse(Operate.engineStats(engine, env(d, t), List.of()).json())).get("jvm"));
+                        } catch (RuntimeException | LinkageError e) {
+                            out.put("jvm", null);
+                        }
+                        List<Map<String, Object>> drivers = new ArrayList<>();
+                        for (Ldap.Entry e : l.search(t.dn(), "(objectClass=DirXML-Driver)", null, SearchControls.ONELEVEL_SCOPE, new String[] {"GUID"}, 500)) {
+                            Map<String, Object> m = new LinkedHashMap<>();
+                            List<Object> g = e.attributes().get("guid");
+                            m.put("guid", g == null || g.isEmpty() ? null : Names.guidHex(g.get(0)));
+                            m.put("name", String.valueOf(Names.identity(e.dn()).get("name")));
+                            try {
+                                m.put("state", com.pointblue.dirxml.dev.deploy.Vault.stateName(engine.driverState(e.dn())));
+                                m.putAll(Statistics.driver(engine.driverStats(e.dn(), 0)));
+                            } catch (RuntimeException x) {
+                                m.put("error", x.getMessage());
+                            }
+                            drivers.add(m);
+                        }
+                        drivers.sort((a, b) -> String.valueOf(a.get("name")).compareToIgnoreCase(String.valueOf(b.get("name"))));
+                        out.put("drivers", drivers);
                         Http.json(ex, 200, out);
                     }
                     // version discovery on the chosen server: the engine now, and what its statistics job last collected there

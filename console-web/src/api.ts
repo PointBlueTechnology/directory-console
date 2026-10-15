@@ -451,6 +451,13 @@ export interface CacheSummary { size?: number | null; unprocessedSize?: number |
 export interface CacheEvent { position: number; type: string; className: string | null; srcDn: string | null; eventId: string | null; cachedTime: string | null; attributes: string[]; xml: string | null }
 export interface CacheEvents { events: CacheEvent[]; next: number | null }
 
+export interface ChannelStats { lastReset: string | null; groups: Record<string, Record<string, number>> }
+export interface DriverSetStatistics {
+  server: { dn: string; name: string };
+  jvm: { heapUsed: string; heapCommitted: string; heapTotal: string; threadsCurrent: string; threadsDaemon: string; threadsPeak: string } | null;
+  drivers: { guid: string | null; name: string; state?: string; error?: string; cache?: CacheSummary | null; subscriber?: ChannelStats; publisher?: ChannelStats }[];
+}
+
 export interface MigrateResult {
   ok: boolean;
   dryRun?: boolean;
@@ -533,7 +540,7 @@ export function idm(id: string, server?: string) {
     status: () => get<IdmStatus>(''),
     driverSets: () => get<{ items: Row[] }>('/driversets').then((r) => r.items),
     driverSet: (guid: string) => get<DriverSet>(`/driversets/${guidPath(guid)}`),
-    setPart: <T>(guid: string, part: 'activation' | 'servers' | 'jobs' | 'log-level' | 'passwords' | 'versions') => get<T>(`/driversets/${guidPath(guid)}/${part}`),
+    setPart: <T>(guid: string, part: 'activation' | 'servers' | 'jobs' | 'log-level' | 'passwords' | 'versions' | 'statistics') => get<T>(`/driversets/${guidPath(guid)}/${part}`),
     driver: (guid: string) => get<Record<string, unknown> & Identity>(`/drivers/${guidPath(guid)}`),
     driverPart: <T>(guid: string, part: string) => get<T>(`/drivers/${guidPath(guid)}/${part}`),
     lifecycle: (guid: string, action: 'start' | 'stop' | 'restart', confirm?: string) =>

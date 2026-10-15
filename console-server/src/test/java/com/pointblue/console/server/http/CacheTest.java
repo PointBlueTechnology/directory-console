@@ -36,4 +36,18 @@ public class CacheTest {
         assertEquals("each attribute once", List.of("Surname"), e.get("attributes"));
         assertEquals("2026-10-13T15:12:06.041Z", e.get("cachedTime"));
     }
+
+    @Test
+    public void eachChannelsCountersByGroup() {
+        String stats = "<driver-info><subscriber><cache><size>10</size></cache><operations last-reset-time=\"20240215163705.663Z\">"
+            + "<reported-events><modify>162</modify><add>320</add></reported-events><commands/></operations></subscriber>"
+            + "<publisher><operations><command-results><status>541</status></command-results></operations></publisher></driver-info>";
+        Map<String, Object> d = Statistics.driver(stats);
+        Map<?, ?> sub = (Map<?, ?>) d.get("subscriber");
+        assertEquals("2024-02-15T16:37:05.663Z", sub.get("lastReset"));
+        assertEquals(Map.of("modify", 162L, "add", 320L), ((Map<?, ?>) sub.get("groups")).get("reported-events"));
+        assertEquals(Map.of("status", 541L), ((Map<?, ?>) ((Map<?, ?>) d.get("publisher")).get("groups")).get("command-results"));
+        assertEquals(10L, ((Map<?, ?>) d.get("cache")).get("size"));
+        assertEquals(Map.of(), Statistics.driver("not xml"));
+    }
 }
