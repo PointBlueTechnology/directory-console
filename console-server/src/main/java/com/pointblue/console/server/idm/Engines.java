@@ -8,7 +8,7 @@ import com.pointblue.dirxml.dev.operate.Operate;
 /**
  * Identity Manager's engine operations (DirXML extended operations) for a signed-in person, through
  * DirXMLDev's {@code Vault} and {@code Operate}, which encode them with the open-source JLDAP library
- * (since DirXMLDev 0.36.0): no engine jars are needed, and none of OpenText's code is in the image.
+ * (since DirXMLDev 0.37.0): no engine jars are needed, and none of OpenText's code is in the image.
  */
 public interface Engines {
 
