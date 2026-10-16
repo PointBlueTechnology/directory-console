@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Flex, FlexItem, FormSelect, FormSelectOption, Label, Pagination, Spinner, ToggleGroup, ToggleGroupItem } from '@patternfly/react-core';
+import { Alert, Button, Flex, FlexItem, FormSelect, FormSelectOption, Label, Pagination, Spinner, ToggleGroup, ToggleGroupItem } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { type AssociationState, type DirObject, idm } from '../api';
 import { useSession } from '../session';
@@ -42,7 +42,7 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [newState, setNewState] = useState<AssociationState>('disabled');
   const [error, setError] = useState<unknown>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; partial: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const operator = canAt('operator', driverDn);
 
@@ -108,7 +108,7 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
           }
         }
       }
-      setNotice(`${verb === 'delete' ? 'Removed' : 'Changed'} ${done}.${failed.length ? ` Not done: ${failed.join('; ')}` : ''}`);
+      setNotice({ text: `${verb === 'delete' ? 'Removed' : 'Changed'} ${done}.${failed.length ? ` Not done: ${failed.join('; ')}` : ''}`, partial: failed.length > 0 });
       setBusy(false);
       countAll();
       list();
@@ -129,7 +129,7 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
       )}
       {counts && !exact && <p className="dc-subtle dc-tab-body"><Hint text={explain('estimate')}><span tabIndex={0}>Counts marked ~ are estimates.</span></Hint></p>}
       {counts && counts.undefined > 0 && <p className="dc-subtle dc-tab-body">{counts.undefined} with a state outside these five (shown under All).</p>}
-      {notice && <p className="dc-tab-body">{notice}</p>}
+      {notice && <Alert variant={notice.partial ? 'warning' : 'success'} isInline isPlain title={notice.text} className="dc-tab-body" />}
       <ProblemAlert error={error} />
       {operator && (
         <Flex className="dc-tab-body" alignItems={{ default: 'alignItemsCenter' }}>
@@ -153,7 +153,7 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
                 {operator && <Td select={{ rowIndex: i, isSelected: selected.includes(r.raw), onSelect: (_e, on) => setSelected(on ? [...selected, r.raw] : selected.filter((x) => x !== r.raw)) }} />}
                 <Td dataLabel="Object"><a {...linkProps(`/objects/${r.obj.guid}`)}>{r.obj.name}</a><div className="dc-subtle dc-mono">{r.obj.dn}</div></Td>
                 <Td dataLabel="Class">{r.obj.objectClass}</Td>
-                <Td dataLabel="State"><Hint text={stateHelp(r.state)}><Label isCompact color={COLOR[r.state]}>{r.state}</Label></Hint></Td>
+                <Td dataLabel="State"><Hint text={stateHelp(r.state)}><Label isCompact color={COLOR[r.state]}>{r.state ? `${r.state[0].toUpperCase()}${r.state.slice(1)}` : r.state}</Label></Hint></Td>
                 <Td dataLabel="Association" className="dc-mono">{r.value || <span className="dc-subtle">(empty)</span>}</Td>
               </Tr>
             ))}

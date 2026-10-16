@@ -15,6 +15,7 @@ import { useStepUp } from '../components/StepUp';
 import { TreesSection } from '../components/TreesSection';
 import { FieldHelp, Hint, useHelpTopic } from '../help/Help';
 import { explain } from '../help/glossary';
+import { useAreYouSure } from '../components/Confirm';
 
 /** A whole number from {@code min} to {@code max}. */
 const sessionOk = (v: string, min: number, max: number) => /^\d+$/.test(v.trim()) && Number(v) >= min && Number(v) <= max;
@@ -89,6 +90,7 @@ function DirectorySection({ s, api, etag, onSaved }: {
   s: DirectorySettings; api: ReturnType<typeof settings>; etag?: string; onSaved: (r: { data: DirectorySettings; etag?: string }) => void;
 }) {
   const { run, dialog } = useStepUp();
+  const sure = useAreYouSure();
   const [tier, setTier] = useState(s.tier);
   const [bases, setBases] = useState(s.login.searchBases.join('\n'));
   const [duplicates, setDuplicates] = useState(s.login.duplicates);
@@ -150,7 +152,9 @@ function DirectorySection({ s, api, etag, onSaved }: {
           </FormGroup>
           <ActionGroup>
             <Button variant="secondary" isDisabled={busy || !saDn.trim() || !saPassword} onClick={() => go('The service account is saved.', () => api.serviceAccount({ dn: saDn.trim(), password: saPassword }, etag))}>Save the service account</Button>
-            {s.serviceAccount && <Button variant="link" isDanger isDisabled={busy} onClick={() => go('The service account is removed.', () => api.serviceAccount(null, etag))}>Remove it</Button>}
+            {s.serviceAccount && <Button variant="link" isDanger isDisabled={busy} onClick={() => sure.ask('Remove the service account?',
+              'Single sign-on stops, and so does finding people by a short name at sign-in, until a service account is set again.', 'Remove',
+              () => go('The service account is removed.', () => api.serviceAccount(null, etag)))}>Remove it</Button>}
           </ActionGroup>
         </FormSection>
         <FormSection title="Finding people at sign-in" titleElement="h3">
@@ -167,6 +171,7 @@ function DirectorySection({ s, api, etag, onSaved }: {
       </Form>
       <Outcome error={error} notice={notice} />
       {dialog}
+      {sure.dialog}
     </div>
   );
 }

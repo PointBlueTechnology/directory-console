@@ -151,7 +151,7 @@ export function NewJobModal({ api, kind, guid, onClose, onCreated }: {
                   onChange={(_e, on) => setServers(on ? [...servers, s.dn.toLowerCase()] : servers.filter((d) => d !== s.dn.toLowerCase()))} />
               ))}
             </FormGroup>
-            <FormGroup label={type.scopeRequired ? 'Scope (this job needs one)' : 'Scope'} fieldId="new-job-scope" role="group">
+            <FormGroup label={type.scopeRequired ? 'Objects (this job needs some)' : 'Objects'} fieldId="new-job-scope" role="group">
               {scope.map((s, i) => (
                 <Flex key={i} alignItems={{ default: 'alignItemsCenter' }} flexWrap={{ default: 'wrap' }}>
                   <FlexItem grow={{ default: 'grow' }}>
@@ -166,8 +166,8 @@ export function NewJobModal({ api, kind, guid, onClose, onCreated }: {
                   <FlexItem><Button variant="link" isInline onClick={() => setScope(scope.filter((_x, j) => j !== i))}>Remove</Button></FlexItem>
                 </Flex>
               ))}
-              <Button variant="link" isInline onClick={() => setScope([...scope, { dn: '', scope: 'subtree' }])}>Add a scope</Button>
-              {scope.length === 0 && <FormHelperText><HelperText><HelperTextItem>No scope: the job runs once, not once per object.</HelperTextItem></HelperText></FormHelperText>}
+              <Button variant="link" isInline onClick={() => setScope([...scope, { dn: '', scope: 'subtree' }])}>Add objects</Button>
+              {scope.length === 0 && <FormHelperText><HelperText><HelperTextItem>No objects: the job runs once, not once per object.</HelperTextItem></HelperText></FormHelperText>}
             </FormGroup>
             {type.parameters.filter((p) => active.has(p.name) && p.type !== 'password-ref').map((p) => (
               <FormGroup key={p.name} label={p.type === 'boolean' ? undefined : p.label} fieldId={`job-param-${p.name}`} style={{ marginLeft: `${p.depth * 1.5}rem` }}>

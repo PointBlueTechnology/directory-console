@@ -12,24 +12,14 @@ import { useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { Hint, useHelpTopic } from '../help/Help';
-import { GLOSSARY, explain } from '../help/glossary';
-
-const TYPE_LABEL: Record<string, string> = {
-  master: 'Master', 'read-write': 'Read/write', 'read-only': 'Read-only', 'subordinate-reference': 'Subordinate reference',
-  'sparse-write': 'Sparse write', 'sparse-read': 'Sparse read',
-};
-
-/** What a replica type means, from the glossary. */
-function typeHelp(type: string): string {
-  const key = `replica.${type}`;
-  return key in GLOSSARY ? GLOSSARY[key as keyof typeof GLOSSARY] : type;
-}
+import { REPLICA_TYPE_LABEL, ReplicaTypeLabel, replicaTypeHelp } from '../components/ReplicaType';
+import { explain } from '../help/glossary';
 
 /** A replica's type and state as labels: busy or in transition in blue, anything not "on" in orange. */
 export function ReplicaLabels({ r }: { r: ReplicaState }) {
   return (
     <LabelGroup>
-      <Hint text={typeHelp(r.type)}><Label isCompact color={r.type === 'master' ? 'purple' : r.type === 'subordinate-reference' ? 'grey' : 'blue'}>{TYPE_LABEL[r.type] ?? r.type}</Label></Hint>
+      <ReplicaTypeLabel type={r.type} />
       {r.error ? <Label isCompact color="red">{r.error}</Label>
         : r.state !== 'on' ? <Label isCompact color="orange">{r.state}</Label> : null}
       {r.transition && <Label isCompact color="blue">{r.transition}</Label>}
@@ -184,12 +174,12 @@ function PartitionsView() {
         <ReplicaModal title={`Add a replica of ${dialog.p.name}`}
           servers={servers.filter((s) => !dialog.p.replicas.some((r) => r.server.guid === s.guid && r.type !== 'subordinate-reference'))}
           onClose={() => setDialog(null)}
-          onSave={(server, type) => { setDialog(null); act(`Add a ${TYPE_LABEL[type]} replica`, (c) => api.addReplica(dialog.p.id!, server, type, c)); }} />
+          onSave={(server, type) => { setDialog(null); act(`Add a ${REPLICA_TYPE_LABEL[type]} replica`, (c) => api.addReplica(dialog.p.id!, server, type, c)); }} />
       )}
       {dialog?.kind === 'type' && (
         <ReplicaModal title={`Change ${dialog.server.name}'s replica of ${dialog.p.name}`} fixedServer={dialog.server} current={dialog.current}
           onClose={() => setDialog(null)}
-          onSave={(_s, type) => { setDialog(null); act(`Make the replica ${TYPE_LABEL[type]}`, (c) => api.changeReplica(dialog.p.id!, dialog.server.guid, type, c)); }} />
+          onSave={(_s, type) => { setDialog(null); act(`Make the replica ${REPLICA_TYPE_LABEL[type]}`, (c) => api.changeReplica(dialog.p.id!, dialog.server.guid, type, c)); }} />
       )}
       {confirmDialog}
       {sure.dialog}
@@ -236,7 +226,7 @@ function ReplicaModal({ title, servers, fixedServer, current, onClose, onSave }:
               <FormSelectOption value="read-only" label="Read-only" />
               {fixedServer && <FormSelectOption value="master" label="Master (the current master becomes read/write)" />}
             </FormSelect>
-            <FormHelperText><HelperText><HelperTextItem>{typeHelp(type)}</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>{replicaTypeHelp(type)}</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
         </Form>
       </ModalBody>

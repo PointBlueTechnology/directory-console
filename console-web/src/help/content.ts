@@ -395,7 +395,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         list: [
           'New job offers the types this server\'s engine has.',
           'The schedule is five cron fields (minute hour day month weekday), in each server\'s local time. No schedule means it runs only when started.',
-          'A scope makes the job run once per object found there; without one it runs once.',
+          'Objects: the job runs once per object found under each container or entry you give; with none it runs once.',
           'Some job types need a named password on the job; set it before the job runs.',
         ],
       },

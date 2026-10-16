@@ -7,7 +7,7 @@ import { PlusIcon, TrashIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { type Idm, type MigrateResult, type SchemaAttribute, type SchemaClass } from '../api';
 import { useSession } from '../session';
-import { useConfirmed } from './Confirm';
+import { useAreYouSure, useConfirmed } from './Confirm';
 import { ProblemAlert } from './Problem';
 
 /**
@@ -42,6 +42,7 @@ export function MigratePanel({ api, guid }: { api: Idm; guid: string }) {
 function ToApp({ api, guid, classes }: { api: Idm; guid: string; classes: SchemaClass[] }) {
   const { tree } = useSession();
   const { run, dialog } = useConfirmed();
+  const sure = useAreYouSure();
   const [base, setBase] = useState('');
   const [cls, setCls] = useState('inetOrgPerson');
   const [filter, setFilter] = useState('');
@@ -113,7 +114,9 @@ function ToApp({ api, guid, classes }: { api: Idm; guid: string; classes: Schema
           {(preview.objects ?? []).length > 0 && (
             <ul className="dc-values dc-mono" style={{ maxHeight: '12rem', overflowY: 'auto' }}>{preview.objects!.map((d) => <li key={d}>{d}</li>)}</ul>
           )}
-          {!!preview.count && <div><Button onClick={send} isLoading={busy} isDisabled={busy}>Send {preview.count} object{preview.count === 1 ? '' : 's'} to the driver</Button></div>}
+          {!!preview.count && <div><Button onClick={() => sure.ask(`Send ${preview.count} object${preview.count === 1 ? '' : 's'} to the driver?`,
+            'Each is sent as if it had just been added: the driver matches it or creates it in the application. This cannot be undone from here.', 'Send', send)}
+            isLoading={busy} isDisabled={busy}>Send {preview.count} object{preview.count === 1 ? '' : 's'} to the driver</Button></div>}
         </>
       )}
       {done && (
@@ -133,12 +136,14 @@ function ToApp({ api, guid, classes }: { api: Idm; guid: string; classes: Schema
       )}
       <ProblemAlert error={error} />
       {dialog}
+      {sure.dialog}
     </Form>
   );
 }
 
 function FromApp({ api, guid, classes, attributes }: { api: Idm; guid: string; classes: SchemaClass[]; attributes: SchemaAttribute[] }) {
   const { run, dialog } = useConfirmed();
+  const sure = useAreYouSure();
   const [cls, setCls] = useState('inetOrgPerson');
   const [search, setSearch] = useState<{ attribute: string; value: string }[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -153,7 +158,10 @@ function FromApp({ api, guid, classes, attributes }: { api: Idm; guid: string; c
       .finally(() => setBusy(false));
   };
   return (
-    <Form className="dc-tab-body" onSubmit={(e) => { e.preventDefault(); go(); }}>
+    <Form className="dc-tab-body" onSubmit={(e) => {
+      e.preventDefault();
+      sure.ask('Bring these objects into the vault?', 'The engine asks the application for every matching object and brings each in through the publisher channel, creating vault objects where its policies say to. This cannot be undone from here.', 'Bring them in', go);
+    }}>
       <p className="dc-subtle">The engine asks the application for its objects of this class (those matching every condition, or all of them) and brings each into the vault through the publisher channel's matching, creation and placement policies.</p>
       <FormGroup label="Class" fieldId="mig-from-class">
         <FormSelect id="mig-from-class" value={cls} onChange={(_e, v) => setCls(v)}>
@@ -180,6 +188,7 @@ function FromApp({ api, guid, classes, attributes }: { api: Idm; guid: string; c
       {notice && <Alert variant="success" isInline isPlain title={notice} />}
       <ProblemAlert error={error} />
       {dialog}
+      {sure.dialog}
     </Form>
   );
 }

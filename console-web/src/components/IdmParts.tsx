@@ -9,7 +9,7 @@ import { type Idm, type Job, type PasswordKind } from '../api';
 import { useSession } from '../session';
 import { useHeading } from '../heading';
 import { ProblemAlert } from './Problem';
-import { useConfirmed } from './Confirm';
+import { useAreYouSure, useConfirmed } from './Confirm';
 import { JobDetailsModal } from './JobDetails';
 import { NewJobModal } from './NewJob';
 import { explain } from '../help/glossary';
@@ -27,6 +27,7 @@ export function JobsTable({ api, load, owner }: { api: Idm; load: () => Promise<
   const level = useHeading();
   const { can, tree } = useSession();
   const { run, dialog } = useConfirmed();
+  const sure = useAreYouSure();
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -72,7 +73,8 @@ export function JobsTable({ api, load, owner }: { api: Idm; load: () => Promise<
                 {can('operator') && (
                   <Td isActionCell>
                     <Button variant="link" isInline isDisabled={j.disabled} onClick={() => act(j, 'start')}>Run now</Button>{' '}
-                    <Button variant="link" isInline isDanger onClick={() => act(j, 'abort')}>Abort</Button>
+                    <Button variant="link" isInline isDanger onClick={() => sure.ask(`Abort ${j.name}?`,
+                      'The job stops where it is. What it has done stays done; it runs again at its next scheduled time.', 'Abort', () => act(j, 'abort'))}>Abort</Button>
                   </Td>
                 )}
               </Tr>
@@ -86,6 +88,7 @@ export function JobsTable({ api, load, owner }: { api: Idm; load: () => Promise<
           onCreated={(name, notified) => { setNotice(`${name}: created${notified ? '' : '; the engine schedules it when it next reads its jobs'}`); refresh(); }} />
       )}
       {dialog}
+      {sure.dialog}
     </div>
   );
 }
@@ -99,6 +102,7 @@ export function PasswordsPanel({ api, kind, guid }: { api: Idm; kind: 'drivers' 
   const level = useHeading();
   const { can } = useSession();
   const { run, dialog } = useConfirmed();
+  const sure = useAreYouSure();
   const [named, setNamed] = useState<string[] | null>(null);
   const [setting, setSetting] = useState<PasswordKind | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -140,7 +144,8 @@ export function PasswordsPanel({ api, kind, guid }: { api: Idm; kind: 'drivers' 
             {named.map((n) => (
               <Tr key={n}>
                 <Td dataLabel="Named password"><span className="dc-mono">{n}</span></Td>
-                {operator && <Td isActionCell><Button variant="link" isInline isDanger onClick={() => remove('named', n)}>Remove</Button></Td>}
+                {operator && <Td isActionCell><Button variant="link" isInline isDanger onClick={() => sure.ask(`Remove the named password ${n}?`,
+                  'Policies that read it get nothing until it is set again. Its value cannot be shown or recovered.', 'Remove', () => remove('named', n))}>Remove</Button></Td>}
               </Tr>
             ))}
           </Tbody>
@@ -163,6 +168,7 @@ export function PasswordsPanel({ api, kind, guid }: { api: Idm; kind: 'drivers' 
           }} />
       )}
       {dialog}
+      {sure.dialog}
     </div>
   );
 }

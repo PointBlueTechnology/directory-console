@@ -178,6 +178,7 @@ function Assignments({ api, p, edit, run, onChanged }: {
   api: ReturnType<typeof security>; p: PasswordPolicy; edit: boolean; run: <T>(op: (c?: string) => Promise<T>) => Promise<T>; onChanged: (p: PasswordPolicy) => void;
 }) {
   const [error, setError] = useState<unknown>(null);
+  const sure = useAreYouSure();
   const act = async (op: (c?: string) => Promise<PasswordPolicy>) => {
     setError(null);
     try {
@@ -201,7 +202,8 @@ function Assignments({ api, p, edit, run, onChanged }: {
                   <Td dataLabel="Object">{a.guid ? <a {...linkProps(`/objects/${a.guid}`)}>{a.name}</a> : a.name}</Td>
                   <Td dataLabel="DN" className="dc-mono">{a.dn}</Td>
                   {edit && <Td isActionCell>{a.guid && <Button variant="plain" aria-label={`Unassign ${a.name}`} icon={<TrashIcon />}
-                    onClick={() => act((c) => api.unassign(p.guid!, a.guid!, c))} />}</Td>}
+                    onClick={() => sure.ask(`Unassign ${a.name}?`, `${a.name} and the objects below it no longer use ${p.name}; they fall back to whatever policy applies above them.`,
+                      'Unassign', () => act((c) => api.unassign(p.guid!, a.guid!, c)))} />}</Td>}
                 </Tr>
               ))}
             </Tbody>
@@ -215,6 +217,7 @@ function Assignments({ api, p, edit, run, onChanged }: {
           </div>
         )}
         <ProblemAlert error={error} />
+        {sure.dialog}
       </CardBody>
     </Card>
   );

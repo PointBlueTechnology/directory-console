@@ -190,19 +190,23 @@ function Overview({ api, guid, status, onChanged }: { api: Idm; guid: string; st
 function Resync({ api, guid }: { api: Idm; guid: string }) {
   const level = useHeading();
   const { run, dialog } = useConfirmed();
+  const sure = useAreYouSure();
   const [since, setSince] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
   return (
-    <Form className="dc-tab-body" onSubmit={async (e) => {
+    <Form className="dc-tab-body" onSubmit={(e) => {
       e.preventDefault();
-      setError(null);
-      try {
-        await run((c) => api.resync(guid, since ? new Date(since).toISOString() : null, c));
-        setNotice('Resynchronisation requested.');
-      } catch (x) {
-        setError(x);
-      }
+      sure.ask('Resynchronise this driver?', `The driver sends ${since ? 'every object changed since then' : 'all of its objects'} again. On a large driver this loads the connected system for some time.`,
+        'Resynchronise', async () => {
+          setError(null);
+          try {
+            await run((c) => api.resync(guid, since ? new Date(since).toISOString() : null, c));
+            setNotice('Resynchronisation requested.');
+          } catch (x) {
+            setError(x);
+          }
+        });
     }}>
       <Title headingLevel="h2" size="md">Resynchronise</Title>
       <p className="dc-subtle">{explain('resync')}</p>
@@ -213,6 +217,7 @@ function Resync({ api, guid }: { api: Idm; guid: string }) {
       <ProblemAlert error={error} />
       <div><Button type="submit" variant="secondary">Resynchronise</Button></div>
       {dialog}
+      {sure.dialog}
     </Form>
   );
 }

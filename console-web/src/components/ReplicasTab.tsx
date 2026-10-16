@@ -9,6 +9,7 @@ import { ValueView } from './ValueView';
 import { useServerSignIn } from './ServerSignIn';
 import { explain } from '../help/glossary';
 import { Hint } from '../help/Help';
+import { ReplicaTypeLabel } from './ReplicaType';
 
 /**
  * One object on each server that holds its replica: whether each server has it, and the attributes
@@ -36,7 +37,7 @@ export function ReplicasTab({ obj }: { obj: DirObject }) {
           {c.servers.map((s) => (
             <Tr key={s.server.guid}>
               <Td dataLabel="Server">{s.server.name}</Td>
-              <Td dataLabel="Replica">{s.server.type ?? '—'}</Td>
+              <Td dataLabel="Replica">{s.server.type ? <ReplicaTypeLabel type={s.server.type} /> : '—'}</Td>
               <Td dataLabel="This object">
                 {s.status === 'ok' ? <Label isCompact color="green">present</Label>
                   : s.status === 'server-sign-in-required' ? (

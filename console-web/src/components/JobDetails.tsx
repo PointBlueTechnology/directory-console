@@ -83,7 +83,7 @@ export function JobDetailsModal({ api, guid, onClose, onChanged }: { api: Idm; g
               <Item term="Owner">{job.owner.name} <span className="dc-subtle">({job.owner.kind})</span></Item>
               {job.description && <Item term="Does">{job.description}</Item>}
               {job.javaClass && <Item term="Class"><span className="dc-mono">{job.javaClass}</span></Item>}
-              <Item term="Scope">
+              <Item term="Objects">
                 {job.scope.length === 0 ? <span className="dc-subtle">{job.scopeRequired ? 'none (this job needs one)' : 'none'}</span>
                   : job.scope.map((s) => <div key={s.raw} className="dc-mono">{s.dn ?? s.raw}{s.scope ? <span className="dc-subtle"> · {s.scope}</span> : null}</div>)}
               </Item>
