@@ -12,6 +12,8 @@ import { ProblemAlert } from './Problem';
 import { useConfirmed } from './Confirm';
 import { JobDetailsModal } from './JobDetails';
 import { NewJobModal } from './NewJob';
+import { explain } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 /** A driver's state as a coloured label. */
 export function StateLabel({ state }: { state: string }) {
@@ -124,7 +126,7 @@ export function PasswordsPanel({ api, kind, guid }: { api: Idm; kind: 'drivers' 
           <ToolbarContent>
             <ToolbarItem><Button variant="secondary" icon={<PlusIcon />} onClick={() => setSetting('named')}>Set a named password</Button></ToolbarItem>
             {kind === 'drivers' && (['remote-loader', 'key', 'keystore'] as PasswordKind[]).map((k) => (
-              <ToolbarItem key={k}><Button variant="link" onClick={() => setSetting(k)}>Set the {KIND_LABEL[k].toLowerCase()}</Button></ToolbarItem>
+              <ToolbarItem key={k}><Hint text={explain(k === 'remote-loader' ? 'remoteLoaderPassword' : 'mutualAuthKey')}><Button variant="link" onClick={() => setSetting(k)}>Set the {KIND_LABEL[k].toLowerCase()}</Button></Hint></ToolbarItem>
             ))}
           </ToolbarContent>
         </Toolbar>
@@ -209,7 +211,7 @@ export const LOG_LEVELS: { value: number; label: string }[] = [
   { value: 3, label: 'Off' },
   { value: 0, label: 'Errors' },
   { value: 1, label: 'Errors and warnings' },
-  { value: 2, label: 'Only update the last log time' },
+  { value: 2, label: 'Only record when it last logged (no events)' },
 ];
 
 /** The log level of a driver (or "use the driver set's") or of a driver set. */

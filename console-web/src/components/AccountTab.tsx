@@ -9,6 +9,7 @@ import { decode, encode } from '../timemap';
 import { ProblemAlert } from './Problem';
 import { TimeGrid } from './TimeGrid';
 import { useHeading } from '../heading';
+import { explain } from '../help/glossary';
 
 type Draft = Partial<Account>;
 
@@ -107,6 +108,7 @@ export function AccountTab({ obj, onChanged }: { obj: DirObject; onChanged: () =
             onChange={(v) => put({ maxConnections: v })} hint="Empty: no limit" />
         </FormSection>
         <FormSection title="Password" titleElement={level}>
+          <p className="dc-subtle">{explain('accountRestrictions')}</p>
           <Checkbox id="passwordRequired" label="Password required" isChecked={!!value('passwordRequired')} isDisabled={!editor}
             onChange={(_e, v) => put({ passwordRequired: v })} />
           <Checkbox id="passwordAllowChange" label="User may change the password" isChecked={!!value('passwordAllowChange')} isDisabled={!editor}
@@ -119,7 +121,7 @@ export function AccountTab({ obj, onChanged }: { obj: DirObject; onChanged: () =
             onChange={(v) => put({ passwordExpirationDays: v })} hint="Empty: the password never expires" />
           <When label="Password expires" id="passwordExpires" value={value('passwordExpires') ?? null} disabled={!editor}
             onChange={(v) => put({ passwordExpires: v })} />
-          <Num label="Grace logins allowed" id="graceLimit" value={value('graceLimit') ?? null} disabled={!editor} onChange={(v) => put({ graceLimit: v })} />
+          <Num label="Grace logins allowed" id="graceLimit" value={value('graceLimit') ?? null} disabled={!editor} onChange={(v) => put({ graceLimit: v })} hint={explain('graceLogins')} />
           <Num label="Grace logins remaining" id="graceRemaining" value={value('graceRemaining') ?? null} disabled={!editor} onChange={(v) => put({ graceRemaining: v })} />
         </FormSection>
         <FormSection title="Login times" titleElement={level}>

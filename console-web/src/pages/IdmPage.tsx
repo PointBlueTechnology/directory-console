@@ -19,6 +19,8 @@ import { VersionsPanel } from '../components/VersionsPanel';
 import { StatisticsPanel } from '../components/StatisticsPanel';
 import { DriverSetPropertiesTab } from '../components/DriverProperties';
 import { plan } from '../lifecycle';
+import { Hint, useHelpTopic } from '../help/Help';
+import { explain, tip } from '../help/glossary';
 
 /** Identity Manager: the engine, the driver sets, and each set's drivers with their state. */
 export function IdmPage({ driverSet }: { driverSet?: string }) {
@@ -80,6 +82,7 @@ function DriverSetView({ api: connected, guid }: { api: ReturnType<typeof idm>; 
   const [set, setSet] = useState<DriverSet | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [tab, setTab] = useState<string | number>('drivers');
+  useHelpTopic(`idm.${String(tab)}`);
   const load = useCallback(() => {
     setError(null);
     signIn.run(() => api.driverSet(guid)).then(setSet).catch((e) => {
@@ -105,9 +108,11 @@ function DriverSetView({ api: connected, guid }: { api: ReturnType<typeof idm>; 
           <FlexItem><Title headingLevel="h2">{set.name}</Title></FlexItem>
           {choices.length > 1 && (
             <FlexItem>
-              <FormSelect id="set-server" aria-label="Server" value={server ?? ''} onChange={(_e, v) => setServer(v || undefined)}>
-                {choices.map((x) => <FormSelectOption key={x.guid} value={x.connected ? '' : x.guid} label={`On ${x.name}${x.connected ? ' (connected)' : ''}`} />)}
-              </FormSelect>
+              <Hint text={explain('idmServer')}>
+                <FormSelect id="set-server" aria-label="Server" value={server ?? ''} onChange={(_e, v) => setServer(v || undefined)}>
+                  {choices.map((x) => <FormSelectOption key={x.guid} value={x.connected ? '' : x.guid} label={`On ${x.name}${x.connected ? ' (connected)' : ''}`} />)}
+                </FormSelect>
+              </Hint>
             </FlexItem>
           )}
         </Flex>
@@ -178,7 +183,7 @@ function DriversTable({ api, drivers, onChanged, server, serverName }: {
       <ProblemAlert error={error} />
       {bulk && <BulkLifecycleModal action={bulk} drivers={drivers} api={api} serverName={serverName} onClose={() => setBulk(null)} onDone={onChanged} />}
       <Table aria-label="Drivers" variant="compact">
-        <Thead><Tr><Th>Driver</Th><Th>State</Th><Th>Starts</Th><Th>Cache</Th><Th>Unprocessed</Th><Th>Trace</Th>{can('operator') && <Th screenReaderText="Actions" />}</Tr></Thead>
+        <Thead><Tr><Th>Driver</Th><Th>State</Th><Th info={tip('startOption')}>Starts</Th><Th info={tip('cache')}>Cache</Th><Th info={tip('unprocessed')}>Unprocessed</Th><Th info={tip('traceLevel')}>Trace</Th>{can('operator') && <Th screenReaderText="Actions" />}</Tr></Thead>
         <Tbody>
           {drivers.map((d) => {
             const running = d.state.toLowerCase() === 'running';
@@ -199,7 +204,7 @@ function DriversTable({ api, drivers, onChanged, server, serverName }: {
                       </>
                     ) : /disabled/i.test(d.startOption ?? '')
                       // a disabled driver cannot start; its events are not queued meanwhile
-                      ? <span className="dc-subtle" title="Set its start option to Automatic or Manual first">disabled</span>
+                      ? <Hint text="It cannot start while disabled: set its start option to Automatic or Manual first."><span className="dc-subtle" tabIndex={0}>disabled</span></Hint>
                       : <Button variant="link" isInline onClick={() => act(d, 'start')}>Start</Button>}
                   </Td>
                 )}

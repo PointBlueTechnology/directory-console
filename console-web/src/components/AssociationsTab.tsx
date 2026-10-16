@@ -9,6 +9,8 @@ import { useSession } from '../session';
 import { linkProps } from '../router';
 import { useAreYouSure, useConfirmed } from './Confirm';
 import { ProblemAlert } from './Problem';
+import { tip } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 const STATES: { state: AssociationState; label: string; help: string; color: 'green' | 'blue' | 'orange' | 'grey' | 'purple' }[] = [
   { state: 'processed', label: 'Processed', help: 'Associated: the driver keeps the two in step.', color: 'green' },
@@ -56,7 +58,7 @@ export function AssociationsTab({ obj }: { obj: DirObject }) {
       <ProblemAlert error={opError} />
       {data.associations.length === 0 ? <p>No Identity Manager driver is associated with this object.</p> : (
         <Table aria-label="Associations" variant="compact">
-          <Thead><Tr><Th>Driver</Th><Th>Driver set</Th><Th>State</Th><Th>Association</Th>{operator && <Th screenReaderText="Actions" />}</Tr></Thead>
+          <Thead><Tr><Th>Driver</Th><Th>Driver set</Th><Th>State</Th><Th info={tip('association')}>Association</Th>{operator && <Th screenReaderText="Actions" />}</Tr></Thead>
           <Tbody>
             {data.associations.map((a) => {
               const m = meta(a.state);
@@ -68,7 +70,7 @@ export function AssociationsTab({ obj }: { obj: DirObject }) {
                         : <span className="dc-mono">{a.raw}</span>}
                   </Td>
                   <Td dataLabel="Driver set">{a.driver?.driverSet.name ?? '—'}</Td>
-                  <Td dataLabel="State">{m ? <Label color={m.color} isCompact title={m.help}>{m.label}</Label> : a.state ?? '—'}</Td>
+                  <Td dataLabel="State">{m ? <Hint text={m.help}><Label color={m.color} isCompact>{m.label}</Label></Hint> : a.state ?? '—'}</Td>
                   <Td dataLabel="Association" className="dc-mono">{a.value || <span className="dc-subtle">(empty)</span>}</Td>
                   {operator && (
                     <Td isActionCell>
@@ -84,8 +86,9 @@ export function AssociationsTab({ obj }: { obj: DirObject }) {
       )}
       {operator && (
         <div className="dc-tab-body">
-          <Button variant="secondary" onClick={() => setAdding(true)} isDisabled={free.length === 0}
-            title={free.length === 0 ? 'Every driver already has an association with this object' : undefined}>Add an association</Button>
+          {free.length === 0 ? (
+            <Hint text="Every driver already has an association with this object."><Button variant="secondary" isAriaDisabled>Add an association</Button></Hint>
+          ) : <Button variant="secondary" onClick={() => setAdding(true)}>Add an association</Button>}
         </div>
       )}
       <p className="dc-subtle dc-tab-body">Read from {obj.servedBy?.dn ?? 'the connected server'}; associations replicate with the object.</p>

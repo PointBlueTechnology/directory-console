@@ -12,6 +12,8 @@ import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure } from '../components/Confirm';
 import { useStepUp } from '../components/StepUp';
 import { CertificateDetails, ExpiryLabel, ScopeSelect, TrustCertificateModal, TrustStatus, scopeText } from '../components/Certificates';
+import { explain } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 type Live = { directory: Directory; probe?: Probe; error?: string };
 
@@ -170,7 +172,7 @@ function CertificatesSection({ store, directories, usedBy, onAdd, onChanged }: {
                 <Tr>
                   <Td expand={{ rowIndex: i, isExpanded: open === (c.key ?? c.id), onToggle: () => setOpen(open === (c.key ?? c.id) ? null : (c.key ?? c.id)) }} />
                   <Td dataLabel="Certificate">{c.subject}</Td>
-                  <Td dataLabel="Trusted as">{c.kind === 'ca' ? 'Certificate authority' : 'This server only'}</Td>
+                  <Td dataLabel="Trusted as"><Hint text={explain(c.kind === 'ca' ? 'trustedAsCa' : 'trustedAsPinned')}><span tabIndex={0}>{c.kind === 'ca' ? 'Certificate authority' : 'This server only'}</span></Hint></Td>
                   <Td dataLabel="For">{scopeText(c.scope, directories)}</Td>
                   <Td dataLabel="Expires"><ExpiryLabel notAfter={c.notAfter} /></Td>
                   <Td dataLabel="In use by">{users.join(', ') || <span className="dc-subtle">none now</span>}</Td>

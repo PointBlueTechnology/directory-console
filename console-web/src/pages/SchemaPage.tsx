@@ -10,6 +10,7 @@ import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { useSession } from '../session';
 import { linkProps, navigate } from '../router';
 import { ProblemAlert } from '../components/Problem';
+import { Hint } from '../help/Help';
 
 const SYNTAXES: Record<string, string> = {
   '1.3.6.1.4.1.1466.115.121.1.15': 'Directory string',
@@ -173,12 +174,26 @@ const FLAGS: Record<string, string> = {
   'X-NDS_FILTERED_OPERATIONAL': 'filtered operational',
   'X-NDS_AMBIGUOUS_NAMING': 'ambiguous naming',
 };
+/** What a flag means, where it can be said in one line. */
+const FLAG_HELP: Record<string, string> = {
+  'X-NDS_NONREMOVABLE': 'Part of eDirectory\'s base schema: it cannot be deleted.',
+  'X-NDS_PUBLIC_READ': 'Anyone may read it, without rights to it.',
+  'X-NDS_SERVER_READ': 'Servers may read it, without rights to it.',
+  'X-NDS_PER_REPLICA': 'Each server keeps its own value; it is not replicated.',
+  'X-NDS_NAME_VALUE_ACCESS': 'Adding a value needs rights to the object it names.',
+  'X-NDS_SCHED_SYNC_NEVER': 'A change to it does not start replication by itself; it goes out with the next one.',
+  'X-NDS_NOT_SCHED_SYNC_IMMEDIATE': 'A change waits for the next scheduled replication instead of going out at once.',
+  'X-NDS_FILTERED_REQUIRED': 'Kept in every filtered replica.',
+  'X-NDS_OPERATIONAL': 'Maintained by the directory, not set by people.',
+  'X-NDS_AMBIGUOUS_NAMING': 'Objects of this class may be named by any of its naming attributes.',
+};
 const SHOWN_ELSEWHERE = new Set(['X-NDS_NOT_CONTAINER', 'X-NDS_NEVER_SYNC', 'X-NDS_AMBIGUOUS_CONTAINMENT']);
 
 function FlagLabels({ flags }: { flags?: string[] }) {
-  return <>{(flags ?? []).filter((f) => !SHOWN_ELSEWHERE.has(f)).map((f) => (
-    <Label key={f} color={f === 'X-NDS_NONREMOVABLE' ? 'grey' : undefined}>{FLAGS[f] ?? f.replace(/^X-NDS_/, '').toLowerCase().replace(/_/g, ' ')}</Label>
-  ))}</>;
+  return <>{(flags ?? []).filter((f) => !SHOWN_ELSEWHERE.has(f)).map((f) => {
+    const label = <Label key={f} color={f === 'X-NDS_NONREMOVABLE' ? 'grey' : undefined}>{FLAGS[f] ?? f.replace(/^X-NDS_/, '').toLowerCase().replace(/_/g, ' ')}</Label>;
+    return FLAG_HELP[f] ? <Hint key={f} text={FLAG_HELP[f]}>{label}</Hint> : label;
+  })}</>;
 }
 
 /** eDirectory refuses to delete base schema: say so rather than offer it. */

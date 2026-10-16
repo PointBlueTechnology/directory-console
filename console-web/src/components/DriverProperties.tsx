@@ -6,6 +6,8 @@ import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { type ConfigItem, type DriverProperties, type DriverSetProperties, idm } from '../api';
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
+import { GLOSSARY, explain, tip } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 function Item({ term, children }: { term: string; children: React.ReactNode }) {
   return <DescriptionListGroup><DescriptionListTerm>{term}</DescriptionListTerm><DescriptionListDescription>{children}</DescriptionListDescription></DescriptionListGroup>;
@@ -26,7 +28,7 @@ function ConfigTable({ items, label, showInactive }: { items: ConfigItem[]; labe
           <Tr key={n} className={i.inactive ? 'dc-subtle' : undefined}>
             <Td width={50} dataLabel="Setting">
               <span style={{ paddingLeft: `${i.depth * 1.25}rem` }}>
-                {i.description ? <Tooltip content={i.description}><span>{i.label || i.name}</span></Tooltip> : (i.label || i.name)}
+                {i.description ? <Tooltip content={i.description}><span tabIndex={0}>{i.label || i.name}</span></Tooltip> : (i.label || i.name)}
               </span>
             </Td>
             <Td dataLabel="Value" className="dc-mono">{i.value === null || i.value === undefined || i.value === '' ? <span className="dc-subtle">—</span> : i.value}</Td>
@@ -38,7 +40,13 @@ function ConfigTable({ items, label, showInactive }: { items: ConfigItem[]; labe
 }
 
 const CHANNEL_COLOR: Record<string, 'green' | 'blue' | 'orange' | 'grey'> = { sync: 'green', notify: 'blue', reset: 'orange', ignore: 'grey' };
-const Channel = ({ v }: { v: string }) => (v ? <Label isCompact color={CHANNEL_COLOR[v] ?? 'grey'}>{v}</Label> : <span className="dc-subtle">—</span>);
+const Channel = ({ v }: { v: string }) => (v ? <Hint text={filterHelp(v)}><Label isCompact color={CHANNEL_COLOR[v] ?? 'grey'}>{v}</Label></Hint> : <span className="dc-subtle">—</span>);
+
+/** What a filter value means, from the glossary. */
+function filterHelp(v: string): string {
+  const key = `filter.${v}`;
+  return key in GLOSSARY ? GLOSSARY[key as keyof typeof GLOSSARY] : v;
+}
 
 /**
  * A driver's properties, read-only: what it runs and how it authenticates, its driver parameters, global
@@ -73,22 +81,25 @@ export function DriverPropertiesTab({ guid }: { guid: string }) {
       </DescriptionList>
 
       <ExpandableSection toggleText="Driver parameters" isIndented className="dc-tab-body">
+        <p className="dc-subtle">{explain('driverParameters')}</p>
         {p.parameters.length === 0 ? <p className="dc-subtle">None.</p> : p.parameters.map((s) => (
           <div key={s.section} className="dc-tab-body"><Title headingLevel="h3" size="md">{s.section}</Title><ConfigTable items={s.items} label={`${s.section} parameters`} showInactive={inactive} /></div>
         ))}
       </ExpandableSection>
       <ExpandableSection toggleText="Global configuration values" isIndented>
+        <p className="dc-subtle">{explain('gcv')}</p>
         {p.gcvs.filter((g) => g.items.length > 0).length === 0 ? <p className="dc-subtle">None.</p> : p.gcvs.filter((g) => g.items.length > 0).map((g) => (
           <div key={g.source} className="dc-tab-body"><Title headingLevel="h3" size="md">From {g.source}</Title><ConfigTable items={g.items} label={`GCVs from ${g.source}`} showInactive={inactive} /></div>
         ))}
       </ExpandableSection>
       <ExpandableSection toggleText="Engine control values" isIndented>
+        <p className="dc-subtle">{explain('ecv')}</p>
         <ConfigTable items={p.engineControlValues} label="Engine control values" showInactive={inactive} />
       </ExpandableSection>
       <ExpandableSection toggleText={`Filter (${p.filter.length} class${p.filter.length === 1 ? '' : 'es'})`} isIndented>
         {p.filter.length === 0 ? <p className="dc-subtle">Nothing is synchronized.</p> : (
           <Table aria-label="Filter" variant="compact">
-            <Thead><Tr><Th>Class or attribute</Th><Th>Subscriber</Th><Th>Publisher</Th></Tr></Thead>
+            <Thead><Tr><Th>Class or attribute</Th><Th info={tip('subscriber')}>Subscriber</Th><Th info={tip('publisher')}>Publisher</Th></Tr></Thead>
             <Tbody>
               {p.filter.flatMap((c) => [
                 <Tr key={c.name}><Td><strong>{c.name}</strong></Td><Td><Channel v={c.subscriber} /></Td><Td><Channel v={c.publisher} /></Td></Tr>,

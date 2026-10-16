@@ -12,6 +12,8 @@ import { useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
 import { ObjectPicker } from '../components/ObjectPicker';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
+import { explain } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 type Kind = 'int' | 'bool' | 'list' | 'text';
 const GROUPS: { title: string; fields: [string, string, Kind][] }[] = [
@@ -35,6 +37,12 @@ const OPTION_LABELS: [keyof PolicyOptions, string][] = [
   ['syncSimple', 'Synchronize the simple password'], ['syncDistribution', 'Synchronize the distribution password (Identity Manager)'],
   ['removeNds', 'Remove the NDS password'], ['userRetrieve', 'Users may retrieve their password'], ['adminRetrieve', 'Administrators may retrieve passwords'],
 ];
+
+/** What each option does, where a label alone does not say. */
+const OPTION_HELP: Partial<Record<keyof PolicyOptions, string>> = {
+  universalPassword: explain('universalPassword'), syncNds: explain('up.syncNds'), syncSimple: explain('up.syncSimple'),
+  syncDistribution: explain('up.syncDistribution'), removeNds: explain('up.removeNds'), userRetrieve: explain('up.retrieval'), adminRetrieve: explain('up.retrieval'),
+};
 
 /** One password policy: options, rules, challenge set, assignments. */
 export function PasswordPolicyPage({ guid }: { guid: string }) {
@@ -130,7 +138,7 @@ export function PasswordPolicyPage({ guid }: { guid: string }) {
         <FormSection title="Universal Password" titleElement="h2">
           <Grid hasGutter md={6}>
             {OPTION_LABELS.map(([k, label]) => (
-              <GridItem key={k}><Switch id={`opt-${k}`} label={label} isChecked={options[k]} isDisabled={!edit || (k !== 'universalPassword' && !options.universalPassword)}
+              <GridItem key={k}><Switch id={`opt-${k}`} label={<Hint text={OPTION_HELP[k]}><span>{label}</span></Hint>} isChecked={options[k]} isDisabled={!edit || (k !== 'universalPassword' && !options.universalPassword)}
                 onChange={(_e, on) => setOptions({ ...options, [k]: on })} /></GridItem>
             ))}
           </Grid>

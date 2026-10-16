@@ -3,6 +3,8 @@ import { Button, Label, Spinner } from '@patternfly/react-core';
 import { type Value, isAcl, isBinary, isReference, isWithheld } from '../api';
 import { useSession } from '../session';
 import { navigate } from '../router';
+import { explain } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 /** One attribute value: text, a reference opened by GUID, a binary summary, or an ACL in words. */
 export function ValueView({ value }: { value: Value }) {
@@ -20,7 +22,7 @@ export function ValueView({ value }: { value: Value }) {
       <span>
         {value.privileges.length ? value.privileges.join(', ') : 'no rights'} on <strong>{value.attribute}</strong> for{' '}
         {'special' in value.trustee ? <code>{value.trustee.special}</code> : <ReferenceLink dn={value.trustee.dn} name={value.trustee.name} />}
-        {' '}<Label isCompact>{value.scope === 'subtree' ? 'inherited' : 'this object'}</Label>
+        {' '}<Hint text={explain(value.scope === 'subtree' ? 'aclInheritedBelow' : 'aclThisObject')}><Label isCompact>{value.scope === 'subtree' ? 'inherited below' : 'this object only'}</Label></Hint>
       </span>
     );
   }

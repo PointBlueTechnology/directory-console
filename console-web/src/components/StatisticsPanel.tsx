@@ -5,6 +5,8 @@ import { type ChannelStats, type DriverSetStatistics, type Idm } from '../api';
 import { linkProps } from '../router';
 import { StateLabel } from './IdmParts';
 import { ProblemAlert } from './Problem';
+import { explain } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 const GROUP: Record<string, string> = {
   'reported-events': 'Reported events', 'post-event-transformation': 'After event transformation', 'post-input-transformation': 'After input transformation',
@@ -17,7 +19,7 @@ function Channel({ name, c }: { name: string; c?: ChannelStats }) {
   const groups = Object.entries(c?.groups ?? {}).filter(([, v]) => Object.keys(v).length > 0);
   return (
     <div className="dc-tab-body">
-      <Title headingLevel="h4" size="md">{name}{c?.lastReset ? <span className="dc-subtle"> · since {when(c.lastReset)}</span> : null}</Title>
+      <Title headingLevel="h4" size="md"><Hint text={explain(name === 'Subscriber' ? 'subscriber' : 'publisher')}><span tabIndex={0}>{name}</span></Hint>{c?.lastReset ? <span className="dc-subtle"> · since {when(c.lastReset)}</span> : null}</Title>
       {groups.length === 0 ? <p className="dc-subtle">No operations counted.</p> : (
         <Table aria-label={`${name} operations`} variant="compact">
           <Tbody>

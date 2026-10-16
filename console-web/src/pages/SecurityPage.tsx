@@ -15,6 +15,8 @@ import { SequenceModal } from '../components/SequenceModal';
 import { RevokeModal, revokedNotice } from '../components/RevokeCertificate';
 import { DefaultCertificatesModal } from '../components/DefaultCertificates';
 import { CaConfigurationPanel } from '../components/CaConfiguration';
+import { Hint, useHelpTopic } from '../help/Help';
+import { explain, tip } from '../help/glossary';
 
 const DAY = 86_400_000;
 export const WARN_DAYS = 60;
@@ -49,6 +51,7 @@ function fileName(s: string) {
 
 /** Security services: the tree's certificates, password policies, challenge sets and login methods. */
 export function SecurityPage({ tab = 'certificates' }: { tab?: string }) {
+  useHelpTopic(`security.${tab}`);
   const go = (k: string | number) => navigate(k === 'certificates' ? '/security' : `/security/${k}`);
   return (
     <PageSection isFilled>
@@ -148,7 +151,7 @@ function CertificatesView() {
 
       <Card className="dc-tab-body">
         <CardTitle><Flex><FlexItem grow={{ default: 'grow' }}><Title headingLevel="h2" size="lg">Server certificates</Title></FlexItem>
-          {editor && pki.ca && <FlexItem><Button variant="secondary" onClick={() => setDefaults(true)} isDisabled={servers.length === 0}>Default certificates…</Button></FlexItem>}
+          {editor && pki.ca && <FlexItem><Hint text={explain('defaultCertificates')}><Button variant="secondary" onClick={() => setDefaults(true)} isAriaDisabled={servers.length === 0}>Default certificates…</Button></Hint></FlexItem>}
           {editor && pki.ca && <FlexItem><Button variant="secondary" onClick={() => setCreating(true)} isDisabled={servers.length === 0}>New server certificate</Button></FlexItem>}
         </Flex></CardTitle>
         <CardBody>
@@ -172,8 +175,9 @@ function CertificatesView() {
                       <Button variant="link" isInline className="dc-gap-left" onClick={() => { setOpNotice(null); setRevoking(k); }}>Revoke</Button>
                     )}
                     {editor && k.guid && (
-                      <Button variant="link" isInline isDanger isAriaDisabled={k.usedBy.length > 0} className="dc-gap-left"
-                        title={k.usedBy.length > 0 ? `In use by ${k.usedBy.join(', ')}` : undefined} onClick={() => remove(k)}>Delete</Button>
+                      <Hint text={k.usedBy.length > 0 ? `In use by ${k.usedBy.join(', ')}` : undefined}>
+                        <Button variant="link" isInline isDanger isAriaDisabled={k.usedBy.length > 0} className="dc-gap-left" onClick={() => remove(k)}>Delete</Button>
+                      </Hint>
                     )}
                   </Td>
                 </Tr>
@@ -259,7 +263,7 @@ function PoliciesView() {
     <div className="dc-tab-body">
       {canAt('editor', '') && <Button variant="secondary" onClick={() => setCreating(true)}>New password policy</Button>}
       <Table aria-label="Password policies" variant="compact" className="dc-tab-body">
-        <Thead><Tr><Th>Policy</Th><Th>Universal Password</Th><Th>Length</Th><Th>Assigned to</Th></Tr></Thead>
+        <Thead><Tr><Th>Policy</Th><Th info={tip('universalPassword')}>Universal Password</Th><Th>Length</Th><Th>Assigned to</Th></Tr></Thead>
         <Tbody>
           {list.map((p) => (
             <Tr key={p.dn}>
@@ -394,19 +398,20 @@ function LoginMethodsView() {
             {editor && <FlexItem><Button variant="secondary" onClick={() => setEditing({})}>New sequence</Button></FlexItem>}</Flex>
           <ProblemAlert error={opError} />
           <Table aria-label="Login sequences" variant="compact">
-            <Thead><Tr><Th>Sequence</Th><Th>Grade</Th><Th>Methods</Th><Th screenReaderText="Actions" /></Tr></Thead>
+            <Thead><Tr><Th>Sequence</Th><Th info={tip('grade')}>Grade</Th><Th>Methods</Th><Th screenReaderText="Actions" /></Tr></Thead>
             <Tbody>
               {lp.sequences.map((q) => (
                 <Tr key={q.name}>
                   <Td dataLabel="Sequence">{q.name}{q.name === lp.defaultSequence && <Label isCompact className="dc-gap-left">default</Label>}
-                    {lp.authorized && !lp.authorized.includes(q.name) && <Label isCompact color="grey" className="dc-gap-left">not authorized</Label>}</Td>
+                    {lp.authorized && !lp.authorized.includes(q.name) && <Hint text={explain('notAuthorized')}><Label isCompact color="grey" className="dc-gap-left">not authorized</Label></Hint>}</Td>
                   <Td dataLabel="Grade">{q.grade ?? '—'}</Td>
                   <Td dataLabel="Methods">{q.methods.join(q.any ? ' or ' : ' → ')}</Td>
                   <Td isActionCell>
                     {editor && <>
                       <Button variant="link" isInline onClick={() => setEditing({ sequence: q })}>Change</Button>
-                      <Button variant="link" isInline isDanger className="dc-gap-left" isAriaDisabled={q.name === lp.defaultSequence}
-                        title={q.name === lp.defaultSequence ? 'The default sequence; choose another default first' : undefined} onClick={() => remove(q.name)}>Delete</Button>
+                      <Hint text={q.name === lp.defaultSequence ? 'The default sequence: choose another default first.' : undefined}>
+                        <Button variant="link" isInline isDanger className="dc-gap-left" isAriaDisabled={q.name === lp.defaultSequence} onClick={() => remove(q.name)}>Delete</Button>
+                      </Hint>
                     </>}
                   </Td>
                 </Tr>
@@ -450,6 +455,7 @@ function EbaView() {
   }
   return (
     <div className="dc-tab-body">
+      <p className="dc-subtle">{explain('eba')}</p>
       <DescriptionList isHorizontal isCompact>
         <DescriptionListGroup><DescriptionListTerm>EBA CA</DescriptionListTerm><DescriptionListDescription><span className="dc-mono">{eba.ca?.subject}</span> on <span className="dc-mono">{eba.caAddress}</span></DescriptionListDescription></DescriptionListGroup>
         <DescriptionListGroup><DescriptionListTerm>Valid until</DescriptionListTerm><DescriptionListDescription><ExpiryLabel notAfter={eba.ca?.notAfter ?? undefined} /></DescriptionListDescription></DescriptionListGroup>
@@ -457,6 +463,7 @@ function EbaView() {
         <DescriptionListGroup><DescriptionListTerm>Serial</DescriptionListTerm><DescriptionListDescription className="dc-mono">{eba.ca?.serial}</DescriptionListDescription></DescriptionListGroup>
       </DescriptionList>
       <Title headingLevel="h2" size="md" className="dc-tab-body">Servers' NCP certificates</Title>
+      <p className="dc-subtle">{explain('ncpCertificates')}</p>
       <Table aria-label="NCP certificates" variant="compact">
         <Thead><Tr><Th>Server</Th><Th>Address</Th><Th>Serial</Th><Th>Valid until</Th></Tr></Thead>
         <Tbody>

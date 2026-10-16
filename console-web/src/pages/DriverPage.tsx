@@ -19,6 +19,8 @@ import { MigratePanel } from '../components/Migrate';
 import { CacheInspector } from '../components/CacheInspector';
 import { AssociationInspector } from '../components/AssociationInspector';
 import { DriverPropertiesTab } from '../components/DriverProperties';
+import { Hint, useHelpTopic } from '../help/Help';
+import { explain } from '../help/glossary';
 
 type Idm = ReturnType<typeof idm>;
 type Status = Record<string, unknown> & { servedBy?: { dn: string }; dn: string; name: string; state?: string; startOption?: string; driverSetDn?: string; ancestors?: { dn: string; name: string }[] };
@@ -37,6 +39,7 @@ export function DriverPage({ guid }: { guid: string }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [tab, setTab] = useState<string | number>('overview');
+  useHelpTopic(`idm.driver.${String(tab)}`);
   const load = useCallback(() => {
     setError(null);
     signIn.run(() => api.driver(guid)).then((s) => setStatus(s as Status)).catch((e) => {
@@ -142,12 +145,12 @@ function Overview({ api, guid, status, onChanged }: { api: Idm; guid: string; st
                 () => act('Stop', (c) => api.lifecycle(guid, 'stop', c)))}>Stop</Button></FlexItem>
             </>
           ) : current === 'disabled'
-            ? <FlexItem><Button variant="primary" isAriaDisabled title="A disabled driver cannot start: choose Automatic or Manual first">Start</Button></FlexItem>
+            ? <FlexItem><Hint text={explain('cannotStartDisabled')}><Button variant="primary" isAriaDisabled>Start</Button></Hint></FlexItem>
             : <FlexItem><Button variant="primary" isDisabled={busy} onClick={() => act('Start', (c) => api.lifecycle(guid, 'start', c))}>Start</Button></FlexItem>}
           <FlexItem>
             <ToggleGroup aria-label="Start option">
               {(['auto', 'manual', 'disabled'] as const).map((o) => (
-                <ToggleGroupItem key={o} text={o === 'auto' ? 'Automatic' : o === 'manual' ? 'Manual' : 'Disabled'} isSelected={current === o} isDisabled={busy}
+                <ToggleGroupItem key={o} text={<Hint text={explain(`start.${o}`)}><span>{o === 'auto' ? 'Automatic' : o === 'manual' ? 'Manual' : 'Disabled'}</span></Hint>} isSelected={current === o} isDisabled={busy}
                   onChange={() => {
                     if (current === o) {
                       return;
@@ -202,6 +205,7 @@ function Resync({ api, guid }: { api: Idm; guid: string }) {
       }
     }}>
       <Title headingLevel="h2" size="md">Resynchronise</Title>
+      <p className="dc-subtle">{explain('resync')}</p>
       <FormGroup label="Only objects changed since (optional)" fieldId="resync-since">
         <TextInput id="resync-since" type="datetime-local" value={since} onChange={(_e, v) => setSince(v)} />
       </FormGroup>

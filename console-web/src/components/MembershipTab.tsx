@@ -12,6 +12,8 @@ import { ReferenceLink } from './ValueView';
 import { ObjectPicker } from './ObjectPicker';
 import { Target } from './Edit';
 import { useHeading } from '../heading';
+import { explain, tip } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 const GROUPS = ['groupOfNames', 'dynamicGroup'];
 const MEMBERS = ['inetOrgPerson', 'groupOfNames'];
@@ -71,12 +73,12 @@ export function UserGroupsTab({ obj, onChanged }: { obj: DirObject; onChanged: (
       {groups && groups.length === 0 && <p className="dc-subtle">Not a member of any group.</p>}
       {groups && groups.length > 0 && (
         <Table aria-label="Groups" variant="compact">
-          <Thead><Tr><Th>Group</Th><Th>Security equivalence</Th>{canAt('editor', obj.dn) && <Th screenReaderText="Remove" />}</Tr></Thead>
+          <Thead><Tr><Th>Group</Th><Th info={tip('securityEquivalence')}>Security equivalence</Th>{canAt('editor', obj.dn) && <Th screenReaderText="Remove" />}</Tr></Thead>
           <Tbody>
             {groups.map((g) => (
               <Tr key={g.dn}>
                 <Td dataLabel="Group"><ReferenceLink dn={g.dn} name={g.name} /></Td>
-                <Td dataLabel="Security equivalence">{g.securityEquivalent ? 'yes' : <Label color="orange" isCompact>missing</Label>}</Td>
+                <Td dataLabel="Security equivalence">{g.securityEquivalent ? 'yes' : <Hint text={explain('securityEquivalenceMissing')}><Label color="orange" isCompact>missing</Label></Hint>}</Td>
                 {canAt('editor', obj.dn) && <Td isActionCell><Button variant="link" isInline isDanger onClick={() => change([], [{ dn: g.dn }])}>Remove</Button></Td>}
               </Tr>
             ))}

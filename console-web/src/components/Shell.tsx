@@ -2,9 +2,11 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import {
   Dropdown, DropdownItem, DropdownList, Masthead, MastheadBrand, MastheadContent, MastheadLogo, MastheadMain,
   MastheadToggle, MenuToggle, Nav, NavItem, NavList, Page, PageSidebar, PageSidebarBody, PageToggleButton,
-  Alert, AlertActionLink, Bullseye, Button, PageSection, Spinner, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarGroup, ToolbarItem,
+  Alert, AlertActionLink, Bullseye, Button, Drawer, DrawerContent, DrawerContentBody, Tooltip, PageSection, Spinner, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarGroup, ToolbarItem,
 } from '@patternfly/react-core';
-import { MoonIcon, SunIcon, UserIcon } from '@patternfly/react-icons';
+import { MoonIcon, OutlinedQuestionCircleIcon, SunIcon, UserIcon } from '@patternfly/react-icons';
+import { HelpContext, HelpPanel, useHelpState } from '../help/Help';
+import { topicForPath } from '../help/topics';
 import { useSession } from '../session';
 import { type UpdateState, daysUntil, trust, updates } from '../api';
 import { linkProps, match, navigate, useLocation } from '../router';
@@ -46,6 +48,7 @@ export function Shell() {
   const { me, signOut } = sessionState;
   const { path } = useLocation();
   const [userOpen, setUserOpen] = useState(false);
+  const help = useHelpState(topicForPath(path));
   const [version, setVersion] = useState<{ version: string; update?: UpdateState } | null>(null);
   useEffect(() => { updates.version().then(setVersion).catch(() => setVersion(null)); }, []);
   const [dark, setDark] = useDarkTheme();
@@ -72,6 +75,12 @@ export function Shell() {
         <Toolbar isFullHeight isStatic>
           <ToolbarContent>
             <ToolbarGroup align={{ default: 'alignEnd' }} gap={{ default: 'gapMd' }}>
+              <ToolbarItem>
+                <Tooltip content="Help for this page">
+                  <Button variant={help.open ? 'secondary' : 'plain'} aria-label="Help for this page" aria-expanded={help.open}
+                    icon={<OutlinedQuestionCircleIcon />} onClick={() => help.setOpen(!help.open)} />
+                </Tooltip>
+              </ToolbarItem>
               <ToolbarItem>
                 <ToggleGroup aria-label="Colour theme">
                   <ToggleGroupItem icon={<SunIcon />} aria-label="Light theme" isSelected={!dark} onChange={() => setDark(false)} />
@@ -128,14 +137,22 @@ export function Shell() {
   );
 
   return (
+    <HelpContext.Provider value={help}>
     <Page masthead={masthead} sidebar={sidebar} isManagedSidebar mainAriaLabel="Directory Console">
       {sessionState.can('admin') && path !== '/certificates' && <ExpiryBanner />}
       {sessionState.can('admin') && path !== '/settings' && <UpdateBanner update={version?.update ?? null} />}
       <SessionWarning />
-      <ErrorBoundary resetKey={path}>
-        <Suspense fallback={<Bullseye><Spinner aria-label="Loading" /></Bullseye>}>{route(path)}</Suspense>
-      </ErrorBoundary>
+      <Drawer isExpanded={help.open} isInline position="end">
+        <DrawerContent panelContent={<HelpPanel onClose={() => help.setOpen(false)} />}>
+          <DrawerContentBody>
+            <ErrorBoundary resetKey={path}>
+              <Suspense fallback={<Bullseye><Spinner aria-label="Loading" /></Bullseye>}>{route(path)}</Suspense>
+            </ErrorBoundary>
+          </DrawerContentBody>
+        </DrawerContent>
+      </Drawer>
     </Page>
+    </HelpContext.Provider>
   );
 }
 

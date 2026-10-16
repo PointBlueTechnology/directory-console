@@ -156,3 +156,15 @@
   color: var(--pf-t--global--icon--color--subtle);
   display: inline-flex;
 }
+
+/* a section of the help panel */
+.dc-help-section {
+  margin-block-start: var(--pf-t--global--spacer--md);
+}
+
+/* a term with a hover explanation */
+.dc-term {
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2em;
+  cursor: help;
+}

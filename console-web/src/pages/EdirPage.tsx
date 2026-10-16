@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Button, Card, CardBody, Dropdown, DropdownItem, DropdownList, Flex, FlexItem, Form, FormGroup, FormSelect, FormSelectOption, Label,
+  Alert, Button, Card, CardBody, Dropdown, DropdownItem, DropdownList, Flex, FlexItem, Form, FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, Label,
   LabelGroup, MenuToggle, Modal, TextInput, ModalBody, ModalFooter, ModalHeader, PageSection, Spinner, Tab, Tabs, TabTitleText, Title,
 } from '@patternfly/react-core';
 import { EllipsisVIcon } from '@patternfly/react-icons';
@@ -11,17 +11,25 @@ import { linkProps, navigate } from '../router';
 import { useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
+import { Hint, useHelpTopic } from '../help/Help';
+import { GLOSSARY, explain } from '../help/glossary';
 
 const TYPE_LABEL: Record<string, string> = {
   master: 'Master', 'read-write': 'Read/write', 'read-only': 'Read-only', 'subordinate-reference': 'Subordinate reference',
   'sparse-write': 'Sparse write', 'sparse-read': 'Sparse read',
 };
 
+/** What a replica type means, from the glossary. */
+function typeHelp(type: string): string {
+  const key = `replica.${type}`;
+  return key in GLOSSARY ? GLOSSARY[key as keyof typeof GLOSSARY] : type;
+}
+
 /** A replica's type and state as labels: busy or in transition in blue, anything not "on" in orange. */
 export function ReplicaLabels({ r }: { r: ReplicaState }) {
   return (
     <LabelGroup>
-      <Label isCompact color={r.type === 'master' ? 'purple' : r.type === 'subordinate-reference' ? 'grey' : 'blue'}>{TYPE_LABEL[r.type] ?? r.type}</Label>
+      <Hint text={typeHelp(r.type)}><Label isCompact color={r.type === 'master' ? 'purple' : r.type === 'subordinate-reference' ? 'grey' : 'blue'}>{TYPE_LABEL[r.type] ?? r.type}</Label></Hint>
       {r.error ? <Label isCompact color="red">{r.error}</Label>
         : r.state !== 'on' ? <Label isCompact color="orange">{r.state}</Label> : null}
       {r.transition && <Label isCompact color="blue">{r.transition}</Label>}
@@ -32,6 +40,7 @@ export function ReplicaLabels({ r }: { r: ReplicaState }) {
 
 /** eDirectory administration: partitions and their replicas, and the servers. */
 export function EdirPage({ tab = 'partitions' }: { tab?: 'partitions' | 'servers' }) {
+  useHelpTopic(`edir.${tab}`);
   return (
     <PageSection isFilled>
       <Title headingLevel="h1">eDirectory</Title>
@@ -160,9 +169,9 @@ function PartitionsView() {
                 <Td isActionCell modifier="nowrap">
                   <Button variant="link" isInline isDisabled={p.busy || !p.id} onClick={() => setDialog({ kind: 'add', p })}>Add a replica</Button>
                   {p.id && p.id !== 'root' && (
-                    <>{' '}<Button variant="link" isInline isDanger isDisabled={p.busy} onClick={() => sure.ask(`Merge ${p.name} into its parent?`,
+                    <>{' '}<Hint text={explain('merge')}><Button variant="link" isInline isDanger isAriaDisabled={p.busy} onClick={() => sure.ask(`Merge ${p.name} into its parent?`,
                       'Its entries join the parent partition and its replicas are removed.', 'Merge',
-                      () => act(`Merge ${p.name}`, (c) => api.merge(p.id!, c)))}>Merge</Button></>
+                      () => act(`Merge ${p.name}`, (c) => api.merge(p.id!, c)))}>Merge</Button></Hint></>
                   )}
                 </Td>
               )}
@@ -227,6 +236,7 @@ function ReplicaModal({ title, servers, fixedServer, current, onClose, onSave }:
               <FormSelectOption value="read-only" label="Read-only" />
               {fixedServer && <FormSelectOption value="master" label="Master (the current master becomes read/write)" />}
             </FormSelect>
+            <FormHelperText><HelperText><HelperTextItem>{typeHelp(type)}</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
         </Form>
       </ModalBody>
@@ -281,9 +291,9 @@ export function ServerPage({ guid }: { guid: string }) {
       {admin && (
         <Flex className="dc-tab-body" spaceItems={{ default: 'spaceItemsSm' }}>
           {(['limber', 'janitor', 'skulker'] as const).map((p) => (
-            <FlexItem key={p}><Button variant="secondary" onClick={() => act(`${p[0].toUpperCase()}${p.slice(1)} started on ${s.name}.`, (c) => api.background(guid, p, c))}>
+            <FlexItem key={p}><Hint text={explain(p)}><Button variant="secondary" onClick={() => act(`${p[0].toUpperCase()}${p.slice(1)} started on ${s.name}.`, (c) => api.background(guid, p, c))}>
               Run {p}
-            </Button></FlexItem>
+            </Button></Hint></FlexItem>
           ))}
           {s.connected && <FlexItem><Button variant="secondary" onClick={() => act('The LDAP server re-read its configuration.', (c) => api.ldapRefresh(c))}>Refresh the LDAP server</Button></FlexItem>}
         </Flex>

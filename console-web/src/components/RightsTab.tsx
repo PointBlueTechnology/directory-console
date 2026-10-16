@@ -13,6 +13,8 @@ import { ReferenceLink } from './ValueView';
 import { ObjectPicker } from './ObjectPicker';
 import { Target } from './Edit';
 import { useHeading } from '../heading';
+import { GLOSSARY, explain, tip } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 const ENTRY = ['browse', 'add', 'delete', 'rename', 'supervisor'];
 const ATTRIBUTE = ['compare', 'read', 'write', 'self', 'supervisor'];
@@ -50,9 +52,9 @@ export function RightsTab({ obj, etag, onChanged }: { obj: DirObject; etag: stri
       <Thead>
         <Tr>
           <Th>{label === 'Inherited Rights Filter' ? 'Filter' : 'Trustee'}</Th>
-          <Th>Applies to</Th>
-          <Th>{label === 'Inherited Rights Filter' ? 'Rights allowed to flow down' : 'Rights'}</Th>
-          <Th>Inherited below</Th>
+          <Th info={tip('appliesTo')}>Applies to</Th>
+          {label === 'Inherited Rights Filter' ? <Th info={tip('rightsAllowedToFlow')}>Rights allowed to flow down</Th> : <Th>Rights</Th>}
+          <Th info={tip('inheritedBelow')}>Inherited below</Th>
           {editor && <Th screenReaderText="Actions" />}
         </Tr>
       </Thead>
@@ -61,7 +63,7 @@ export function RightsTab({ obj, etag, onChanged }: { obj: DirObject; etag: stri
           <Tr key={i}>
             <Td dataLabel="Trustee">{'special' in a.trustee ? <code>{a.trustee.special}</code> : <ReferenceLink dn={a.trustee.dn} name={a.trustee.name} />}</Td>
             <Td dataLabel="Applies to">{a.attribute === '[Entry Rights]' ? 'the object' : a.attribute === '[All Attributes Rights]' ? 'all attributes' : <code>{a.attribute}</code>}</Td>
-            <Td dataLabel="Rights"><LabelGroup numLabels={6}>{a.privileges.length ? a.privileges.map((p) => <Label key={p} isCompact color={p === 'supervisor' ? 'orange' : 'blue'}>{p}</Label>) : <Label isCompact>none</Label>}</LabelGroup></Td>
+            <Td dataLabel="Rights"><LabelGroup numLabels={6}>{a.privileges.length ? a.privileges.map((p) => <Hint key={p} text={rightHelp(p) ?? p}><Label isCompact color={p === 'supervisor' ? 'orange' : 'blue'}>{p}</Label></Hint>) : <Label isCompact>none</Label>}</LabelGroup></Td>
             <Td dataLabel="Inherited below">{a.scope === 'subtree' ? 'yes' : 'no'}</Td>
             {editor && (
               <Td isActionCell>
@@ -89,6 +91,7 @@ export function RightsTab({ obj, etag, onChanged }: { obj: DirObject; etag: stri
       <ProblemAlert error={error} />
       {trustees.length === 0 ? <p className="dc-subtle">No trustees assigned here (or you may not read them).</p> : rows(trustees, 'Trustees')}
       <Title headingLevel={level} className="dc-tab-body">Inherited Rights Filter</Title>
+      <p className="dc-subtle">{explain('irf')}</p>
       {masks.length === 0 ? <p className="dc-subtle">No filter: inherited rights flow down unchanged.</p> : rows(masks, 'Inherited Rights Filter')}
       <EffectiveRights obj={obj} />
       {dialog && (
@@ -166,7 +169,7 @@ function AclModal({ obj, etag, mode, initial, onClose, onDone }: {
                     <FormSelect id="special" aria-label="Or a special trustee" value="" className="dc-tab-body"
                       onChange={(_e, v) => v && setTrustee({ special: v })}>
                       <FormSelectOption value="" label="Or a special trustee…" />
-                      {SPECIAL.map((s) => <FormSelectOption key={s} value={s} label={s} />)}
+                      {SPECIAL.map((s) => <FormSelectOption key={s} value={s} label={s in GLOSSARY ? `${s}: ${GLOSSARY[s as keyof typeof GLOSSARY]}` : s} />)}
                     </FormSelect>
                   </>
                 )}
@@ -184,7 +187,7 @@ function AclModal({ obj, etag, mode, initial, onClose, onDone }: {
           )}
           <FormGroup role="group" label={mode === 'irf' ? 'Rights allowed to flow down' : 'Rights'} fieldId="rights" isInline>
             {names.map((n) => (
-              <Checkbox key={n} id={`r-${n}`} label={n} isChecked={privileges.includes(n)}
+              <Checkbox key={n} id={`r-${n}`} label={n} description={rightHelp(n)} isChecked={privileges.includes(n)}
                 onChange={(_e, v) => setPrivileges(v ? [...privileges, n] : privileges.filter((p) => p !== n))} />
             ))}
           </FormGroup>
@@ -267,4 +270,10 @@ function Group({ term, values }: { term: string; values: string[] }) {
       </DescriptionListDescription>
     </DescriptionListGroup>
   );
+}
+
+/** A right's one-line meaning, when the glossary has it. */
+function rightHelp(name: string): string | undefined {
+  const key = `right.${name}`;
+  return key in GLOSSARY ? GLOSSARY[key as keyof typeof GLOSSARY] : undefined;
 }

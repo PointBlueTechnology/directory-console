@@ -5,6 +5,8 @@ import {
 } from '@patternfly/react-core';
 import { ApiError, type Candidate, type Directory, type Me, type Probe, session } from '../api';
 import { CertificateDetails } from '../components/Certificates';
+import { explain } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 /** What "Remember my name" keeps, in this browser only: never the password. */
 interface Remembered {
@@ -207,7 +209,7 @@ export function SignIn({ reason, onSignedIn }: Props) {
                   Sign in with {chosen.sso}
                 </Button>
                 <Divider />
-                <p className="dc-subtle">{chosen.direct ? 'Or sign in with your directory name and password:' : 'Break-glass accounts sign in with their name and password:'}</p>
+                <p className="dc-subtle">{chosen.direct ? 'Or sign in with your directory name and password:' : <><Hint text={explain('breakGlass')}><span tabIndex={0} className="dc-term">Break-glass accounts</span></Hint> sign in with their name and password:</>}</p>
               </>
             )}
             <FormGroup label="Name" fieldId="name" isRequired>

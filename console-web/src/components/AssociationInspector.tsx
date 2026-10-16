@@ -6,6 +6,8 @@ import { useSession } from '../session';
 import { linkProps } from '../router';
 import { useAreYouSure, useConfirmed } from './Confirm';
 import { ProblemAlert } from './Problem';
+import { GLOSSARY, explain } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 const STATES: AssociationState[] = ['processed', 'pending', 'manual', 'migrate', 'disabled'];
 const CODE: Record<AssociationState, number> = { disabled: 0, processed: 1, pending: 2, manual: 3, migrate: 4 };
@@ -125,6 +127,7 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
           ))}
         </ToggleGroup>
       )}
+      {counts && !exact && <p className="dc-subtle dc-tab-body"><Hint text={explain('estimate')}><span tabIndex={0}>Counts marked ~ are estimates.</span></Hint></p>}
       {counts && counts.undefined > 0 && <p className="dc-subtle dc-tab-body">{counts.undefined} with a state outside these five (shown under All).</p>}
       {notice && <p className="dc-tab-body">{notice}</p>}
       <ProblemAlert error={error} />
@@ -150,7 +153,7 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
                 {operator && <Td select={{ rowIndex: i, isSelected: selected.includes(r.raw), onSelect: (_e, on) => setSelected(on ? [...selected, r.raw] : selected.filter((x) => x !== r.raw)) }} />}
                 <Td dataLabel="Object"><a {...linkProps(`/objects/${r.obj.guid}`)}>{r.obj.name}</a><div className="dc-subtle dc-mono">{r.obj.dn}</div></Td>
                 <Td dataLabel="Class">{r.obj.objectClass}</Td>
-                <Td dataLabel="State"><Label isCompact color={COLOR[r.state]}>{r.state}</Label></Td>
+                <Td dataLabel="State"><Hint text={stateHelp(r.state)}><Label isCompact color={COLOR[r.state]}>{r.state}</Label></Hint></Td>
                 <Td dataLabel="Association" className="dc-mono">{r.value || <span className="dc-subtle">(empty)</span>}</Td>
               </Tr>
             ))}
@@ -164,4 +167,10 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
       {sure.dialog}
     </div>
   );
+}
+
+/** What an association state means, from the glossary. */
+function stateHelp(state: string): string {
+  const key = `association.${state}`;
+  return key in GLOSSARY ? GLOSSARY[key as keyof typeof GLOSSARY] : state;
 }

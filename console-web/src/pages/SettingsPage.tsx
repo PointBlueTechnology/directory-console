@@ -13,6 +13,8 @@ import { RoleMappings } from '../components/RoleMappings';
 import { PresetEditor, presetJson } from '../components/PresetEditor';
 import { useStepUp } from '../components/StepUp';
 import { TreesSection } from '../components/TreesSection';
+import { FieldHelp, Hint, useHelpTopic } from '../help/Help';
+import { explain } from '../help/glossary';
 
 /** A whole number from {@code min} to {@code max}. */
 const sessionOk = (v: string, min: number, max: number) => /^\d+$/.test(v.trim()) && Number(v) >= min && Number(v) <= max;
@@ -30,6 +32,7 @@ export function SettingsPage() {
   const [etag, setEtag] = useState<string | undefined>();
   const [error, setError] = useState<unknown>(null);
   const [tab, setTab] = useState<string | number>(() => new URLSearchParams(location.search).get('tab') ?? 'directory');
+  useHelpTopic(`settings.${String(tab)}`);
   const load = useCallback(() => {
     setError(null);
     api.get().then((r) => { setS(r.data); setEtag(r.etag); }).catch(setError);
@@ -341,7 +344,7 @@ function RolesSection({ s, save, onSaved }: { s: DirectorySettings; etag?: strin
   const dirty = JSON.stringify(draft) !== JSON.stringify(s.roles);
   return (
     <div className="dc-tab-body">
-      <p>Members of these eDirectory groups get these grants when they sign in with their name and password. Break-glass accounts ({s.breakGlass.join(', ') || 'none'}) are always admins.</p>
+      <p>Members of these eDirectory groups get these grants when they sign in with their name and password. <Hint text={explain('breakGlass')}><span tabIndex={0} className="dc-term">Break-glass accounts</span></Hint> ({s.breakGlass.join(', ') || 'none'}) are always admins.</p>
       <RoleMappings value={draft} onChange={setDraft} presets={s.presets} />
       <Outcome error={error} notice={notice} />
       <ActionGroup>
@@ -491,7 +494,7 @@ function SsoSection({ s, save, test, onSaved }: {
           <FormGroup label="Client secret" fieldId="sso-secret">
             <TextInput id="sso-secret" type="password" autoComplete="off" value={secret} onChange={(_e, v) => setSecret(v)} isDisabled={publicClient}
               placeholder={s.oidc?.clientSecretSet ? 'Set — leave empty to keep it' : ''} />
-            <Checkbox id="sso-public" label="Public client (PKCE only, no secret)" isChecked={publicClient} onChange={(_e, v) => setPublicClient(v)} />
+            <Checkbox id="sso-public" label="Public client (PKCE only, no secret)" description={explain('publicClient')} isChecked={publicClient} onChange={(_e, v) => setPublicClient(v)} />
           </FormGroup>
           <FormGroup label="Button label" fieldId="sso-label">
             <TextInput id="sso-label" value={o.label ?? ''} onChange={field('label')} />
@@ -506,10 +509,10 @@ function SsoSection({ s, save, test, onSaved }: {
           </FormGroup>
         </FormSection>
         <FormSection title="Finding the person in eDirectory" titleElement="h2">
-          <FormGroup label="Claim" fieldId="sso-claim" isRequired>
+          <FormGroup label="Claim" fieldId="sso-claim" isRequired labelHelp={<FieldHelp label="Claim">{explain('claim')}</FieldHelp>}>
             <TextInput id="sso-claim" value={o.claim ?? ''} onChange={field('claim')} className="dc-mono" />
           </FormGroup>
-          <FormGroup label="Matches the attribute" fieldId="sso-attribute" isRequired>
+          <FormGroup label="Matches the attribute" fieldId="sso-attribute" isRequired labelHelp={<FieldHelp label="Matches the attribute">{explain('claimAttribute')}</FieldHelp>}>
             <TextInput id="sso-attribute" value={o.attribute ?? ''} onChange={field('attribute')} className="dc-mono" />
           </FormGroup>
           <FormGroup label="Under these containers" fieldId="sso-bases">
@@ -518,7 +521,7 @@ function SsoSection({ s, save, test, onSaved }: {
               One DN per line; empty uses the sign-in search bases. The service account needs Supervisor over these people (and nobody else).
             </HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
-          <FormGroup label="Never act as" fieldId="sso-never">
+          <FormGroup label="Never act as" fieldId="sso-never" labelHelp={<FieldHelp label="Never act as">{explain('neverActAs')}</FieldHelp>}>
             <TextArea id="sso-never" value={never} onChange={(_e, v) => setNever(v)} className="dc-mono" resizeOrientation="vertical" />
             <FormHelperText><HelperText><HelperTextItem>
               One DN per line, besides the service account and the break-glass accounts, which never sign in this way.

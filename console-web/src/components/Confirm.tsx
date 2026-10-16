@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
-import { Button, Form, FormGroup, Modal, ModalBody, ModalFooter, ModalHeader, TextInput } from '@patternfly/react-core';
+import { Button, Form, FormGroup, FormHelperText, HelperText, HelperTextItem, Modal, ModalBody, ModalFooter, ModalHeader, TextInput } from '@patternfly/react-core';
 import { ApiError } from '../api';
+import { explain } from '../help/glossary';
 
 /**
  * Run an Identity Manager operation; when the directory is production the console answers 409
@@ -30,12 +31,13 @@ function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onCo
   const [name, setName] = useState('');
   return (
     <Modal isOpen onClose={onCancel} variant="small" aria-labelledby="confirm-title">
-      <ModalHeader title="Production directory" titleIconVariant="warning" labelId="confirm-title" />
+      <ModalHeader title="Production tree" titleIconVariant="warning" labelId="confirm-title" />
       <ModalBody>
         <p>{message}</p>
         <Form id="confirm-form" onSubmit={(e) => { e.preventDefault(); onConfirm(name); }} className="dc-tab-body">
-          <FormGroup label="Directory name" fieldId="confirm-name" isRequired>
+          <FormGroup label="Tree name" fieldId="confirm-name" isRequired>
             <TextInput id="confirm-name" value={name} onChange={(_e, v) => setName(v)} autoFocus />
+            <FormHelperText><HelperText><HelperTextItem>{explain('directoryName')}</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
         </Form>
       </ModalBody>

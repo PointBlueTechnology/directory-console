@@ -7,6 +7,8 @@ import { useHeading } from '../heading';
 import { ProblemAlert } from './Problem';
 import { ValueView } from './ValueView';
 import { useServerSignIn } from './ServerSignIn';
+import { explain } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 /**
  * One object on each server that holds its replica: whether each server has it, and the attributes
@@ -59,8 +61,8 @@ export function ReplicasTab({ obj }: { obj: DirObject }) {
                 <Tr key={a.name}>
                   <Td dataLabel="Attribute">
                     <span className="dc-mono">{a.name}</span>{' '}
-                    {a.perReplica && <Label isCompact>kept per server</Label>}{' '}
-                    {a.differs && <Label isCompact color="orange">differs</Label>}
+                    {a.perReplica && <Hint text={explain('perReplica')}><Label isCompact>kept per server</Label></Hint>}{' '}
+                    {a.differs && <Hint text={explain('differs')}><Label isCompact color="orange">differs</Label></Hint>}
                   </Td>
                   {ok.map((s) => (
                     <Td key={s.server.guid} dataLabel={s.server.name}>

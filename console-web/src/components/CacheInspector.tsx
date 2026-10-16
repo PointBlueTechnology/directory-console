@@ -5,6 +5,8 @@ import { ApiError, type CacheEvent, type CacheSummary, type Idm } from '../api';
 import { useSession } from '../session';
 import { useAreYouSure, useConfirmed } from './Confirm';
 import { ProblemAlert } from './Problem';
+import { explain } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 const PAGE = 25;
 const bytes = (n?: number | null) => (n === null || n === undefined ? '—' : n < 1024 ? `${n} bytes` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
@@ -95,8 +97,8 @@ export function CacheInspector({ api, guid, onChanged }: { api: Idm; guid: strin
       {unreadable && <Alert variant="info" isInline isPlain className="dc-tab-body" title="The events can be read only while the driver is stopped." />}
       {operator && (
         <Flex className="dc-tab-body">
-          {events && <FlexItem><Button variant="danger" size="sm" isDisabled={busy || selected.length === 0} onClick={remove}>Delete {selected.length || ''} selected</Button></FlexItem>}
-          <FlexItem><Button variant="secondary" size="sm" isDanger onClick={clear}>Clear the cache</Button></FlexItem>
+          {events && <FlexItem><Hint text={explain('deleteEvents')}><Button variant="danger" size="sm" isAriaDisabled={busy || selected.length === 0} onClick={remove}>Delete {selected.length || ''} selected</Button></Hint></FlexItem>}
+          <FlexItem><Hint text={explain('clearCache')}><Button variant="secondary" size="sm" isDanger onClick={clear}>Clear the cache</Button></Hint></FlexItem>
         </Flex>
       )}
       {!events && !unreadable && !error && <Spinner size="md" aria-label="Reading the cache" />}

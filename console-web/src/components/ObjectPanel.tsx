@@ -19,6 +19,8 @@ import { RightsTab } from './RightsTab';
 import { ReplicasTab } from './ReplicasTab';
 import { AssociationsTab } from './AssociationsTab';
 import { HeadingLevel } from '../heading';
+import { Hint, useHelpTopic } from '../help/Help';
+import { explain } from '../help/glossary';
 
 type Dialog = null | { kind: 'attr'; attribute?: string } | { kind: 'rename' } | { kind: 'move' } | { kind: 'delete' }
   | { kind: 'password' } | { kind: 'aux' } | { kind: 'preset'; preset: Preset };
@@ -42,6 +44,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
   const [allowed, setAllowed] = useState<string[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [tab, setTab] = useState<string | number>('attributes');
+  useHelpTopic(`object.${String(tab)}`);
   const [menu, setMenu] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
 
@@ -118,7 +121,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
         {(editor || tasks.length > 0) && (
           <FlexItem>
             <Dropdown isOpen={menu} onOpenChange={setMenu} popperProps={{ position: 'right', appendTo: 'inline' }}
-              toggle={(ref) => <MenuToggle ref={ref} variant="plain" aria-label="Actions" isExpanded={menu} onClick={() => setMenu(!menu)} icon={<EllipsisVIcon />} />}>
+              toggle={(ref) => <Hint text={explain('actions')}><MenuToggle ref={ref} variant="plain" aria-label="Actions" isExpanded={menu} onClick={() => setMenu(!menu)} icon={<EllipsisVIcon />} /></Hint>}>
               {tasks.length > 0 && (
                 <DropdownGroup label="Tasks" labelHeadingLevel={headingLevel === 'h1' ? 'h2' : 'h3'}>
                   <DropdownList>
@@ -137,7 +140,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'rename' }); }}>Rename</DropdownItem>
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'move' }); }}>Move</DropdownItem>
                 {obj.container && canAt('editor', '') && (
-                  <DropdownItem description="Split it from its parent partition" onClick={async () => {
+                  <DropdownItem description={explain('makePartition')} onClick={async () => {
                     setMenu(false);
                     setActionError(null);
                     try {
