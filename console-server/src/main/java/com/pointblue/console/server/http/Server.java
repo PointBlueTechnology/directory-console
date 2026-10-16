@@ -18,6 +18,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsParameters;
 import com.sun.net.httpserver.HttpsServer;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.InetSocketAddress;
@@ -76,8 +77,16 @@ public final class Server {
     private final Security security = new Security(this);
     private final StaticFiles ui = new StaticFiles("web");
 
-    /** Open the data directory and listen on {@code port}. {@code publicUrl} is how browsers reach this server. */
+    /** Open the data directory and listen on {@code port}, every address. {@code publicUrl} is how browsers reach this server. */
     public Server(DataDir data, int port, String publicUrl, PrintStream out) throws IOException, GeneralSecurityException {
+        this(data, new InetSocketAddress(port), publicUrl, out);
+    }
+
+    /**
+     * Listen on {@code bind}. Tests pass 127.0.0.1 port 0: on macOS a wildcard listener on a chosen port can share it
+     * with another process's 127.0.0.1 listener, which then receives the connections made to 127.0.0.1.
+     */
+    public Server(DataDir data, InetSocketAddress bind, String publicUrl, PrintStream out) throws IOException, GeneralSecurityException {
         this.log = out;
         this.data = data;
         this.config = new ConfigStore(data, SecretBox.open(data.keys().resolve("config.key")));
@@ -105,7 +114,7 @@ public final class Server {
         this.login = new DirectLogin(trust);
         this.oidc = new com.pointblue.console.server.auth.OidcLogin(trust, this.publicUrl);
         this.login.engines(com.pointblue.console.server.idm.Engines.detect());
-        this.http = HttpsServer.create(new InetSocketAddress(port), 64);
+        this.http = HttpsServer.create(bind, 64);
         http.setHttpsConfigurator(new HttpsConfigurator(tls.context()) {
             @Override
             public void configure(HttpsParameters p) {
@@ -177,6 +186,12 @@ public final class Server {
 
     private void handle(HttpExchange ex) {
         try (ex) {
+            // a handler closing the request body must not keep Http.finishReading from reading the rest before the answer
+            ex.setStreams(new FilterInputStream(ex.getRequestBody()) {
+                @Override
+                public void close() {
+                }
+            }, null);
             headers(ex);
             String path = ex.getRequestURI().getPath();
             String method = ex.getRequestMethod();
@@ -726,6 +741,7 @@ public final class Server {
     }
 
     private static void redirect(HttpExchange ex, String location) throws IOException {
+        Http.finishReading(ex);
         ex.getResponseHeaders().set("Location", location);
         ex.getResponseHeaders().set("Cache-Control", "no-store");
         ex.sendResponseHeaders(302, -1);

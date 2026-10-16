@@ -39,7 +39,7 @@ public final class LiveIdmCheck {
         }
         URI u = URI.create(env.url);
         Path dataPath = Files.createTempDirectory("dc-live-idm-");
-        Server server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        Server server = new Server(new DataDir(dataPath), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         try {
             server.start();
             LiveSetupCheck.base = "https://127.0.0.1:" + server.port();

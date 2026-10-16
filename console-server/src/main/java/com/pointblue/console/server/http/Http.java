@@ -84,8 +84,29 @@ public final class Http {
         return n.intValue();
     }
 
+    /**
+     * Read what is left of the request body; call it before sending the response headers. The JDK's server otherwise
+     * reads an unread body only after the response has gone out, by when the client may have sent its next request
+     * on the same connection: that read takes the next request's TLS records into a buffer the server does not look
+     * at again, and the request is never answered (the connection is dropped by the idle timer 30-40 s later). A body
+     * larger than any request needs is left unread, and the connection is closed after this response instead.
+     */
+    public static void finishReading(HttpExchange ex) throws IOException {
+        InputStream in = ex.getRequestBody();
+        byte[] buf = new byte[8192];
+        long left = MAX_BODY;
+        int n;
+        while (left > 0 && (n = in.read(buf, 0, (int) Math.min(buf.length, left))) != -1) {
+            left -= n;
+        }
+        if (left <= 0 && in.read() != -1) {
+            ex.getResponseHeaders().set("Connection", "close");
+        }
+    }
+
     public static void json(HttpExchange ex, int status, Object body) throws IOException {
         byte[] b = Json.compact(body).getBytes(StandardCharsets.UTF_8);
+        finishReading(ex);
         ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         ex.sendResponseHeaders(status, status == 204 ? -1 : b.length);
         if (status != 204) {
@@ -102,6 +123,7 @@ public final class Http {
         m.put("detail", p.getMessage());
         m.putAll(p.extra);
         byte[] b = Json.compact(m).getBytes(StandardCharsets.UTF_8);
+        finishReading(ex);
         ex.getResponseHeaders().set("Content-Type", "application/problem+json; charset=utf-8");
         ex.sendResponseHeaders(p.status, b.length);
         ex.getResponseBody().write(b);

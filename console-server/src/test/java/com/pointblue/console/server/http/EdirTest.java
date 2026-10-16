@@ -59,7 +59,7 @@ public class EdirTest {
             concat("9#".getBytes(), java.util.HexFormat.of().parseHex("020c7f000001"))));
         edir.partitions.partition("", Map.of(S1, 0, S2, 1)).partition("o=acme", Map.of(S1, 0, S2, 1));
         Path data = tmp.newFolder("data").toPath();
-        server = new Server(new DataDir(data), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        server = new Server(new DataDir(data), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         server.start();
         base = "https://127.0.0.1:" + server.port();
         http = ServerClient.trusting(server);
@@ -72,7 +72,7 @@ public class EdirTest {
         call("POST", "/api/v2/setup/authority", Map.of("dn", "cn=admin,o=system", "password", "admin-pw"), t);
         call("PUT", "/api/v2/setup/service-account", Map.of("dn", "cn=console,o=system", "password", "console-pw"), t);
         assertEquals(200, call("POST", "/api/v2/setup/finish", Map.of(), t).status());
-        HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v2/session")).header("Content-Type", "application/json")
+        HttpResponse<String> r = http.send(ServerClient.request(URI.create(base + "/api/v2/session")).header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(Json.compact(Map.of("directory", "acme", "name", "cn=admin,o=system", "password", "admin-pw")))).build(),
             HttpResponse.BodyHandlers.ofString());
         String cookie = r.headers().firstValue("Set-Cookie").orElseThrow();
@@ -92,7 +92,7 @@ public class EdirTest {
     }
 
     private Reply call(String method, String path, Object body, Map<String, String> headers) throws Exception {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(base + path))
+        HttpRequest.Builder b = ServerClient.request(URI.create(base + path))
             .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(Json.compact(body)));
         if (body != null) {
             b.header("Content-Type", "application/json");

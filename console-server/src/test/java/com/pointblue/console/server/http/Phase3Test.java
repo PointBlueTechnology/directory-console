@@ -68,7 +68,7 @@ public class Phase3Test {
             .person("ghost", Map.of("preferred_username", "nobody-here", "groups", List.of("sales-editors")))
             .person("gone", Map.of("preferred_username", "gone", "groups", List.of("sales-editors")));
         dataPath = tmp.newFolder("data").toPath();
-        server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        server = new Server(new DataDir(dataPath), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         server.start();
         base = "https://127.0.0.1:" + server.port();
         http = ServerClient.trusting(server);
@@ -107,7 +107,7 @@ public class Phase3Test {
     }
 
     private Reply call(String method, String path, Object body, Map<String, String> headers) throws Exception {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(path.startsWith("http") ? path : base + path))
+        HttpRequest.Builder b = ServerClient.request(URI.create(path.startsWith("http") ? path : base + path))
             .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(Json.compact(body)));
         if (body != null) {
             b.header("Content-Type", "application/json");

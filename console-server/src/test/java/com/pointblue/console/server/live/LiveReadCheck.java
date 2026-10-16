@@ -36,7 +36,7 @@ public final class LiveReadCheck {
         Environments.Environment env = Environments.load(Path.of(args[0])).get(args[1]);
         URI u = URI.create(env.url);
         Path dataPath = Files.createTempDirectory("dc-live-read-");
-        Server server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        Server server = new Server(new DataDir(dataPath), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         try {
             server.start();
             LiveSetupCheck.base = "https://127.0.0.1:" + server.port();

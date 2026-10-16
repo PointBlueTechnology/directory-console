@@ -57,7 +57,7 @@ public class IdmTest {
         engine = new FakeEngine(edir);
         engine.states.put("cn=ad,cn=driverset,o=system", Vault.STATE_RUNNING);
         dataPath = tmp.newFolder("data").toPath();
-        server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        server = new Server(new DataDir(dataPath), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         server.login.engines(engine.engines());
         server.start();
         base = "https://127.0.0.1:" + server.port();
@@ -80,7 +80,7 @@ public class IdmTest {
     }
 
     private Reply call(String method, String path, Object body, Map<String, String> headers) throws Exception {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(base + path))
+        HttpRequest.Builder b = ServerClient.request(URI.create(base + path))
             .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(Json.compact(body)));
         if (body != null) {
             b.header("Content-Type", "application/json");
@@ -92,7 +92,7 @@ public class IdmTest {
     }
 
     private Map<String, String> signIn() throws Exception {
-        HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v2/session")).header("Content-Type", "application/json")
+        HttpResponse<String> r = http.send(ServerClient.request(URI.create(base + "/api/v2/session")).header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(Json.compact(Map.of("directory", "acme", "name", "cn=admin,o=system", "password", "admin-pw")))).build(),
             HttpResponse.BodyHandlers.ofString());
         assertEquals(200, r.statusCode());

@@ -49,7 +49,7 @@ public final class LiveServerTargetCheck {
         }
         URI u = URI.create(env.url);
         Path dataPath = Files.createTempDirectory("dc-live-srv-");
-        Server server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        Server server = new Server(new DataDir(dataPath), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         String container = null;
         try (FakeIdp idp = new FakeIdp()) {
             server.start();

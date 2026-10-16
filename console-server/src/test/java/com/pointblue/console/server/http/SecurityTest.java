@@ -68,7 +68,7 @@ public class SecurityTest {
             "dn: cn=LDAP Server - edir1,ou=servers,o=system\nobjectClass: ldapServer\ncn: LDAP Server - edir1\nldapHostServer: cn=edir1,ou=servers,o=system\nldapKeyMaterialName: ldap3");
         // eDirectory's Security container is at the tree root; the fake's naming contexts are o=acme and o=system
         Path data = tmp.newFolder("data").toPath();
-        server = new Server(new DataDir(data), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        server = new Server(new DataDir(data), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         server.start();
         base = "https://127.0.0.1:" + server.port();
         http = ServerClient.trusting(server);
@@ -81,7 +81,7 @@ public class SecurityTest {
         call("POST", "/api/v2/setup/authority", Map.of("dn", "cn=admin,o=system", "password", "admin-pw"), t);
         call("PUT", "/api/v2/setup/service-account", Map.of("dn", "cn=console,o=system", "password", "console-pw"), t);
         assertEquals(200, call("POST", "/api/v2/setup/finish", Map.of(), t).status());
-        HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v2/session")).header("Content-Type", "application/json")
+        HttpResponse<String> r = http.send(ServerClient.request(URI.create(base + "/api/v2/session")).header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(Json.compact(Map.of("directory", "acme", "name", "cn=admin,o=system", "password", "admin-pw")))).build(),
             HttpResponse.BodyHandlers.ofString());
         String cookie = r.headers().firstValue("Set-Cookie").orElseThrow();
@@ -95,7 +95,7 @@ public class SecurityTest {
     }
 
     private Reply call(String method, String path, Object body, Map<String, String> headers) throws Exception {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(base + path))
+        HttpRequest.Builder b = ServerClient.request(URI.create(base + path))
             .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(Json.compact(body)));
         if (body != null) {
             b.header("Content-Type", "application/json");

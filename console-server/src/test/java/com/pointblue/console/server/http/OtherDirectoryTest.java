@@ -54,7 +54,7 @@ public class OtherDirectoryTest {
             "dn: cn=console,o=system\nobjectClass: inetOrgPerson\ncn: console\nsn: c\nuserPassword: console-pw",
             "dn: cn=Pat Lee,o=system\nobjectClass: inetOrgPerson\ncn: Pat Lee\nsn: Lee\nuserPassword: pat-pw");
         Path dataPath = tmp.newFolder("data").toPath();
-        server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        server = new Server(new DataDir(dataPath), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         server.start();
         base = "https://127.0.0.1:" + server.port();
         http = ServerClient.trusting(server);
@@ -76,7 +76,7 @@ public class OtherDirectoryTest {
     }
 
     private Reply call(String method, String path, Object body, Map<String, String> headers) throws Exception {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(base + path))
+        HttpRequest.Builder b = ServerClient.request(URI.create(base + path))
             .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(Json.compact(body)));
         if (body != null) {
             b.header("Content-Type", "application/json");

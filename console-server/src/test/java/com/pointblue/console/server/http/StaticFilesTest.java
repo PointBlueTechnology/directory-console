@@ -31,7 +31,7 @@ public class StaticFilesTest {
 
     @Before
     public void start() throws Exception {
-        server = new Server(new DataDir(tmp.newFolder("data").toPath()), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        server = new Server(new DataDir(tmp.newFolder("data").toPath()), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         server.start();
         base = "https://127.0.0.1:" + server.port();
         http = ServerClient.trusting(server);
@@ -43,7 +43,7 @@ public class StaticFilesTest {
     }
 
     private HttpResponse<byte[]> get(String path, String... headers) throws Exception {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(base + path));
+        HttpRequest.Builder b = ServerClient.request(URI.create(base + path));
         for (int i = 0; i < headers.length; i += 2) {
             b.header(headers[i], headers[i + 1]);
         }
@@ -81,7 +81,7 @@ public class StaticFilesTest {
     public void onlyFilesUnderWebAreReachable() throws Exception {
         assertEquals(400, get("/assets/..%2f..%2fcom/pointblue/console/server/http/Server.class").statusCode());
         assertEquals(404, get("/com/pointblue/console/server/http/Server.class").statusCode());
-        HttpResponse<String> post = http.send(HttpRequest.newBuilder(URI.create(base + "/")).POST(HttpRequest.BodyPublishers.noBody()).build(),
+        HttpResponse<String> post = http.send(ServerClient.request(URI.create(base + "/")).POST(HttpRequest.BodyPublishers.noBody()).build(),
             HttpResponse.BodyHandlers.ofString());
         assertEquals(405, post.statusCode());
         assertEquals("the API is unchanged", 503, get("/api/v2/session").statusCode());

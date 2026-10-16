@@ -5,13 +5,18 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import com.pointblue.console.server.data.DataDir;
 import com.pointblue.console.server.ldap.FakeEdir;
 import com.pointblue.console.server.tls.Certs;
 import com.pointblue.dirxml.dev.json.Json;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.PrintStream;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -25,6 +30,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManagerFactory;
 import org.junit.After;
 import org.junit.Before;
@@ -56,7 +62,7 @@ public class ServerTest {
     }
 
     private void boot() throws Exception {
-        server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(log, true, StandardCharsets.UTF_8));
+        server = new Server(new DataDir(dataPath), ServerClient.loopback(), "https://localhost:8443", new PrintStream(log, true, StandardCharsets.UTF_8));
         server.start();
         base = "https://127.0.0.1:" + server.port();
         // trust exactly the console's own certificate, as a person does after checking its fingerprint
@@ -67,7 +73,7 @@ public class ServerTest {
         tmf.init(ks);
         SSLContext ctx = SSLContext.getInstance("TLS");
         ctx.init(null, tmf.getTrustManagers(), null);
-        http = HttpClient.newBuilder().sslContext(ctx).build();
+        http = HttpClient.newBuilder().sslContext(ctx).connectTimeout(ServerClient.TIMEOUT).build();
     }
 
     @After
@@ -80,7 +86,7 @@ public class ServerTest {
     }
 
     private Reply call(String method, String path, Object body, Map<String, String> headers) throws Exception {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(base + path))
+        HttpRequest.Builder b = ServerClient.request(URI.create(base + path))
             .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(Json.compact(body)));
         if (body != null) {
             b.header("Content-Type", "application/json");
@@ -89,6 +95,50 @@ public class ServerTest {
         HttpResponse<String> r = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
         Object parsed = r.body().isBlank() ? Map.of() : Json.parse(r.body());
         return new Reply(r.statusCode(), parsed instanceof Map ? Json.asMap(parsed) : Map.of("list", parsed), r);
+    }
+
+    @Test
+    public void aRequestIsAnsweredOnlyOnceItsBodyIsInSoTheConnectionServesTheNextRequest() throws Exception {
+        // an answer without a body (HEAD, 204, 302) is complete once its headers are out; the JDK's server would send
+        // it and only then read the request's unread body, and that read can take the client's next request into a
+        // buffer the server never looks at again: the request goes unanswered until the idle timer drops the connection
+        try (SSLSocket s = (SSLSocket) ServerClient.trustingContext(server).getSocketFactory().createSocket("127.0.0.1", server.port())) {
+            s.setSoTimeout((int) ServerClient.TIMEOUT.toMillis());
+            s.startHandshake();
+            OutputStream out = s.getOutputStream();
+            InputStream in = s.getInputStream();
+            byte[] body = "ignored".getBytes(StandardCharsets.US_ASCII);
+            out.write(("HEAD / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: " + body.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            s.setSoTimeout(500);
+            try {
+                fail("answered before the body was read: " + in.read());
+            } catch (SocketTimeoutException expected) {
+                // still reading the body
+            }
+            s.setSoTimeout((int) ServerClient.TIMEOUT.toMillis());
+            out.write(body);
+            out.flush();
+            assertEquals(200, status(in, false));
+            out.write("GET /api/v2/health/live HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            assertEquals("the same connection answers the next request", 200, status(in, true));
+        }
+    }
+
+    /** One HTTP/1.1 response's status, its body (if it has one) read and dropped. */
+    private static int status(InputStream in, boolean hasBody) throws IOException {
+        StringBuilder head = new StringBuilder();
+        while (!head.toString().endsWith("\r\n\r\n")) {
+            int c = in.read();
+            assertTrue("the connection closed mid-response: " + head, c != -1);
+            head.append((char) c);
+        }
+        Matcher m = Pattern.compile("(?i)content-length: *(\\d+)").matcher(head);
+        if (hasBody) {
+            in.readNBytes(m.find() ? Integer.parseInt(m.group(1)) : 0);
+        }
+        return Integer.parseInt(head.substring(9, 12));
     }
 
     private String token() throws Exception {

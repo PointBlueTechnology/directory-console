@@ -72,6 +72,7 @@ final class StaticFiles {
             h.set("Vary", "Accept-Encoding");
             body = f.gzipped;
         }
+        Http.finishReading(ex);
         if (method.equals("HEAD")) {
             ex.sendResponseHeaders(200, -1);
         } else {

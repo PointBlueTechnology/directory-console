@@ -54,7 +54,7 @@ public final class LiveSetupCheck {
         String adminPw = env.password;
         Path dataPath = Files.createTempDirectory("dc-live-");
         System.out.println("# Directory Console setup live check: " + args[1] + " (" + host + ":" + port + ")");
-        Server server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        Server server = new Server(new DataDir(dataPath), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         try {
             server.start();
             base = "https://127.0.0.1:" + server.port();

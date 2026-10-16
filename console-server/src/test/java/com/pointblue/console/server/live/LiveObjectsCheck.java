@@ -46,7 +46,7 @@ public final class LiveObjectsCheck {
         int port = u.getPort() > 0 ? u.getPort() : 636;
         Path dataPath = Files.createTempDirectory("dc-live-");
         System.out.println("# Directory Console object API live check: " + args[1] + " (" + host + ":" + port + ")");
-        Server server = new Server(new DataDir(dataPath), 0, "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        Server server = new Server(new DataDir(dataPath), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         String container = null;
         try {
             server.start();
