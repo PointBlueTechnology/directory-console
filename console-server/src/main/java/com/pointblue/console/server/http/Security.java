@@ -84,15 +84,17 @@ final class Security {
             .replaceAll("^(password-policies|challenge-sets|objects)/[0-9a-f]{32}", "$1/{guid}")
             .replaceAll("^pki/(servers|server-certificates|ldap-servers)/[0-9a-f]{32}", "pki/$1/{guid}")
             .replaceAll("^login-policy/sequences/[^/]+$", "login-policy/sequences/{name}")
-            .replaceAll("^objects/\\{guid\\}/certificates/[^/]+/revoke$", "objects/{guid}/certificates/{name}/revoke")
+            .replaceAll("^objects/\\{guid\\}/certificates/[^/]+/(revoke|export)$", "objects/{guid}/certificates/{name}/$1")
             .replaceAll("assignments/[0-9a-f]{32}$", "assignments/{target}");
         String guid = p.length > 3 && p[2].equals("pki") ? (p.length > 4 ? p[4] : null) : p.length > 3 ? p[3] : null;
-        if (!method.equals("GET")) {
+        // an export changes nothing; a user's own certificate is theirs to export (checked with the user's DN)
+        boolean export = route.endsWith("/export");
+        if (!method.equals("GET") && !export || route.equals("POST pki/server-certificates/{guid}/export")) {
             if (!s.principal.may(Role.EDITOR, "")) {
                 throw new Http.Problem(403, "forbidden", "security settings need an editor role for the whole directory");
             }
             DirectoryConfig d = server.directoryOf(s);
-            if (d != null && d.production()) {
+            if (d != null && d.production() && !export) {
                 String typed = ex.getRequestHeaders().getFirst("X-Confirm-Directory");
                 if (typed == null || !typed.trim().equalsIgnoreCase(d.name())) {
                     throw new Http.Problem(409, "confirm-directory", "this changes the production directory " + d.name() + "; type its name to confirm");
@@ -127,6 +129,9 @@ final class Security {
                 case "PUT pki/ca/configuration" -> updateCaConfiguration(ex, l, s);
                 case "DELETE pki/server-certificates/{guid}" -> deleteServerCertificate(ex, l, s, guid);
                 case "POST pki/server-certificates/{guid}/revoke" -> revokeServerCertificate(ex, l, s, guid);
+                case "POST pki/server-certificates/{guid}/export" -> exportServerCertificate(ex, l, s, guid);
+                case "POST objects/{guid}/certificates/{name}/export" ->
+                    exportUserCertificate(ex, l, s, guid, java.net.URLDecoder.decode(p[5], java.nio.charset.StandardCharsets.UTF_8));
                 case "POST objects/{guid}/certificates/{name}/revoke" ->
                     revokeUserCertificate(ex, l, s, guid, java.net.URLDecoder.decode(p[5], java.nio.charset.StandardCharsets.UTF_8));
                 case "GET objects/{guid}/certificates" -> Http.json(ex, 200, Map.of("items", userCertificates(l, guid)));
@@ -777,6 +782,81 @@ final class Security {
         }
         audit(s, "pki.server-certificate.revoke", guid, detail, null);
         Http.json(ex, 200, revoked(crl));
+    }
+
+    /** The password and scheme for a PKCS#12 export: at least 6 characters, as Identity Console asks; PBES2 unless pbes1 is asked for. */
+    private record Export(String password, boolean pbes2) {
+        static Export of(Map<String, Object> b) {
+            String password = Http.string(b, "password", true);
+            if (password.length() < 6 || password.length() > 128) {
+                throw new IllegalArgumentException("the file's password is 6 to 128 characters");
+            }
+            String scheme = b.get("scheme") == null ? "pbes2" : Http.string(b, "scheme", true);
+            if (!List.of("pbes2", "pbes1").contains(scheme)) {
+                throw new IllegalArgumentException("scheme is pbes2 or pbes1");
+            }
+            return new Export(password, scheme.equals("pbes2"));
+        }
+    }
+
+    /** The file and its name: {@code {fileName, pkcs12}}, the file base64-encoded. */
+    private static Map<String, Object> pkcs12(String name, byte[] file) {
+        return Map.of("fileName", name.replaceAll("[^A-Za-z0-9 _.-]", "_") + ".pfx", "pkcs12", java.util.Base64.getEncoder().encodeToString(file));
+    }
+
+    /**
+     * {@code POST pki/server-certificates/{guid}/export}: {password, scheme}. The certificate with its private
+     * key and chain, as a PKCS#12 file; it needs a recent sign-in, and is audited without the password.
+     */
+    private void exportServerCertificate(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Ldap.Entry k = server.objects.byGuid(l, guid, "objectClass", "cn", "hostServer");
+        if (k == null || k.first("hostServer") == null
+            || k.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("nDSPKIKeyMaterial"))) {
+            throw new Http.Problem(404, "not-found", "no server certificate has GUID " + guid);
+        }
+        Export e = Export.of(Http.body(ex));
+        server.stepUp(s);
+        String host = k.first("hostServer");
+        String suffix = " - " + Names.identity(host).get("name");
+        String cn = String.valueOf(k.first("cn"));
+        String name = cn.endsWith(suffix) ? cn.substring(0, cn.length() - suffix.length()) : cn;
+        Map<String, Object> detail = new LinkedHashMap<>(Map.of("dn", k.dn(), "scheme", e.pbes2() ? "pbes2" : "pbes1"));
+        byte[] file;
+        try {
+            file = Pki.backupServerCertificate(l, host, name, e.password(), e.pbes2());
+        } catch (Pki.Refused x) {
+            detail.put("code", x.code);
+            audit(s, "pki.server-certificate.export", guid, detail, null);
+            throw new Http.Problem(409, "pki-refused", x.getMessage(), Map.of("code", x.code));
+        }
+        audit(s, "pki.server-certificate.export", guid, detail, null);
+        Http.json(ex, 200, pkcs12(cn, file));
+    }
+
+    /** {@code POST objects/{guid}/certificates/{name}/export}: as {@link #exportServerCertificate}, for one of a user's certificates. */
+    private void exportUserCertificate(HttpExchange ex, Ldap l, Sessions.Session s, String guid, String name) throws IOException, NamingException {
+        Ldap.Entry u = server.objects.byGuid(l, guid, "cn");
+        if (u == null) {
+            throw new Http.Problem(404, "not-found", "no object has GUID " + guid);
+        }
+        Export e = Export.of(Http.body(ex));
+        // eDirectory keeps a user's private key under the user's own key: only they can export it (anyone else
+        // is refused with -1262, and on 9.2.8 a refused PKI operation can leave ndsd to crash on a later one)
+        if (s.principal.dn() == null || !Names.same(u.dn(), s.principal.dn())) {
+            throw new Http.Problem(403, "not-own-certificate", "only " + u.first("cn") + " can export this certificate's private key, signed in as themselves");
+        }
+        server.stepUp(s);
+        Map<String, Object> detail = new LinkedHashMap<>(Map.of("user", u.dn(), "name", name, "scheme", e.pbes2() ? "pbes2" : "pbes1"));
+        byte[] file;
+        try {
+            file = Pki.backupUserCertificate(l, u.dn(), name, e.password(), e.pbes2());
+        } catch (Pki.Refused x) {
+            detail.put("code", x.code);
+            audit(s, "pki.user-certificate.export", guid, detail, null);
+            throw new Http.Problem(409, "pki-refused", x.getMessage(), Map.of("code", x.code));
+        }
+        audit(s, "pki.user-certificate.export", guid, detail, null);
+        Http.json(ex, 200, pkcs12(u.first("cn") + " - " + name, file));
     }
 
     /** {@code POST objects/{guid}/certificates/{name}/revoke}: {reason, comment}. */

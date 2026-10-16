@@ -13,6 +13,7 @@ import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { NewCertificateModal } from '../components/NewCertificate';
 import { SequenceModal } from '../components/SequenceModal';
 import { RevokeModal, revokedNotice } from '../components/RevokeCertificate';
+import { ExportKeyModal } from '../components/ExportKey';
 import { DefaultCertificatesModal } from '../components/DefaultCertificates';
 import { CaConfigurationPanel } from '../components/CaConfiguration';
 import { ExpiryLabel, Fingerprint, WARN_DAYS } from '../components/Certificates';
@@ -60,6 +61,7 @@ function CertificatesView() {
   const [defaults, setDefaults] = useState(false);
   const [opError, setOpError] = useState<unknown>(null);
   const [revoking, setRevoking] = useState<Pki['serverCertificates'][number] | null>(null);
+  const [exporting, setExporting] = useState<Pki['serverCertificates'][number] | null>(null);
   const [opNotice, setOpNotice] = useState<string | null>(null);
   const confirmed = useConfirmed();
   const sure = useAreYouSure();
@@ -155,6 +157,11 @@ function CertificatesView() {
                     {k.certificate?.der && <Button variant="link" isInline onClick={() => download(fileName(`${k.name}.pem`),
                       [k.certificate!, ...k.chain].map((c) => pem(c.der)).join(''))}>Download</Button>}
                     {editor && k.guid && k.certificate && (
+                      <Hint text="A password-protected .pfx file with the private key and chain, if the certificate allows export.">
+                        <Button variant="link" isInline className="dc-gap-left" onClick={() => setExporting(k)}>Export with key</Button>
+                      </Hint>
+                    )}
+                    {editor && k.guid && k.certificate && (
                       <Button variant="link" isInline className="dc-gap-left" onClick={() => { setOpNotice(null); setRevoking(k); }}>Revoke</Button>
                     )}
                     {editor && k.guid && (
@@ -167,13 +174,17 @@ function CertificatesView() {
               ))}
             </Tbody>
           </Table>
-          <p className="dc-subtle">Downloads hold the public certificate and its chain. Private keys never leave the directory. A certificate an LDAP server uses cannot be deleted.</p>
+          <p className="dc-subtle">Download gives the public certificate and its chain. Export with key gives a password-protected .pfx file with the private key, for a certificate made with export allowed; it needs a recent sign-in and is audited. A certificate an LDAP server uses cannot be deleted.</p>
           {creating && (
             <NewCertificateModal kind="server" servers={servers.map((x) => ({ guid: x.guid, name: x.name }))}
               onCreate={(body, server) => confirmed.run((c) => api.createServerCertificate(server!, body, c)).then(load)}
               onClose={() => setCreating(false)} />
           )}
           {defaults && <DefaultCertificatesModal servers={servers} onClose={() => setDefaults(false)} onChanged={load} />}
+          {exporting && (
+            <ExportKeyModal name={exporting.name} onClose={() => setExporting(null)}
+              onExport={(body) => api.exportServerCertificate(exporting.guid!, body)} />
+          )}
           {revoking && (
             <RevokeModal name={revoking.name} onClose={() => setRevoking(null)}
               onRevoke={(r) => confirmed.run((c) => api.revokeServerCertificate(revoking.guid!, r, c))}

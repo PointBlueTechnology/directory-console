@@ -118,6 +118,68 @@ public final class Pki {
         call(l, USER_CERTIFICATES, "createCertificate", p);
     }
 
+    /**
+     * A server certificate with its private key and chain, as a PKCS#12 file protected by {@code password}
+     * (PBES2 with AES, or the older PBES1 for software that cannot read PBES2). Identity Console calls this
+     * "backupCertificate" (read from its browser code, 2026-10-16). eDirectory refuses it when the key was
+     * not made exportable.
+     */
+    public static byte[] backupServerCertificate(Ldap l, String serverDn, String name, String password, boolean pbes2)
+            throws NamingException, Refused {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("serverDN", dotted(serverDn));
+        p.put("certificateName", name);
+        return backup(l, SERVER_CERTIFICATES, p, password, pbes2);
+    }
+
+    /** As {@link #backupServerCertificate}, for one of a user's certificates. */
+    public static byte[] backupUserCertificate(Ldap l, String userDn, String name, String password, boolean pbes2)
+            throws NamingException, Refused {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("userDN", dotted(userDn));
+        p.put("certificateName", name);
+        return backup(l, USER_CERTIFICATES, p, password, pbes2);
+    }
+
+    private static byte[] backup(Ldap l, String oid, Map<String, Object> p, String password, boolean pbes2) throws NamingException, Refused {
+        p.put("password", password);
+        p.put("certProtectionAlgorithm", pbes2 ? 1 : 0);
+        Object file = call(l, oid, "backupCertificate", p).get("certificate");
+        if (file == null || String.valueOf(file).isBlank()) {
+            throw new Refused(-1, "eDirectory returned no file");
+        }
+        byte[] pfx = java.util.Base64.getMimeDecoder().decode(String.valueOf(file));
+        return pbes2 ? pbes2(pfx, password.toCharArray()) : pfx;
+    }
+
+    /**
+     * The same PKCS#12 file protected with PBES2 (AES-256, HMAC-SHA-256) under the same password.
+     * eDirectory 9.2.8 ignores certProtectionAlgorithm and always uses PBES1 (SHA1-3DES for the key,
+     * RC2-40 for the certificates; measured on ig4, 2026-10-16), which OpenSSL 3 opens only with -legacy.
+     */
+    static byte[] pbes2(byte[] pfx, char[] password) throws Refused {
+        try {
+            java.security.KeyStore in = java.security.KeyStore.getInstance("PKCS12");
+            in.load(new java.io.ByteArrayInputStream(pfx), password);
+            java.security.KeyStore out = java.security.KeyStore.getInstance("PKCS12");
+            out.load(null, null);
+            java.security.KeyStore.PasswordProtection protection = new java.security.KeyStore.PasswordProtection(password, "PBEWithHmacSHA256AndAES_256",
+                new javax.crypto.spec.PBEParameterSpec(new java.security.SecureRandom().generateSeed(16), 10_000));
+            for (String alias : java.util.Collections.list(in.aliases())) {
+                if (in.isKeyEntry(alias)) {
+                    out.setEntry(alias, in.getEntry(alias, new java.security.KeyStore.PasswordProtection(password)), protection);
+                } else if (in.isCertificateEntry(alias)) {
+                    out.setCertificateEntry(alias, in.getCertificate(alias));
+                }
+            }
+            ByteArrayOutputStream o = new ByteArrayOutputStream();
+            out.store(o, password);
+            return o.toByteArray();
+        } catch (java.security.GeneralSecurityException | java.io.IOException x) {
+            throw new Refused(-1, "eDirectory's file could not be re-protected with PBES2: " + x.getMessage());
+        }
+    }
+
     /** RFC 5280 revocation reasons the CA accepts (7 is unused; 8, remove from CRL, is not a revocation). */
     public static final java.util.Set<Integer> REASONS = java.util.Set.of(0, 1, 2, 3, 4, 5, 6, 9, 10);
 

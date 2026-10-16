@@ -37,6 +37,8 @@ public final class FakePki extends InMemoryExtendedOperationHandler {
     /** The EBA CA's "address:port" (null: no EBA), and each server's NCP certificate: UID (the server's GUID, with dashes) → address. */
     public volatile String ebaCa;
     public final Map<String, String> ncp = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Certificate names whose private key may not be exported (backupCertificate refuses them). */
+    public final java.util.Set<String> notExportable = java.util.concurrent.ConcurrentHashMap.newKeySet();
     /** What was revoked: "server|user DN (dotted) / certificate name / reason". */
     public final List<String> revoked = java.util.Collections.synchronizedList(new ArrayList<>());
 
@@ -136,6 +138,7 @@ public final class FakePki extends InMemoryExtendedOperationHandler {
                     revoked.add(who + " / " + payload.get("certificateName") + " / " + payload.get("reasonCode"));
                     yield new ExtendedResult(id, ResultCode.SUCCESS, null, null, null, response, null, null);
                 }
+                case "105 backupCertificate", "107 backupCertificate" -> backup(id, response, payload);
                 case "107 getCertificates" -> json(id, response, Map.of("certificates", listUser(String.valueOf(payload.get("userDN")))));
                 default -> new ExtendedResult(id, ResultCode.PROTOCOL_ERROR, "Could not decode LDAP Extension packet", null, null, null, null, null);
             };
@@ -174,6 +177,25 @@ public final class FakePki extends InMemoryExtendedOperationHandler {
         kmo.addAttribute("revision", "1");
         handler.addEntry(kmo, true);
         return new ExtendedResult(id, ResultCode.SUCCESS, null, null, null, response, null, null);
+    }
+
+    /** A PKCS#12 file holding a new key and certificate under the certificate's name, protected by the password. */
+    private ExtendedResult backup(int id, String response, Map<String, Object> p) throws Exception {
+        String name = String.valueOf(p.get("certificateName"));
+        if (p.get("password") == null || String.valueOf(p.get("password")).isEmpty()) {
+            return json(id, response, Map.of("code", -1214, "message", "pki error: bad request syntax"));
+        }
+        if (notExportable.contains(name)) {
+            return json(id, response, Map.of("code", -1226, "message", "pki error: private key not exportable"));
+        }
+        TestPki.Server made = pki.server(name, List.of(name));
+        java.security.KeyStore ks = java.security.KeyStore.getInstance("PKCS12");
+        ks.load(null, null);
+        char[] pw = String.valueOf(p.get("password")).toCharArray();
+        ks.setKeyEntry(name, made.key().getPrivate(), pw, new java.security.cert.Certificate[] {made.cert()});
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        ks.store(out, pw);
+        return json(id, response, Map.of("certificate", java.util.Base64.getEncoder().encodeToString(out.toByteArray())));
     }
 
     private ExtendedResult createUser(InMemoryRequestHandler handler, int id, String response, Map<String, Object> p) throws Exception {

@@ -255,6 +255,38 @@ public class SecurityTest {
         Map<String, Object> rreq = edir.pkiOps.requests.get(edir.pkiOps.requests.size() - 1);
         assertEquals("cn=One - Configuration EC.cn=Security.o=system", rreq.get("crlConfigurationDN"));
         assertEquals("replaced", rreq.get("comment"));
+
+        // export with the private key: a PKCS#12 file under the password, PBES2 unless PBES1 is asked for
+        assertEquals("a password of at least 6", 400, call("POST", t + "/pki/server-certificates/" + web + "/export", Map.of("password", "short"), h).status());
+        assertEquals(400, call("POST", t + "/pki/server-certificates/" + web + "/export", Map.of("password", "secret-1", "scheme", "rc4"), h).status());
+        Reply exported = call("POST", t + "/pki/server-certificates/" + web + "/export", Map.of("password", "secret-1"), h);
+        assertEquals(String.valueOf(exported.body()), 200, exported.status());
+        assertEquals("web9 - edir1.pfx", exported.body().get("fileName"));
+        java.security.KeyStore p12 = java.security.KeyStore.getInstance("PKCS12");
+        p12.load(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode((String) exported.body().get("pkcs12"))), "secret-1".toCharArray());
+        assertTrue("the file holds the key", p12.isKeyEntry(p12.aliases().nextElement()));
+        Map<String, Object> breq = edir.pkiOps.requests.get(edir.pkiOps.requests.size() - 1);
+        assertEquals("backupCertificate", breq.get("verb"));
+        assertEquals("cn=edir1.ou=servers.o=system", breq.get("serverDN"));
+        assertEquals("web9", breq.get("certificateName"));
+        assertEquals("PBES2", 1, Json.asInt(breq.get("certProtectionAlgorithm"), -1));
+        // a user's key is only theirs to export: eDirectory would refuse anyone else, so it is not asked
+        int asked = edir.pkiOps.requests.size();
+        Reply notOwn = call("POST", t + "/objects/" + pat + "/certificates/smime/export", Map.of("password", "secret-1"), h);
+        assertEquals(403, notOwn.status());
+        assertEquals("not-own-certificate", notOwn.body().get("title"));
+        assertEquals(asked, edir.pkiOps.requests.size());
+        String me = guidOf("cn=admin,o=system");
+        assertEquals(201, call("POST", t + "/objects/" + me + "/certificates", Map.of("name", "mine"), h).status());
+        assertEquals(200, call("POST", t + "/objects/" + me + "/certificates/mine/export", Map.of("password", "secret-1", "scheme", "pbes1"), h).status());
+        breq = edir.pkiOps.requests.get(edir.pkiOps.requests.size() - 1);
+        assertEquals("cn=admin.o=system", breq.get("userDN"));
+        assertEquals("PBES1", 0, Json.asInt(breq.get("certProtectionAlgorithm"), -1));
+        edir.pkiOps.notExportable.add("web9");
+        Reply locked = call("POST", t + "/pki/server-certificates/" + web + "/export", Map.of("password", "secret-1"), h);
+        assertEquals("a key that may not be exported is eDirectory's refusal", 409, locked.status());
+        assertEquals(-1226, Json.asInt(locked.body().get("code"), 0));
+        edir.pkiOps.notExportable.clear();
     }
 
     @Test

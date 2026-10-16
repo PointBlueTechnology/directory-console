@@ -8,6 +8,7 @@ import { useConfirmed } from './Confirm';
 import { ExpiryLabel } from './Certificates';
 import { NewCertificateModal } from './NewCertificate';
 import { RevokeModal, revokedNotice } from './RevokeCertificate';
+import { ExportKeyModal } from './ExportKey';
 
 /** The certificates eDirectory's PKI holds for a user, and a new one from the tree CA. */
 export function UserCertificatesTab({ obj }: { obj: DirObject }) {
@@ -22,6 +23,9 @@ export function UserCertificatesTab({ obj }: { obj: DirObject }) {
   const load = useCallback(() => { setError(null); api.userCertificates(obj.guid).then(setItems, setError); }, [api, obj.guid]);
   useEffect(load, [load]);
   const editor = canAt('editor', '');
+  // a user's private key is kept under their own key: only they can export it
+  const own = me.dn.replace(/\s+/g, '').toLowerCase() === obj.dn.replace(/\s+/g, '').toLowerCase();
+  const [exporting, setExporting] = useState<UserCertificate | null>(null);
 
   const download = (c: UserCertificate) => {
     const body = `-----BEGIN CERTIFICATE-----\n${(c.certificate ?? '').replace(/(.{64})/g, '$1\n')}\n-----END CERTIFICATE-----\n`;
@@ -35,7 +39,9 @@ export function UserCertificatesTab({ obj }: { obj: DirObject }) {
   return (
     <div className="dc-tab-body">
       <Flex>
-        <FlexItem grow={{ default: 'grow' }}><p className="dc-subtle">Issued by the directory's Organizational CA; the private keys stay in the directory.</p></FlexItem>
+        <FlexItem grow={{ default: 'grow' }}><p className="dc-subtle">Issued by the directory's Organizational CA. {own
+          ? 'You can export your own certificates with their private keys, where they were made with export allowed.'
+          : `Only ${obj.name} can export these certificates' private keys, signed in as themselves.`}</p></FlexItem>
         {editor && <FlexItem><Button variant="secondary" onClick={() => setCreating(true)}>New certificate</Button></FlexItem>}
       </Flex>
       <ProblemAlert error={error} onRetry={load} />
@@ -56,6 +62,7 @@ export function UserCertificatesTab({ obj }: { obj: DirObject }) {
                 <Td dataLabel="Valid until"><ExpiryLabel notAfter={c.notAfter} /></Td>
                 <Td isActionCell>
                   {c.certificate && <Button variant="link" isInline onClick={() => download(c)}>Download</Button>}
+                  {own && <Button variant="link" isInline className="dc-gap-left" onClick={() => setExporting(c)}>Export with key</Button>}
                   {editor && <Button variant="link" isInline className="dc-gap-left" onClick={() => { setNotice(null); setRevoking(c); }}>Revoke</Button>}
                 </Td>
               </Tr>
@@ -67,6 +74,9 @@ export function UserCertificatesTab({ obj }: { obj: DirObject }) {
         <NewCertificateModal kind="user" defaultName={obj.name}
           onCreate={(body) => confirmed.run((c) => api.createUserCertificate(obj.guid, body, c)).then(setItems)}
           onClose={() => setCreating(false)} />
+      )}
+      {exporting && (
+        <ExportKeyModal name={exporting.name} onClose={() => setExporting(null)} onExport={(body) => api.exportUserCertificate(obj.guid, exporting.name, body)} />
       )}
       {revoking && (
         <RevokeModal name={revoking.name} onClose={() => setRevoking(null)}

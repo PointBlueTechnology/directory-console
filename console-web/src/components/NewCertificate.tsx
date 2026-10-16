@@ -59,7 +59,7 @@ export function NewCertificateModal({ kind, servers, defaultName, onCreate, onCl
   return (
     <Modal variant="medium" isOpen onClose={onClose} aria-labelledby="new-cert-title">
       <ModalHeader title={kind === 'server' ? 'New server certificate' : 'New user certificate'} labelId="new-cert-title"
-        description="Issued by the directory's Organizational CA. eDirectory makes the key pair; the private key stays in the directory." />
+        description="Issued by the directory's Organizational CA. eDirectory makes the key pair and keeps the private key; it can be exported later only if allowed below." />
       <ModalBody>
         <Form id="new-cert-form" onSubmit={submit}>
           <FormGroup label="Certificate name" fieldId="new-cert-name" isRequired>

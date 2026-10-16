@@ -40,6 +40,18 @@ export interface Me {
   session?: { idleSeconds: number; expiresAt: string };
 }
 
+/** A PKCS#12 export: its password, and PBES2 (AES) or the older PBES1 for software that cannot read PBES2. */
+export interface KeyExport {
+  password: string;
+  scheme: 'pbes2' | 'pbes1';
+}
+
+/** The exported file, base64-encoded, and a name for it. */
+export interface ExportedKey {
+  fileName: string;
+  pkcs12: string;
+}
+
 export interface Directory {
   id: string;
   name: string;
@@ -1129,6 +1141,12 @@ export function security(id: string) {
       request<RevocationResult>('POST', `${base}/pki/server-certificates/${guidPath(guid)}/revoke`, body, h(confirm)).then((r) => r.data),
     revokeUserCertificate: (guid: string, name: string, body: Revocation, confirm?: string) =>
       request<RevocationResult>('POST', `${base}/objects/${guidPath(guid)}/certificates/${encodeURIComponent(name)}/revoke`, body, h(confirm)).then((r) => r.data),
+    /** The certificate with its private key and chain, as a PKCS#12 file under the password. Needs a recent sign-in. */
+    exportServerCertificate: (guid: string, body: KeyExport) =>
+      request<ExportedKey>('POST', `${base}/pki/server-certificates/${guidPath(guid)}/export`, body).then((r) => r.data),
+    /** As exportServerCertificate, for one of the signed-in person's own certificates (nobody else can export it). */
+    exportUserCertificate: (guid: string, name: string, body: KeyExport) =>
+      request<ExportedKey>('POST', `${base}/objects/${guidPath(guid)}/certificates/${encodeURIComponent(name)}/export`, body).then((r) => r.data),
     userCertificates: (guid: string) => get<{ items: UserCertificate[] }>(`/objects/${guidPath(guid)}/certificates`).then((r) => r.items),
     createUserCertificate: (guid: string, body: CertificateRequest, confirm?: string) =>
       request<{ items: UserCertificate[] }>('POST', `${base}/objects/${guidPath(guid)}/certificates`, body, h(confirm)).then((r) => r.data.items),

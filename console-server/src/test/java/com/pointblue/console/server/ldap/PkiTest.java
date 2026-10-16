@@ -1,6 +1,8 @@
 package com.pointblue.console.server.ldap;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertThrows;
 
 import java.nio.charset.StandardCharsets;
@@ -48,5 +50,32 @@ public class PkiTest {
         assertEquals("cn=x.o=acme", p.get("subjectDN"));
         assertEquals(List.of(Map.of("type", 2, "value", "x.example"), Map.of("type", 7, "value", "10.0.0.1"), Map.of("type", 1, "value", "a@b.c"),
             Map.of("type", 6, "value", "https://x")), p.get("subjectAltNames"));
+    }
+
+    @Test
+    public void anExportIsReprotectedWithPbes2UnderTheSamePassword() throws Exception {
+        // eDirectory 9.2.8's file: the key under PBE-SHA1-3DES
+        com.pointblue.console.server.tls.TestPki ca = new com.pointblue.console.server.tls.TestPki("ACME");
+        com.pointblue.console.server.tls.TestPki.Server made = ca.server("web", List.of("web.example"));
+        char[] pw = "secret-1".toCharArray();
+        java.security.KeyStore legacy = java.security.KeyStore.getInstance("PKCS12");
+        legacy.load(null, null);
+        legacy.setEntry("web", new java.security.KeyStore.PrivateKeyEntry(made.key().getPrivate(), new java.security.cert.Certificate[] {made.cert()}),
+            new java.security.KeyStore.PasswordProtection(pw, "PBEWithSHA1AndDESede", null));
+        java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+        legacy.store(o, pw);
+        String before = java.util.HexFormat.of().formatHex(o.toByteArray());
+        assertTrue("3DES before", before.contains("2a864886f70d010c0103"));
+
+        byte[] out = Pki.pbes2(o.toByteArray(), pw);
+        String after = java.util.HexFormat.of().formatHex(out);
+        assertTrue("PBES2", after.contains("2a864886f70d01050d"));
+        assertTrue("AES-256-CBC", after.contains("60864801650304012a"));
+        assertFalse("no 3DES", after.contains("2a864886f70d010c0103"));
+        java.security.KeyStore back = java.security.KeyStore.getInstance("PKCS12");
+        back.load(new java.io.ByteArrayInputStream(out), pw);
+        assertEquals(made.key().getPrivate(), back.getKey("web", pw));
+        assertEquals(made.cert(), back.getCertificateChain("web")[0]);
+        assertThrows(Pki.Refused.class, () -> Pki.pbes2(o.toByteArray(), "wrong-pw".toCharArray()));
     }
 }

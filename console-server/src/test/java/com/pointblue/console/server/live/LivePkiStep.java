@@ -59,7 +59,7 @@ public final class LivePkiStep {
                     String server0 = serverGuid(call("GET", t + "/edir/servers", null, h));
                     show(call("POST", t + "/security/pki/servers/" + server0 + "/certificates",
                         Map.of("name", args[3], "algorithm", "rsa", "rsaBits", 2048, "signature", "sha256", "validityYears", 1,
-                            "names", List.of("dns:" + args[3] + ".example.test")), h));
+                            "names", List.of("dns:" + args[3] + ".example.test"), "exportable", !List.of(args).contains("locked")), h));
                 }
                 case "server-revoke" -> {
                     String guid = null;
@@ -86,8 +86,80 @@ public final class LivePkiStep {
                     }
                     show(call("DELETE", t + "/security/pki/server-certificates/" + guid, null, h));
                 }
+                // READ-ONLY (in eDirectory): a certificate with its private key, as PKCS#12. The file's password is made
+                // here and never printed; only what the file holds is shown.
+                case "server-export", "user-export" -> {
+                    String path;
+                    if (op.equals("server-export")) {
+                        String guid = null;
+                        for (Object o : (List<?>) call("GET", t + "/security/pki", null, h).body().get("serverCertificates")) {
+                            Map<String, Object> k = Json.asMap(o);
+                            if (String.valueOf(k.get("name")).equals(args[3])) {
+                                guid = (String) k.get("guid");
+                            }
+                        }
+                        if (guid == null) {
+                            System.out.println("[skip] no server certificate " + args[3]);
+                            return;
+                        }
+                        path = t + "/security/pki/server-certificates/" + guid + "/export";
+                    } else {
+                        path = t + "/security/objects/" + guid(t, h, args[3]) + "/certificates/" + URLEncoder.encode(args[4], "UTF-8").replace("+", "%20") + "/export";
+                    }
+                    String scheme = List.of(args).contains("pbes1") ? "pbes1" : "pbes2";
+                    byte[] r = new byte[18];
+                    new java.security.SecureRandom().nextBytes(r);
+                    String filePw = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(r);
+                    LiveSetupCheck.Reply x = call("POST", path, Map.of("password", filePw, "scheme", scheme), h);
+                    if (x.status() != 200) {
+                        show(x);
+                        return;
+                    }
+                    byte[] file = java.util.Base64.getDecoder().decode((String) x.body().get("pkcs12"));
+                    java.security.KeyStore ks = java.security.KeyStore.getInstance("PKCS12");
+                    ks.load(new java.io.ByteArrayInputStream(file), filePw.toCharArray());
+                    System.out.println("[ok 200] " + x.body().get("fileName") + ", " + file.length + " bytes, scheme " + scheme);
+                    System.out.println("  protection: " + protections(file));
+                    if (System.getenv("CHECK_OPENSSL") != null) {
+                        Path tmp = Files.createTempFile(Path.of(System.getenv("CHECK_OPENSSL")), "export", ".pfx");
+                        try {
+                            Files.write(tmp, file);
+                            ProcessBuilder pb = new ProcessBuilder("openssl", "pkcs12", "-in", tmp.toString(), "-noout", "-passin", "env:P12PW").redirectErrorStream(true);
+                            pb.environment().put("P12PW", filePw);
+                            Process proc = pb.start();
+                            String said = new String(proc.getInputStream().readAllBytes()).lines().findFirst().orElse("");
+                            System.out.println("  openssl without -legacy: exit " + proc.waitFor() + (said.isBlank() ? "" : " (" + said + ")"));
+                        } finally {
+                            Files.delete(tmp);
+                        }
+                    }
+                    for (String alias : java.util.Collections.list(ks.aliases())) {
+                        java.security.cert.Certificate[] chain = ks.getCertificateChain(alias);
+                        java.security.Key key = ks.isKeyEntry(alias) ? ks.getKey(alias, filePw.toCharArray()) : null;
+                        System.out.println("  entry: key " + (key == null ? "none" : key.getAlgorithm()) + ", chain of " + (chain == null ? 0 : chain.length)
+                            + (chain == null ? "" : ", leaf " + ((java.security.cert.X509Certificate) chain[0]).getSubjectX500Principal()));
+                        if (key == null && ks.isCertificateEntry(alias)) {
+                            System.out.println("  certificate only: " + ((java.security.cert.X509Certificate) ks.getCertificate(alias)).getSubjectX500Principal());
+                        }
+                    }
+                }
+                // a throwaway OU holding one user (cn=pkiexport), and its removal with everything in it
+                case "test-ou-create" -> {
+                    LiveSetupCheck.Reply c = call("POST", t + "/objects/" + guid(t, h, args[3]) + "/children",
+                        Map.of("objectClass", "organizationalUnit", "name", Map.of("type", "ou", "value", args[4])), h);
+                    show(c);
+                    show(call("POST", t + "/objects/" + c.body().get("guid") + "/children", Map.of("objectClass", "inetOrgPerson",
+                        "name", Map.of("type", "cn", "value", "pkiexport"), "attributes", Map.of("sn", List.of("Export"))), h));
+                }
+                case "test-ou-delete" -> {
+                    String ou = guid(t, h, args[3]);
+                    Map<String, String> d = new java.util.HashMap<>(h);
+                    d.put("X-Confirm-Count", String.valueOf(call("GET", t + "/objects/" + ou + "/subtree", null, h).body().get("count")));
+                    d.put("If-Match", "*");
+                    show(call("DELETE", t + "/objects/" + ou + "?subtree=true", null, d));
+                }
                 case "user-create" -> show(call("POST", t + "/security/objects/" + guid(t, h, args[3]) + "/certificates",
-                    Map.of("name", args[4], "algorithm", "rsa", "rsaBits", 2048, "validityYears", 1), h));
+                    Map.of("name", args[4], "algorithm", "rsa", "rsaBits", 2048, "validityYears", 1, "exportable", List.of(args).contains("exportable")), h));
                 // READ-ONLY: the object inspector's view of an object
                 case "assoc-read" -> show(call("GET", t + "/idm/objects/" + guid(t, h, args[3]) + "/associations", null, h));
                 // one association of an object: the one with the named driver gets this state (and value, when given)
@@ -203,6 +275,27 @@ public final class LivePkiStep {
                 st.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
             }
         }
+    }
+
+    /** The encryption algorithms a PKCS#12 file names (readable without its password). */
+    private static String protections(byte[] file) {
+        Map<String, String> known = new java.util.LinkedHashMap<>();
+        known.put("2a864886f70d01050d", "PBES2");
+        known.put("608648016503040102", "AES-128-CBC");
+        known.put("60864801650304012a", "AES-256-CBC");
+        known.put("2a864886f70d010c0103", "PBE-SHA1-3DES");
+        known.put("2a864886f70d010c0106", "PBE-SHA1-RC2-40");
+        known.put("2a864886f70d010c0105", "PBE-SHA1-RC2-128");
+        known.put("2a864886f70d010c0101", "PBE-SHA1-RC4-128");
+        String hex = java.util.HexFormat.of().formatHex(file);
+        List<String> found = new java.util.ArrayList<>();
+        known.forEach((oid, name) -> {
+            int n = hex.split("06" + String.format("%02x", oid.length() / 2) + oid, -1).length - 1;
+            if (n > 0) {
+                found.add(name + (n > 1 ? " x" + n : ""));
+            }
+        });
+        return found.isEmpty() ? "unrecognised" : String.join(", ", found);
     }
 
     private static String guid(String t, Map<String, String> h, String dn) throws Exception {
