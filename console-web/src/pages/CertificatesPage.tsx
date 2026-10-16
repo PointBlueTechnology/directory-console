@@ -11,7 +11,7 @@ import { HeadingLevel, useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure } from '../components/Confirm';
 import { useStepUp } from '../components/StepUp';
-import { CertificateDetails, ExpiryLabel, ScopeSelect, TrustCertificateModal, TrustStatus, scopeText } from '../components/Certificates';
+import { CertificateDetails, ExpiryLabel, Fingerprint, ScopeSelect, TrustCertificateModal, TrustStatus, scopeText } from '../components/Certificates';
 import { explain } from '../help/glossary';
 import { Hint } from '../help/Help';
 
@@ -219,7 +219,7 @@ function HostExceptionsSection({ store, onChanged }: { store: { hostExceptions: 
             {store.hostExceptions.map((h) => (
               <Tr key={`${h.host}:${h.port}:${h.scope ?? 'global'}`}>
                 <Td dataLabel="Address"><span className="dc-mono">{h.host}:{h.port}</span>{h.scope && h.scope !== 'global' && <><br /><span className="dc-subtle">{scopeText(h.scope, [])}</span></>}</Td>
-                <Td dataLabel="Certificate (SHA-256)" modifier="breakWord"><span className="dc-mono">{h.sha256}</span></Td>
+                <Td dataLabel="Certificate (SHA-256)"><Fingerprint sha256={h.sha256} /></Td>
                 <Td dataLabel="Added">{new Date(h.addedAt).toLocaleDateString()} <span className="dc-subtle">by {shortName(h.addedBy)}</span></Td>
                 <Td isActionCell><Button variant="link" isDanger size="sm" onClick={() => remove(h)}>Remove</Button></Td>
               </Tr>
@@ -355,7 +355,7 @@ function UploadModal({ directories, initial, onClose }: { directories: Directory
   return (
     <Modal variant="medium" isOpen onClose={() => onClose(false)} aria-labelledby="upload-title">
       <ModalHeader title="Upload a certificate" labelId="upload-title"
-        description="A PEM file holding a certificate authority's certificate, such as the tree CA exported from iManager. With a chain in the file, the last certificate is trusted." />
+        description="A PEM file holding a certificate authority's certificate, such as the directory CA exported from iManager. With a chain in the file, the last certificate is trusted." />
       <ModalBody>
         <Form id="upload-form" onSubmit={(e) => {
           e.preventDefault();

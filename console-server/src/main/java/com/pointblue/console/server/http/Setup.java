@@ -205,7 +205,7 @@ final class Setup {
         try (Ldap l = Ldap.connect(server.trust, new Ldap.Target(id, host, port), null, dn, pw, T)) {
             if (!supervisorOfTree(l, dn)) {
                 server.audit.log(new AuditLog.Actor(dn, dn, "setup"), "setup.authority", id, Map.of(), "refused: not supervisor");
-                throw new Http.Problem(403, "not-tree-admin", dn + " signed in but does not have supervisor rights to the tree; use a tree administrator");
+                throw new Http.Problem(403, "not-tree-admin", dn + " signed in but does not have supervisor rights to the directory; use a directory administrator");
             }
             adminDn = dn;
             server.audit.log(new AuditLog.Actor(dn, dn, "setup"), "setup.authority", id, Map.of(), "ok");

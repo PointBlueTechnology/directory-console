@@ -52,7 +52,7 @@ export function NewAttributeModal({ api, run, onClose, onDone }: { api: Edir; ru
   };
   return (
     <Modal variant="medium" isOpen onClose={onClose} aria-labelledby="attr-new-title">
-      <ModalHeader title="New attribute" labelId="attr-new-title" description="Schema changes reach every server in the tree; an attribute in use cannot be deleted." />
+      <ModalHeader title="New attribute" labelId="attr-new-title" description="Schema changes reach every server in the directory; an attribute in use cannot be deleted." />
       <ModalBody>
         <Form id="attr-new-form" onSubmit={submit}>
           <FormGroup label="Name" fieldId="attr-new-name" isRequired>
@@ -122,7 +122,7 @@ export function NewClassModal({ api, run, onClose, onDone }: { api: Edir; run: R
   };
   return (
     <Modal variant="medium" isOpen onClose={onClose} aria-labelledby="class-new-title">
-      <ModalHeader title="New class" labelId="class-new-title" description="Schema changes reach every server in the tree; a class in use cannot be deleted." />
+      <ModalHeader title="New class" labelId="class-new-title" description="Schema changes reach every server in the directory; a class in use cannot be deleted." />
       <ModalBody>
         <Form id="class-new-form" onSubmit={submit}>
           <FormGroup label="Name" fieldId="class-new-name" isRequired>

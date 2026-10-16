@@ -1,22 +1,49 @@
 import { useState } from 'react';
 import {
   Alert, Button, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, Form, FormGroup, FormSelect,
-  FormSelectOption, Label, Modal, ModalBody, ModalFooter, ModalHeader, Radio, TextInput,
+  FormSelectOption, Label, Modal, ModalBody, ModalFooter, ModalHeader, Radio, TextInput, Tooltip,
 } from '@patternfly/react-core';
+import { CopyIcon } from '@patternfly/react-icons';
 import { ApiError, type Directory, type Probe, type ProbedCertificate, daysUntil, trust } from '../api';
 import { useStepUp } from './StepUp';
 
-/** Expiry as a label: red once expired or within 7 days, orange within 30, gold within 60 (section 6.5). */
-export function ExpiryLabel({ notAfter }: { notAfter: string }) {
+/** Certificates expiring within this many days are flagged, everywhere in the console. */
+export const WARN_DAYS = 30;
+
+/** Expiry as a label: red once expired or within 7 days, orange within WARN_DAYS. */
+export function ExpiryLabel({ notAfter }: { notAfter?: string | null }) {
+  if (!notAfter) {
+    return <>—</>;
+  }
   const days = daysUntil(notAfter);
   const date = new Date(notAfter).toLocaleDateString();
   if (days < 0) {
     return <>{date} <Label color="red" isCompact>expired</Label></>;
   }
-  if (days <= 60) {
-    return <>{date} <Label color={days <= 7 ? 'red' : days <= 30 ? 'orange' : 'yellow'} isCompact>{days} {days === 1 ? 'day' : 'days'}</Label></>;
+  if (days <= WARN_DAYS) {
+    return <>{date} <Label color={days <= 7 ? 'red' : 'orange'} isCompact>{days} {days === 1 ? 'day' : 'days'}</Label></>;
   }
   return <>{date}</>;
+}
+
+/**
+ * A SHA-256 fingerprint in a table: its start and its last 8 digits (the ones people confirm), the whole
+ * of it on hover, and a button that copies it.
+ */
+export function Fingerprint({ sha256 }: { sha256: string }) {
+  const [copied, setCopied] = useState(false);
+  const short = sha256.length <= 23 ? sha256 : `${sha256.slice(0, 11)}…${sha256.slice(-11)}`;
+  const copy = () => {
+    navigator.clipboard?.writeText(sha256).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }, () => {});
+  };
+  return (
+    <span className="dc-fingerprint">
+      <Tooltip content={<span className="dc-mono">{sha256}</span>}><span className="dc-mono" tabIndex={0}>{short}</span></Tooltip>
+      <Tooltip content={copied ? 'Copied' : 'Copy the fingerprint'}>
+        <Button variant="plain" size="sm" icon={<CopyIcon />} aria-label="Copy the fingerprint" onClick={copy} />
+      </Tooltip>
+    </span>
+  );
 }
 
 const STATUS: Record<string, { text: string; color: 'green' | 'red' | 'orange' }> = {
@@ -131,7 +158,7 @@ export function TrustCertificateModal({ probe: first, directory, name, onDone, o
             ? <p>The console reaches {name} at {probe.host}:{probe.port}, which its certificate does not name; this is usual behind NAT or a tunnel. Accepting adds a host exception: this certificate, at exactly this address, is trusted though it names others. It stops matching when the certificate is renewed.</p>
             : pinChanged
               ? <p>{name}'s certificate is not the one the console was told to trust. If it was renewed, trust the new one; if you do not know why it changed, stop and find out first.</p>
-              : <p>Choose the certificate to trust. The tree's certificate authority (usually the last one) trusts every server certificate it signs; trusting only the server's certificate needs repeating when it is renewed.</p>}
+              : <p>Choose the certificate to trust. The directory's certificate authority (usually the last one) trusts every server certificate it signs; trusting only the server's certificate needs repeating when it is renewed.</p>}
           {!hostname && probe.chain.length > 1 && (
             <FormGroup role="radiogroup" label="Certificate" fieldId="trust-cert-index" isStack>
               {probe.chain.map((c) => (

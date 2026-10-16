@@ -4,8 +4,8 @@ import type { HelpTopic } from './topics';
 export const CONTENT: Record<string, HelpTopic> = {
   // ---- Browse and objects ----------------------------------------------------------------------
   browse: {
-    title: 'Browsing the tree',
-    summary: 'The tree on the left holds the containers; the list on the right shows what is in the open one. Click a row for its details.',
+    title: 'Browsing the directory',
+    summary: 'The panel on the left holds the containers; the list on the right shows what is in the open one. Click a row for its details.',
     sections: [
       {
         title: 'Finding your way',
@@ -47,7 +47,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Make this a partition',
         caution: true,
-        paragraphs: ['Splitting a container into its own partition changes replication for the whole tree. It completes in the background; follow it on the eDirectory page.'],
+        paragraphs: ['Splitting a container into its own partition changes replication for the whole directory. It completes in the background; follow it on the eDirectory page.'],
       },
     ],
     related: ['object.attributes', 'object.rights', 'edir'],
@@ -100,7 +100,7 @@ export const CONTENT: Record<string, HelpTopic> = {
   },
   'object.certificates': {
     title: 'User certificates',
-    summary: 'Certificates issued to this user by the tree\'s Organizational CA.',
+    summary: 'Certificates issued to this user by the directory\'s Organizational CA.',
     sections: [
       { title: 'Revoking', caution: true, paragraphs: ['Revoking a certificate cannot be undone. The next CRL lists it.'] },
     ],
@@ -216,7 +216,7 @@ export const CONTENT: Record<string, HelpTopic> = {
   },
   schema: {
     title: 'Schema',
-    summary: 'The classes and attributes this tree knows, and what eDirectory says about each.',
+    summary: 'The classes and attributes this directory knows, and what eDirectory says about each.',
     sections: [
       {
         title: 'Classes',
@@ -230,7 +230,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Changing the schema',
         caution: true,
-        paragraphs: ['A schema change reaches every server in the tree. Only optional attributes can be added to an existing class, and base schema cannot be deleted.'],
+        paragraphs: ['A schema change reaches every server in the directory. Only optional attributes can be added to an existing class, and base schema cannot be deleted.'],
       },
     ],
   },
@@ -238,7 +238,7 @@ export const CONTENT: Record<string, HelpTopic> = {
   // ---- eDirectory ------------------------------------------------------------------------------
   edir: {
     title: 'Partitions and replicas',
-    summary: 'How the tree is divided into partitions, and which servers hold a copy (a replica) of each.',
+    summary: 'How the directory is divided into partitions, and which servers hold a copy (a replica) of each.',
     sections: [
       {
         title: 'Replica types',
@@ -258,7 +258,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Cautions',
         caution: true,
         list: [
-          'These changes affect every server in the tree. They need an editor role over the whole tree.',
+          'These changes affect every server in the directory. They need an editor role over the whole directory.',
           'Merging a partition into its parent, or moving the master, changes replication for every object in it.',
         ],
       },
@@ -267,7 +267,7 @@ export const CONTENT: Record<string, HelpTopic> = {
   },
   'edir.servers': {
     title: 'Servers',
-    summary: 'The tree\'s servers: version, status, and the server the console is connected through.',
+    summary: 'The directory\'s servers: version, status, and the server the console is connected through.',
     sections: [],
     related: ['edir.server'],
   },
@@ -294,13 +294,13 @@ export const CONTENT: Record<string, HelpTopic> = {
   // ---- Security --------------------------------------------------------------------------------
   security: {
     title: 'Security',
-    summary: 'The tree\'s certificates, password policies, challenge sets, login methods and Enhanced Background Authentication.',
+    summary: 'The directory\'s certificates, password policies, challenge sets, login methods and Enhanced Background Authentication.',
     sections: [],
     related: ['security.certificates', 'security.password-policies'],
   },
   'security.certificates': {
-    title: 'Tree certificates',
-    summary: 'The tree\'s Organizational CA, the certificates it has issued to servers, trusted roots and CRLs.',
+    title: 'Directory certificates',
+    summary: 'The directory\'s Organizational CA, the certificates it has issued to servers, trusted roots and CRLs.',
     sections: [
       {
         title: 'Default certificates',
@@ -359,7 +359,7 @@ export const CONTENT: Record<string, HelpTopic> = {
   },
   'security.eba': {
     title: 'Enhanced Background Authentication',
-    summary: 'EBA secures server-to-server connections (NCP) with certificates from the tree\'s EBA CA.',
+    summary: 'EBA secures server-to-server connections (NCP) with certificates from the directory\'s EBA CA.',
     sections: [],
   },
 
@@ -495,7 +495,7 @@ export const CONTENT: Record<string, HelpTopic> = {
   // ---- Console certificates and settings -------------------------------------------------------
   certificates: {
     title: 'How the console trusts directories',
-    summary: 'The certificates the console accepts from your trees\' servers. This is the console\'s own trust store; it does not change eDirectory.',
+    summary: 'The certificates the console accepts from your directories\' servers. This is the console\'s own trust store; it does not change eDirectory.',
     sections: [
       {
         title: 'Kinds of trust',
@@ -508,19 +508,19 @@ export const CONTENT: Record<string, HelpTopic> = {
       { title: 'Changes', paragraphs: ['Adding or removing trust needs a sign-in within the last 10 minutes.'] },
     ],
   },
-  settings: { title: 'Settings', summary: 'How people sign in and what they may do. Most settings belong to the tree you are signed in to; some apply to the whole console.', sections: [] },
+  settings: { title: 'Settings', summary: 'How people sign in and what they may do. Most settings belong to the directory you are signed in to; some apply to the whole console.', sections: [] },
   'settings.directory': {
     title: 'Directory settings',
-    summary: 'This tree\'s tier, session limits, service account and how people are found at sign-in.',
+    summary: 'This directory\'s tier, session limits, service account and how people are found at sign-in.',
     sections: [
       {
         title: 'Tier',
         list: [
-          'Production: every change asks for the tree\'s name to be typed first.',
-          'Lab: changes go ahead without that step. Use it for dev and test trees.',
+          'Production: every change asks for the directory\'s name to be typed first.',
+          'Lab: changes go ahead without that step. Use it for dev and test directories.',
         ],
       },
-      { title: 'Sessions', paragraphs: ['Idle sign-out and the longest session apply to everyone on this tree, at once. People are warned before either ends.'] },
+      { title: 'Sessions', paragraphs: ['Idle sign-out and the longest session apply to everyone on this directory, at once. People are warned before either ends.'] },
       {
         title: 'Service account',
         paragraphs: ['The account the console uses to find people by a short name at sign-in, and for single sign-on. It needs to read the people it finds. Without one, people sign in with their full name (DN).'],
@@ -541,7 +541,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         ],
       },
       { title: 'Where', paragraphs: ['A mapping can be limited to containers. eDirectory\'s own rights still apply on top.'] },
-      { title: 'Break-glass accounts', paragraphs: ['The tree administrators who set the console up. They can always sign in as admins, even when no mapping applies.'] },
+      { title: 'Break-glass accounts', paragraphs: ['The directory administrators who set the console up. They can always sign in as admins, even when no mapping applies.'] },
     ],
   },
   'settings.presets': {
@@ -566,11 +566,11 @@ export const CONTENT: Record<string, HelpTopic> = {
     related: ['settings.directory'],
   },
   'settings.trees': {
-    title: 'Trees',
-    summary: 'The trees people choose from at sign-in. This applies to the whole console.',
+    title: 'Directories',
+    summary: 'The directories people choose from at sign-in. This applies to the whole console.',
     sections: [
-      { title: 'Adding a tree', paragraphs: ['Sign in to the new tree as its own administrator; that account becomes its break-glass account.'] },
-      { title: 'Removing a tree', caution: true, paragraphs: ['Everyone signed in to it is signed out, and its settings go with it. The tree itself is not touched.'] },
+      { title: 'Adding a directory', paragraphs: ['Sign in to the new directory as its own administrator; that account becomes its break-glass account.'] },
+      { title: 'Removing a directory', caution: true, paragraphs: ['Everyone signed in to it is signed out, and its settings go with it. The directory itself is not touched.'] },
     ],
   },
   'settings.other': { title: 'Other directories', summary: 'Whether people may sign in to an eDirectory server by typing its address, with their own rights only. This applies to the whole console.', sections: [] },

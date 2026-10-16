@@ -28,7 +28,7 @@ docker compose logs console
 
 The log prints a setup link. Open it, check the certificate fingerprint it shows, and sign in to your tree
 as an administrator. That tree becomes the console's tree, and that administrator its break-glass
-account. You can add more trees (dev, test, production) later under **Settings > Trees**. The
+account. You can add more directories (dev, test, production) later under **Settings > Directories**. The
 [quickstart](docs/QUICKSTART.md) walks through every step.
 
 The image is `ghcr.io/pointbluetechnology/directory-console`, for amd64 and arm64. Tags:

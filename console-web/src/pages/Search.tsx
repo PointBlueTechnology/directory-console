@@ -85,7 +85,7 @@ export function Search() {
           <Form onSubmit={run} isWidthLimited>
             <datalist id="attribute-names">{attributes.map((a) => <option key={a.name} value={a.name} />)}</datalist>
             <FormGroup label="Search under" fieldId="base">
-              <TextInput id="base" value={base} onChange={(_e, v) => setBase(v)} placeholder="the whole tree, or a DN such as ou=users,o=acme" />
+              <TextInput id="base" value={base} onChange={(_e, v) => setBase(v)} placeholder="the whole directory, or a DN such as ou=users,o=acme" />
             </FormGroup>
             <FormGroup label="Depth" fieldId="scope" role="radiogroup" isInline>
               <ToggleGroup aria-label="Depth">

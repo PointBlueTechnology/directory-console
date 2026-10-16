@@ -243,7 +243,7 @@ export function SignIn({ reason, onSignedIn }: Props) {
           <FormGroup role="radiogroup" label={`Accounts named ${name}`} fieldId="choice" isRequired>
             {candidates.map((c) => (
               <Radio key={c.choice} id={`c-${c.choice}`} name="choice" isChecked={choice === c.choice}
-                onChange={() => setChoice(c.choice)} label={c.context || '(top of the tree)'} description={c.label} />
+                onChange={() => setChoice(c.choice)} label={c.context || '(top of the directory)'} description={c.label} />
             ))}
           </FormGroup>
         )}
@@ -254,7 +254,7 @@ export function SignIn({ reason, onSignedIn }: Props) {
         {!candidates && (
           <FormGroup fieldId="remember">
             <Checkbox id="remember" label="Remember my name on this computer" isChecked={rememberMe} onChange={(_e, v) => setRememberMe(v)}
-              description={saved ? <Button variant="link" isInline onClick={forget}>Forget {saved.name}</Button> : 'Your name and tree are kept in this browser; your password never is.'} />
+              description={saved ? <Button variant="link" isInline onClick={forget}>Forget {saved.name}</Button> : 'Your name and directory are kept in this browser; your password never is.'} />
           </FormGroup>
         )}
         <ActionGroup>

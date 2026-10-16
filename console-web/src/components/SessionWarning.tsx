@@ -57,7 +57,7 @@ export function SessionWarning() {
       <Modal isOpen variant="small" onClose={() => setDismissedEnd(true)} aria-labelledby="session-end-title">
         <ModalHeader title="Your session is ending" labelId="session-end-title" titleIconVariant="warning" />
         <ModalBody>
-          Sessions on this tree have a fixed longest length. This one ends in <strong>{clock(endLeft)}</strong>, at
+          Sessions on this directory have a fixed longest length. This one ends in <strong>{clock(endLeft)}</strong>, at
           {' '}{new Date(limits.expiresAt).toLocaleTimeString()}, and you will need to sign in again. Save anything you are working on.
         </ModalBody>
         <ModalFooter>

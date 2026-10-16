@@ -84,7 +84,7 @@ final class Edir {
         String id = p.length > 3 ? p[3] : null;
         if (!method.equals("GET")) {
             if (!s.principal.may(Role.EDITOR, "")) {
-                throw new Http.Problem(403, "forbidden", "eDirectory administration needs an editor role for the whole tree");
+                throw new Http.Problem(403, "forbidden", "eDirectory administration needs an editor role for the whole directory");
             }
             confirm(ex, s);
         }

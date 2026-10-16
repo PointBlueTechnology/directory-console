@@ -13,8 +13,8 @@ type Tier = 'production' | 'lab';
 function TierChoice({ id, tier, onChange }: { id: string; tier: Tier; onChange: (t: Tier) => void }) {
   return (
     <FormGroup role="radiogroup" label="Tier" fieldId={id} isStack>
-      <Radio id={`${id}-production`} name={id} label="Production" description="Changes ask for the tree's name to be typed first." isChecked={tier === 'production'} onChange={() => onChange('production')} />
-      <Radio id={`${id}-lab`} name={id} label="Lab" description="Dev and test trees: changes go ahead without that extra step." isChecked={tier === 'lab'} onChange={() => onChange('lab')} />
+      <Radio id={`${id}-production`} name={id} label="Production" description="Changes ask for the directory's name to be typed first." isChecked={tier === 'production'} onChange={() => onChange('production')} />
+      <Radio id={`${id}-lab`} name={id} label="Lab" description="Dev and test directories: changes go ahead without that extra step." isChecked={tier === 'lab'} onChange={() => onChange('lab')} />
     </FormGroup>
   );
 }
@@ -55,7 +55,7 @@ function AddTreeModal({ onClose, onAdded }: { onClose: () => void; onAdded: (t: 
 
   return (
     <Modal isOpen onClose={onClose} variant="medium" aria-labelledby="add-tree-title">
-      <ModalHeader title="Add a tree" labelId="add-tree-title" description="Sign in to the new tree as its administrator. People then choose it from the list when they sign in." />
+      <ModalHeader title="Add a directory" labelId="add-tree-title" description="Sign in to the new directory as its administrator. People then choose it from the list when they sign in." />
       <ModalBody>
         <Form id="add-tree-form" onSubmit={(e) => { e.preventDefault(); if (ready) add(); }}>
           <FormGroup label="Name" fieldId="tree-name" isRequired>
@@ -63,16 +63,16 @@ function AddTreeModal({ onClose, onAdded }: { onClose: () => void; onAdded: (t: 
             <FormHelperText><HelperText><HelperTextItem>As people see it in the sign-in list, such as Dev, Test or Production.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <TierChoice id="tree-tier" tier={tier} onChange={setTier} />
-          <FormGroup label="Tree address" fieldId="tree-host" isRequired>
+          <FormGroup label="Directory address" fieldId="tree-host" isRequired>
             <TextInput id="tree-host" value={host} onChange={(_e, v) => { setHost(v); setOffer(null); }} isRequired />
             <FormHelperText><HelperText><HelperTextItem>An eDirectory server's host name or IP address, as the console reaches it.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <FormGroup label="LDAPS port" fieldId="tree-port" isRequired>
             <TextInput id="tree-port" type="number" value={port} onChange={(_e, v) => { setPort(v); setOffer(null); }} isRequired />
           </FormGroup>
-          <FormGroup label="Administrator of that tree" fieldId="tree-dn" isRequired>
+          <FormGroup label="Administrator of that directory" fieldId="tree-dn" isRequired>
             <TextInput id="tree-dn" value={dn} onChange={(_e, v) => setDn(v)} autoComplete="off" isRequired />
-            <FormHelperText><HelperText><HelperTextItem>Its full name (DN), such as cn=admin,o=system. It becomes the tree's break-glass account.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>Its full name (DN), such as cn=admin,o=system. It becomes the directory's break-glass account.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <FormGroup label="Password" fieldId="tree-password" isRequired>
             <TextInput id="tree-password" type="password" value={password} onChange={(_e, v) => setPassword(v)} autoComplete="new-password" isRequired />
@@ -140,7 +140,7 @@ function RemoveTreeModal({ tree, onClose, onRemoved }: { tree: ConsoleTree; onCl
       <ModalHeader title={`Remove ${tree.name}?`} labelId="remove-tree-title" titleIconVariant="warning" />
       <ModalBody>
         <p>People can no longer sign in to it here, and anyone signed in to it now is signed out. Its role mappings, presets,
-          single sign-on and service account go with it, as do the certificates trusted for it alone. The tree itself is not touched.</p>
+          single sign-on and service account go with it, as do the certificates trusted for it alone. The directory itself is not touched.</p>
         <FormGroup label={`Type ${tree.name} to confirm`} fieldId="remove-tree-typed" className="dc-tab-body">
           <TextInput id="remove-tree-typed" value={typed} onChange={(_e, v) => setTyped(v)} />
         </FormGroup>
@@ -172,15 +172,15 @@ export function TreesSection() {
   return (
     <div className="dc-tab-body">
       <p>
-        This applies to the whole console. People choose one of these trees when they sign in. Each tree keeps its own tier,
-        service account, role mappings, presets and single sign-on: sign in to a tree to change those under the other tabs.
+        This applies to the whole console. People choose one of these directories when they sign in. Each directory keeps its own tier,
+        service account, role mappings, presets and single sign-on: sign in to a directory to change those under the other tabs.
       </p>
-      <Button variant="secondary" size="sm" className="dc-gap-bottom" onClick={() => setAdding(true)}>Add a tree</Button>
+      <Button variant="secondary" size="sm" className="dc-gap-bottom" onClick={() => setAdding(true)}>Add a directory</Button>
       {notice && <Alert variant="success" isInline isPlain title={notice} />}
       <ProblemAlert error={error} onRetry={load} />
-      {!list && !error && <Spinner size="md" aria-label="Loading the trees" />}
+      {!list && !error && <Spinner size="md" aria-label="Loading the directories" />}
       {list && (
-        <Table aria-label="Trees" variant="compact">
+        <Table aria-label="Directories" variant="compact">
           <Thead><Tr><Th>Name</Th><Th>Address</Th><Th>Tier</Th><Th screenReaderText="Actions" /></Tr></Thead>
           <Tbody>
             {list.map((t) => (

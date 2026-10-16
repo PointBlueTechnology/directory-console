@@ -168,3 +168,11 @@
   text-underline-offset: 0.2em;
   cursor: help;
 }
+
+/* a shortened fingerprint and its copy button */
+.dc-fingerprint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pf-t--global--spacer--xs);
+  white-space: nowrap;
+}

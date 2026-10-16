@@ -151,7 +151,7 @@ export function NewUserGroupModal({ kind, parent, onClose, onCreated }: {
           <Target obj={parent} label="In" />
           <FormGroup label={kind === 'user' ? 'User name' : 'Group name'} fieldId="nug-name" isRequired>
             <TextInput id="nug-name" value={name} onChange={(_e, v) => setName(v)} isDisabled={!cls} />
-            <FormHelperText><HelperText><HelperTextItem>Its cn: the name in the tree.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>Its cn: the name in the directory.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           {fields.map((f) => (
             <FormGroup key={f.attr} label={f.label} fieldId={`nug-${f.attr}`} isRequired={required.has(f.attr.toLowerCase())}>

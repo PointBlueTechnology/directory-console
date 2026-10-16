@@ -14,9 +14,9 @@ export function CertificateOffer({ offer, confirm, onConfirm, id }: { offer: Pro
   const shown = offer.chain[offer.status === 'hostname' ? 0 : offer.recommended];
   return (
     <section aria-labelledby={`${id}-title`} className="dc-tab-body">
-      <Alert id={`${id}-title`} component="h3" variant="warning" isInline title="Check the tree's certificate">
-        The console does not trust this tree's certificate yet. If it is the one you expect (compare its fingerprint with
-        the tree's certificate authority, in iManager or Identity Console), type the last 8 digits to trust it.
+      <Alert id={`${id}-title`} component="h3" variant="warning" isInline title="Check the directory's certificate">
+        The console does not trust this directory's certificate yet. If it is the one you expect (compare its fingerprint with
+        the directory's certificate authority, in iManager or Identity Console), type the last 8 digits to trust it.
         {!offer.hostnameMatches && ` It names ${offer.chain[0].names.join(', ') || 'no host'}, not ${offer.host}; that is accepted too.`}
       </Alert>
       <CertificateDetails cert={shown} />

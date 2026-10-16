@@ -112,7 +112,7 @@ export function Browser({ container }: { container?: string }) {
                   <Title headingLevel="h1">{here.name}</Title>
                 </>
               )}
-              {!container && <Title headingLevel="h1">Top of the tree</Title>}
+              {!container && <Title headingLevel="h1">Top of the directory</Title>}
               <ProblemAlert error={error} onRetry={load} />
               {container && (
                 <Toolbar>
@@ -158,7 +158,7 @@ export function Browser({ container }: { container?: string }) {
               {container && page && page.items.length > 0 && (
                 <RowsTable narrow={!!selected} label="Contents" rows={page.items} selected={selected} highlight={highlight} onOpen={openContainer} onDetails={details} />
               )}
-              {!container && roots && <RowsTable narrow={!!selected} label="Top of the tree" rows={roots} selected={selected} onOpen={openContainer} onDetails={details} />}
+              {!container && roots && <RowsTable narrow={!!selected} label="Top of the directory" rows={roots} selected={selected} onOpen={openContainer} onDetails={details} />}
             </CardBody>
         </Card>
       </div>

@@ -94,7 +94,7 @@ final class TreeProof {
             if (!Setup.supervisorOfTree(l, dn)) {
                 undo(undo);
                 server.audit.log(actor, "tree.prove", host + ":" + port, Map.of("dn", dn), "refused: not supervisor");
-                throw new Http.Problem(403, "not-tree-admin", dn + " signed in but does not have supervisor rights to the tree; use a tree administrator");
+                throw new Http.Problem(403, "not-tree-admin", dn + " signed in but does not have supervisor rights to the directory; use a directory administrator");
             }
             Ldap.Entry root = l.read("", "directoryTreeName");
             String treeName = root == null ? null : root.first("directoryTreeName");

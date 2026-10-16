@@ -450,7 +450,7 @@ public final class TrustStore {
                     List<String> pins = entries.stream()
                         .filter(e -> e.kind == Kind.PINNED_SERVER && (e.pinnedAt == null || e.pinnedAt.equalsIgnoreCase(here))).map(Entry::id).toList();
                     if (pins.isEmpty()) {
-                        throw new Untrusted(Reason.UNTRUSTED, "the server's certificate is not trusted: probe it and trust the tree CA, or import the CA certificate", chain);
+                        throw new Untrusted(Reason.UNTRUSTED, "the server's certificate is not trusted: probe it and trust the directory CA, or import the CA certificate", chain);
                     }
                     if (alerting) {
                         raise(host, port, directoryId, pins, leaf);

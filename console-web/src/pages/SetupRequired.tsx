@@ -89,7 +89,7 @@ export function SetupRequired({ onSignedIn }: { onSignedIn: (me: Me) => void }) 
             </p>
             <p className="dc-mono">{fingerprint}</p>
           </ExpandableSection>
-          <FormGroup label="Tree address" fieldId="setup-host" isRequired>
+          <FormGroup label="Directory address" fieldId="setup-host" isRequired>
             <TextInput id="setup-host" value={host} onChange={(_e, v) => { setHost(v); setOffer(null); }} isRequired autoFocus />
             <FormHelperText><HelperText><HelperTextItem>An eDirectory server's host name or IP address, as the console's container reaches it.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
@@ -98,7 +98,7 @@ export function SetupRequired({ onSignedIn }: { onSignedIn: (me: Me) => void }) 
           </FormGroup>
           <FormGroup label="Administrator" fieldId="setup-dn" isRequired>
             <TextInput id="setup-dn" value={dn} onChange={(_e, v) => setDn(v)} autoComplete="username" isRequired />
-            <FormHelperText><HelperText><HelperTextItem>A tree administrator's full name (DN), such as cn=admin,o=system. It becomes the console's break-glass account.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>A directory administrator's full name (DN), such as cn=admin,o=system. It becomes the console's break-glass account.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <FormGroup label="Password" fieldId="setup-password" isRequired>
             <TextInput id="setup-password" type="password" value={password} onChange={(_e, v) => setPassword(v)} autoComplete="current-password" isRequired />

@@ -37,7 +37,7 @@ export function RevokeModal({ name, onRevoke, onDone, onClose }: {
       <ModalHeader title={`Revoke ${name}?`} labelId="revoke-title" titleIconVariant="warning" />
       <ModalBody>
         <Form id="revoke-form" onSubmit={submit}>
-          <p>The tree's CA lists the certificate as revoked on its CRL from the CRL's next issue. A revocation cannot be undone (except "Certificate on hold").</p>
+          <p>The directory's CA lists the certificate as revoked on its CRL from the CRL's next issue. A revocation cannot be undone (except "Certificate on hold").</p>
           <FormGroup label="Reason" fieldId="revoke-reason">
             <FormSelect id="revoke-reason" value={String(reason)} onChange={(_e, v) => setReason(Number(v))}>
               {REASONS.map(([code, label]) => <FormSelectOption key={code} value={String(code)} label={label} />)}

@@ -57,7 +57,7 @@ export function IdmPage({ driverSet }: { driverSet?: string }) {
         </EmptyState>
       )}
       {status?.available && !sets && <Spinner aria-label="Loading driver sets" />}
-      {sets && sets.length === 0 && <EmptyState titleText="No driver sets in this tree" headingLevel="h2" />}
+      {sets && sets.length === 0 && <EmptyState titleText="No driver sets in this directory" headingLevel="h2" />}
       {sets && sets.length > 1 && (
         <Flex className="dc-tab-body" spaceItems={{ default: 'spaceItemsSm' }}>
           {sets.map((s) => (

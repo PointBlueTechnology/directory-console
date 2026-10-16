@@ -56,10 +56,10 @@ export function ContainerTree({ selected, onSelect }: { selected?: string; onSel
   };
 
   if (error) {
-    return <Alert variant="danger" isInline title="The tree could not be read">{error}</Alert>;
+    return <Alert variant="danger" isInline title="The directory could not be read">{error}</Alert>;
   }
   if (!roots) {
-    return <Spinner aria-label="Loading the tree" />;
+    return <Spinner aria-label="Loading the directory" />;
   }
   const byGuid = new Map<string, Row>();
   roots.forEach((r) => byGuid.set(r.guid, r));

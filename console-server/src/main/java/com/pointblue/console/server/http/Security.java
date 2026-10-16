@@ -89,7 +89,7 @@ final class Security {
         String guid = p.length > 3 && p[2].equals("pki") ? (p.length > 4 ? p[4] : null) : p.length > 3 ? p[3] : null;
         if (!method.equals("GET")) {
             if (!s.principal.may(Role.EDITOR, "")) {
-                throw new Http.Problem(403, "forbidden", "security settings need an editor role for the whole tree");
+                throw new Http.Problem(403, "forbidden", "security settings need an editor role for the whole directory");
             }
             DirectoryConfig d = server.directoryOf(s);
             if (d != null && d.production()) {
@@ -284,7 +284,7 @@ final class Security {
         Ldap.Entry ca = sec == null || sec.first("nDSPKITreeCADN") == null ? null
             : l.read(sec.first("nDSPKITreeCADN"), "nDSPKIPublicKeyCertificate", "nDSPKIPublicKeyCertificateEC", "ndspkiDefaultRSAKeySize");
         if (ca == null) {
-            throw new Http.Problem(409, "no-ca", "this tree has no Organizational CA to issue certificates");
+            throw new Http.Problem(409, "no-ca", "this directory has no Organizational CA to issue certificates");
         }
         X509Certificate rsa = x509(bytes(ca, "nDSPKIPublicKeyCertificate"));
         X509Certificate ec = x509(bytes(ca, "nDSPKIPublicKeyCertificateEC"));
@@ -362,7 +362,7 @@ final class Security {
             out.add("expires " + end.toString().substring(0, 10));
         }
         if (!signedBy(c, st.caRsa()) && !signedBy(c, st.caEc())) {
-            out.add("not issued by the tree's CA");
+            out.add("not issued by the directory's CA");
         }
         List<String> named = sans(c, 7);
         for (String ip : st.ips()) {
@@ -855,7 +855,7 @@ final class Security {
         String ca = Eba.findCa(l, candidates);
         out.put("available", ca != null);
         if (ca == null) {
-            out.put("problem", "no server answered as the tree's EBA CA (tried " + String.join(", ", candidates) + ")");
+            out.put("problem", "no server answered as the directory's EBA CA (tried " + String.join(", ", candidates) + ")");
             return out;
         }
         out.put("caAddress", ca);
@@ -894,7 +894,7 @@ final class Security {
      */
     private void confirmReach(HttpExchange ex, Ldap l, Ldap.Entry lp, String name) throws NamingException {
         if (name.equals(lp.first("sasDefaultLoginSequence"))) {
-            throw new Http.Problem(409, "default-sequence", name + " is the tree's default login sequence; choose another default first");
+            throw new Http.Problem(409, "default-sequence", name + " is the directory's default login sequence; choose another default first");
         }
         int users = sequenceUsers(l, name);
         if (users > 0 && !String.valueOf(users).equals(ex.getRequestHeaders().getFirst("X-Confirm-Count"))) {
@@ -933,7 +933,7 @@ final class Security {
         String lpDn = loginPolicyDn(l);
         Ldap.Entry lp = l.read(lpDn, "sASLoginSequence", "sASLoginPolicyUpdate", "sasDefaultLoginSequence", "sasAuthorizedLoginSequences");
         if (lp == null) {
-            throw new Http.Problem(404, "no-login-policy", "this tree has no Login Policy");
+            throw new Http.Problem(404, "no-login-policy", "this directory has no Login Policy");
         }
         String old = null;
         for (Object v : lp.attributes().getOrDefault("sasloginsequence", List.of())) {
@@ -1033,7 +1033,7 @@ final class Security {
         }
         List<Ldap.Entry> found = l.search("", "(objectClass=nspmPasswordPolicyContainer)", null, SearchControls.SUBTREE_SCOPE, new String[] {"cn"}, 1);
         if (found.isEmpty()) {
-            throw new Http.Problem(409, "no-policy-container", "this tree has no password policy container (" + POLICIES + ")");
+            throw new Http.Problem(409, "no-policy-container", "this directory has no password policy container (" + POLICIES + ")");
         }
         return found.get(0).dn();
     }
@@ -1193,7 +1193,7 @@ final class Security {
         Ldap.Entry c = sec == null || sec.first("nDSPKITreeCADN") == null ? null
             : l.read(sec.first("nDSPKITreeCADN"), "GUID", "ndspkiSecurityRightsLevel", "nDSPKISuiteBMode", "nDSPKIPublicKeyCertificate", "nDSPKIPublicKeyCertificateEC");
         if (c == null) {
-            throw new Http.Problem(409, "no-ca", "this tree has no Organizational CA");
+            throw new Http.Problem(409, "no-ca", "this directory has no Organizational CA");
         }
         Map<String, Object> b = Http.body(ex);
         Map<String, Object> before = caConfiguration(c);

@@ -179,7 +179,7 @@ function PartitionsView() {
           ))}
         </Tbody>
       </Table>
-      {!admin && <p className="dc-subtle">Changing partitions and replicas needs an editor role for the whole tree.</p>}
+      {!admin && <p className="dc-subtle">Changing partitions and replicas needs an editor role for the whole directory.</p>}
       {dialog?.kind === 'add' && (
         <ReplicaModal title={`Add a replica of ${dialog.p.name}`}
           servers={servers.filter((s) => !dialog.p.replicas.some((r) => r.server.guid === s.guid && r.type !== 'subordinate-reference'))}

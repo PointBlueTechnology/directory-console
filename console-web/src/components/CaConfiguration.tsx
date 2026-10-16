@@ -18,7 +18,7 @@ const OPTIONS: { key: Key; label: string; help?: string }[] = [
     help: 'Users may create certificates for themselves without rights to the CA.' },
   { key: 'userEmergencyCrl', label: 'Allow any authenticated user to issue an emergency CRL' },
   { key: 'suiteB', label: 'Enable Suite B mode',
-    help: 'Only for a CA with nothing but an ECDSA certificate on P-256 or P-384. New servers added to the tree must then use Enhanced Background Authentication.' },
+    help: 'Only for a CA with nothing but an ECDSA certificate on P-256 or P-384. New servers added to the directory must then use Enhanced Background Authentication.' },
 ];
 
 /**

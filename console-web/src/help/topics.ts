@@ -35,7 +35,7 @@ export const TOPICS: Record<string, HelpTopic> = {
         list: [
           'The navigation on the left lists what your role lets you use. Its foot shows the console\'s version.',
           'The ? in the header opens help for the page you are on.',
-          'Your name, top right, shows which tree you are signed in to and your roles, and signs you out.',
+          'Your name, top right, shows which directory you are signed in to and your roles, and signs you out.',
         ],
       },
     ],

@@ -7,7 +7,7 @@ export const GLOSSARY = {
   actions: 'What you may do to this object: edit, rename, move, delete, auxiliary classes and your task presets.',
   childCount: 'How many objects this container holds, as eDirectory reports it.',
   estimate: 'eDirectory\'s estimate for a large result, while you page through it.',
-  makePartition: 'Splits this container into its own partition. It changes replication for the whole tree and completes in the background.',
+  makePartition: 'Splits this container into its own partition. It changes replication for the whole directory and completes in the background.',
   aliasObject: 'An alias is an object that points to another, so references to the old name or place keep working.',
   aclInheritedBelow: 'Also applies to objects below this one.',
   aclThisObject: 'Applies to this object only.',
@@ -97,12 +97,12 @@ export const GLOSSARY = {
   trustedAsCa: 'Any server certificate this authority issued is accepted.',
   trustedAsPinned: 'Exactly this certificate, at this address. If the server presents another, admins are alerted.',
   pinned: 'A certificate trusted for exactly one server. A changed one may be a renewal, or someone else answering.',
-  breakGlass: 'An account that can always sign in as an admin, even when no role mapping applies: the tree administrator who set the console up.',
+  breakGlass: 'An account that can always sign in as an admin, even when no role mapping applies: the directory administrator who set the console up.',
   publicClient: 'The provider has no client secret for the console: PKCE alone protects the sign-in.',
   claim: 'The part of the provider\'s identity token that says who the person is, such as their user name.',
   claimAttribute: 'The eDirectory attribute whose value must equal the claim.',
   neverActAs: 'Accounts that may not sign in through single sign-on, such as administrators and the service account.',
-  directoryName: 'The tree\'s name as the console shows it in the sign-in list and in Settings, not its eDirectory tree name.',
+  directoryName: 'The directory\'s name as the console shows it in the sign-in list and in Settings, not its eDirectory tree name.',
 } as const;
 
 export type Term = keyof typeof GLOSSARY;

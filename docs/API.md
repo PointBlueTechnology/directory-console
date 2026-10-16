@@ -17,7 +17,7 @@ This page covers the conventions they share, and the directory-object routes as 
   - `admin` changes the console's settings.
 - **Sensitive changes:** changes to the console's own settings (trust, trees, roles, single sign-on) need a sign-in within the last 10
   minutes; otherwise the answer asks for one.
-- **Production trees:** changes need the `X-Confirm-Directory` header with the tree's name.
+- **Production directories:** changes need the `X-Confirm-Directory` header with the directory's name.
 - **Errors:** problem details (RFC 9457) with a stable `title` code, such as `confirm-directory` or
   `version-conflict`.
 - **Objects:** objects are addressed by GUID; DNs appear only in JSON.

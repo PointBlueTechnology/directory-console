@@ -15,28 +15,11 @@ import { SequenceModal } from '../components/SequenceModal';
 import { RevokeModal, revokedNotice } from '../components/RevokeCertificate';
 import { DefaultCertificatesModal } from '../components/DefaultCertificates';
 import { CaConfigurationPanel } from '../components/CaConfiguration';
+import { ExpiryLabel, Fingerprint, WARN_DAYS } from '../components/Certificates';
 import { Hint, useHelpTopic } from '../help/Help';
 import { explain, tip } from '../help/glossary';
 
 const DAY = 86_400_000;
-export const WARN_DAYS = 60;
-
-/** How a certificate's expiry reads: expired, expiring within WARN_DAYS, or fine. */
-export function ExpiryLabel({ notAfter }: { notAfter?: string }) {
-  if (!notAfter) {
-    return <>—</>;
-  }
-  const days = Math.floor((Date.parse(notAfter) - Date.now()) / DAY);
-  const date = new Date(notAfter).toLocaleDateString();
-  if (days < 0) {
-    return <Label isCompact color="red">expired {date}</Label>;
-  }
-  if (days <= WARN_DAYS) {
-    return <Label isCompact color="orange">{date} ({days} days)</Label>;
-  }
-  return <span>{date}</span>;
-}
-
 function download(name: string, text: string) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type: 'application/x-pem-file' }));
@@ -87,13 +70,13 @@ function CertificatesView() {
   useEffect(load, [load]);
   useEffect(() => { if (editor) { edir(me.directory).servers().then(setServers).catch(() => setServers([])); } }, [editor, me.directory]);
   const remove = (k: Pki['serverCertificates'][number]) => sure.ask(`Delete ${k.name}?`,
-    `The key pair and certificate go with it; nothing can bring them back. Clients that trust it by this certificate (not the tree CA) will stop trusting ${k.server?.name ?? 'the server'}.`,
+    `The key pair and certificate go with it; nothing can bring them back. Clients that trust it by this certificate (not the directory CA) will stop trusting ${k.server?.name ?? 'the server'}.`,
     'Delete', () => {
       setOpError(null);
       confirmed.run((c) => api.deleteServerCertificate(k.guid!, c)).then(load, setOpError);
     });
   if (!pki) {
-    return error ? <ProblemAlert error={error} /> : <Spinner aria-label="Reading the tree's certificates" />;
+    return error ? <ProblemAlert error={error} /> : <Spinner aria-label="Reading the directory's certificates" />;
   }
   // everything with an expiry, for the summary
   const all: { what: string; name: string; cert: Certificate }[] = [
@@ -120,7 +103,7 @@ function CertificatesView() {
       <Card className="dc-tab-body">
         <CardTitle><Title headingLevel="h2" size="lg">Organizational CA</Title></CardTitle>
         <CardBody>
-          {!pki.ca ? <p>This tree has no Organizational CA.</p> : (
+          {!pki.ca ? <p>This directory has no Organizational CA.</p> : (
             <>
               <p><strong>{pki.ca.name}</strong> on <span className="dc-mono">{pki.ca.host}</span> · default key {pki.ca.defaultRsaKeySize} bits, certificates for {pki.ca.defaultLifeYears} years</p>
               <Table aria-label="CA certificates" variant="compact">
@@ -131,7 +114,7 @@ function CertificatesView() {
                       <Td dataLabel="Key">{c.key}</Td>
                       <Td dataLabel="Subject" className="dc-mono">{c.subject}</Td>
                       <Td dataLabel="Valid until"><ExpiryLabel notAfter={c.notAfter} /></Td>
-                      <Td dataLabel="SHA-256" className="dc-mono dc-subtle">{c.sha256.slice(0, 23)}…</Td>
+                      <Td dataLabel="SHA-256"><Fingerprint sha256={c.sha256} /></Td>
                       <Td isActionCell><Button variant="link" isInline onClick={() => download(fileName(`${pki.ca!.name}-${c.key}.pem`), pem(c.der))}>Download</Button></Td>
                     </Tr>
                   ))}
@@ -389,7 +372,7 @@ function LoginMethodsView() {
     <div className="dc-tab-body">
       <DescriptionList isHorizontal isCompact>
         <DescriptionListGroup><DescriptionListTerm>Default login sequence</DescriptionListTerm><DescriptionListDescription>{lp.defaultSequence ?? 'none'}</DescriptionListDescription></DescriptionListGroup>
-        <DescriptionListGroup><DescriptionListTerm>Tree-wide password policy</DescriptionListTerm>
+        <DescriptionListGroup><DescriptionListTerm>Directory-wide password policy</DescriptionListTerm>
           <DescriptionListDescription>{lp.passwordPolicy?.guid ? <a {...linkProps(`/security/password-policies/${lp.passwordPolicy.guid}`)}>{lp.passwordPolicy.name}</a> : 'none'}</DescriptionListDescription></DescriptionListGroup>
       </DescriptionList>
       <Flex className="dc-tab-body" direction={{ default: 'column' }}>
@@ -451,7 +434,7 @@ function EbaView() {
     return error ? <ProblemAlert error={error} onRetry={load} /> : <Spinner aria-label="Looking for the EBA CA" />;
   }
   if (!eba.available) {
-    return <div className="dc-tab-body"><p>EBA is not set up in this tree: {eba.problem}.</p></div>;
+    return <div className="dc-tab-body"><p>EBA is not set up in this directory: {eba.problem}.</p></div>;
   }
   return (
     <div className="dc-tab-body">

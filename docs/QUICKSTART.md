@@ -142,7 +142,7 @@ Before entering anything, check that your browser shows this certificate fingerp
    - **Edge:** **Advanced**, then **Continue to localhost (unsafe)**.
    - **Chrome:** **Advanced**, then **Proceed to localhost**.
 4. **Fill in the setup page.** It shows **Set up Directory Console**:
-   - **Tree address:** the host name or IP address of one of your eDirectory servers.
+   - **Directory address:** the host name or IP address of one of your eDirectory servers.
    - **LDAPS port:** normally 636.
    - **Administrator:** a tree administrator's full name (DN), such as `cn=admin,o=system`.
    - **Password:** that administrator's password.
@@ -173,11 +173,11 @@ Then, in **Settings**:
 - **Role mappings:** decide who else may use the console. Map an eDirectory group to a role.
 - **Single sign-on:** set it up if you want it.
 
-**Several trees (dev, test, production):** in **Settings**, then **Trees**, choose **Add a tree**. Give it
-a name people will recognize, such as Test, and choose Lab or Production. Then enter the tree's address and
-sign in as that tree's own administrator, who becomes its break-glass account. From then on, the sign-in
-page has a list of trees to choose from. Each tree has its own service account, role mappings and single
-sign-on: sign in to a tree to set those under the other Settings tabs.
+**Several directories (dev, test, production):** in **Settings**, then **Directories**, choose **Add a directory**. Give it
+a name people will recognize, such as Test, and choose Lab or Production. Then enter the directory's address and
+sign in as that directory's own administrator, who becomes its break-glass account. From then on, the sign-in
+page has a list of directories to choose from. Each directory has its own service account, role mappings and single
+sign-on: sign in to a directory to set those under the other Settings tabs.
 
 **Identity Manager** works with nothing else to install: the console talks to the engine on the
 server you signed in to.

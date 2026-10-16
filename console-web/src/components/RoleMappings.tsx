@@ -117,7 +117,7 @@ function MappingModal({ initial, presets, idp, onClose, onSave }: {
           </FormGroup>
           <FormGroup label="Only under these containers" fieldId="mapping-scopes">
             <TextArea id="mapping-scopes" value={scopes} onChange={(_e, v) => setScopes(v)} resizeOrientation="vertical" className="dc-mono" />
-            <FormHelperText><HelperText><HelperTextItem>One container DN per line. Empty means the whole tree. eDirectory rights still apply.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>One container DN per line. Empty means the whole directory. eDirectory rights still apply.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           {touched && problem && <HelperText><HelperTextItem variant="error">{problem}</HelperTextItem></HelperText>}
         </Form>

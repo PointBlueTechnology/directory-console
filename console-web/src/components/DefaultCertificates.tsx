@@ -165,7 +165,7 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
                 })}
               </Tbody>
             </Table>
-            <p className="dc-subtle dc-tab-body">A certificate needs replacing when it is missing, expired or expiring within 30 days, not issued by the tree's CA, or does not name one of the server's addresses.</p>
+            <p className="dc-subtle dc-tab-body">A certificate needs replacing when it is missing, expired or expiring within 30 days, not issued by the directory's CA, or does not name one of the server's addresses.</p>
           </>
         )}
 
@@ -247,7 +247,7 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
                 <p><strong>Move LDAP servers to the new certificates</strong> (optional; each takes effect when the LDAP servers are refreshed).</p>
                 {connected && (
                   <Alert variant="warning" isInline isPlain title={`The console reaches the directory through ${connected.name}`}>
-                    If the console trusts it by its own certificate rather than the tree's CA, accept the new certificate on the Certificates page after the refresh.
+                    If the console trusts it by its own certificate rather than the directory's CA, accept the new certificate on the Certificates page after the refresh.
                   </Alert>
                 )}
                 <Table aria-label="LDAP servers" variant="compact">
@@ -276,7 +276,7 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
               <div className="dc-tab-body">
                 <List>
                   <ListItem>The old certificates are still there; delete them on the Certificates page once nothing uses them.</ListItem>
-                  <ListItem>Clients that trust these servers by their certificate, not the tree's CA, must trust the new ones before an LDAP server is moved.</ListItem>
+                  <ListItem>Clients that trust these servers by their certificate, not the directory's CA, must trust the new ones before an LDAP server is moved.</ListItem>
                 </List>
                 {Object.values(moved).some((m) => typeof m === 'string' && m !== 'busy') && (refreshed === 'yes' ? <Alert variant="success" isInline isPlain title="The LDAP servers were refreshed." />
                   : <Button variant="secondary" isLoading={refreshed === 'busy'} isDisabled={refreshed === 'busy'} onClick={refreshLdap}>Refresh the LDAP servers now</Button>)}

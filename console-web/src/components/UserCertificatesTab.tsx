@@ -35,7 +35,7 @@ export function UserCertificatesTab({ obj }: { obj: DirObject }) {
   return (
     <div className="dc-tab-body">
       <Flex>
-        <FlexItem grow={{ default: 'grow' }}><p className="dc-subtle">Issued by the tree's Organizational CA; the private keys stay in the directory.</p></FlexItem>
+        <FlexItem grow={{ default: 'grow' }}><p className="dc-subtle">Issued by the directory's Organizational CA; the private keys stay in the directory.</p></FlexItem>
         {editor && <FlexItem><Button variant="secondary" onClick={() => setCreating(true)}>New certificate</Button></FlexItem>}
       </Flex>
       <ProblemAlert error={error} onRetry={load} />

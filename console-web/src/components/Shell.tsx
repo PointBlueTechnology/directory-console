@@ -18,6 +18,7 @@ import { NotFound } from '../pages/NotFound';
 import { ErrorBoundary } from './ErrorBoundary';
 import { SessionWarning } from './SessionWarning';
 import { UpdateBanner } from './UpdateBanner';
+import { WARN_DAYS } from './Certificates';
 
 // administration pages load when first opened: most sessions never visit them
 const IdmPage = lazy(() => import('../pages/IdmPage').then((m) => ({ default: m.IdmPage })));
@@ -223,13 +224,13 @@ function route(path: string) {
   return <NotFound />;
 }
 
-/** Administrators are told of changed pinned certificates, and of trusted ones expired or expiring within 30 days. */
+/** Administrators are told of changed pinned certificates, and of trusted ones expired or expiring within WARN_DAYS. */
 function ExpiryBanner() {
   const [soon, setSoon] = useState<{ expired: number; expiring: number; changed: number } | null>(null);
   useEffect(() => {
     trust.list().then((t) => {
       const days = t.certificates.map((c) => daysUntil(c.notAfter));
-      setSoon({ expired: days.filter((d) => d < 0).length, expiring: days.filter((d) => d >= 0 && d <= 30).length, changed: t.alerts.length });
+      setSoon({ expired: days.filter((d) => d < 0).length, expiring: days.filter((d) => d >= 0 && d <= WARN_DAYS).length, changed: t.alerts.length });
     }).catch(() => setSoon(null));
   }, []);
   if (!soon || (soon.expired === 0 && soon.expiring === 0 && soon.changed === 0)) {
@@ -238,7 +239,7 @@ function ExpiryBanner() {
   const parts = [
     soon.changed && `${soon.changed} pinned ${soon.changed === 1 ? 'certificate has' : 'certificates have'} changed`,
     soon.expired && `${soon.expired} expired`,
-    soon.expiring && `${soon.expiring} expiring within 30 days`,
+    soon.expiring && `${soon.expiring} expiring within ${WARN_DAYS} days`,
   ].filter(Boolean).join(', ');
   return (
     <PageSection padding={{ default: 'noPadding' }}>

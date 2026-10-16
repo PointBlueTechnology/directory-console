@@ -61,7 +61,7 @@ export function SettingsPage() {
             <Tab eventKey="sso" title={<TabTitleText>Single sign-on</TabTitleText>}>
               <SsoSection s={s} save={(v) => api.oidc(v, etag)} test={api.testMapping} onSaved={saved} />
             </Tab>
-            <Tab eventKey="trees" title={<TabTitleText>Trees</TabTitleText>}>
+            <Tab eventKey="trees" title={<TabTitleText>Directories</TabTitleText>}>
               <TreesSection />
             </Tab>
             <Tab eventKey="other" title={<TabTitleText>Other directories</TabTitleText>}>
@@ -119,7 +119,7 @@ function DirectorySection({ s, api, etag, onSaved }: {
           <ActionGroup><Button variant="secondary" isDisabled={busy || tier === s.tier} onClick={() => go(`The tier is now ${tier}.`, () => api.tier(tier as 'production' | 'lab', etag))}>Save the tier</Button></ActionGroup>
         </FormSection>
         <FormSection title="Sessions" titleElement="h3">
-          <p className="dc-subtle">For everyone signed in to this tree, including people signed in now. People are warned two minutes before an idle sign-out.</p>
+          <p className="dc-subtle">For everyone signed in to this directory, including people signed in now. People are warned two minutes before an idle sign-out.</p>
           <FormGroup label="Sign out after this many idle minutes" fieldId="dir-idle">
             <TextInput id="dir-idle" type="number" min={5} max={240} value={idleMinutes} onChange={(_e, v) => setIdleMinutes(v)}
               validated={sessionOk(idleMinutes, 5, 240) ? 'default' : 'error'} />
@@ -156,7 +156,7 @@ function DirectorySection({ s, api, etag, onSaved }: {
         <FormSection title="Finding people at sign-in" titleElement="h3">
           <FormGroup label="Search bases" fieldId="dir-bases">
             <TextArea id="dir-bases" className="dc-mono" value={bases} onChange={(_e, v) => setBases(v)} resizeOrientation="vertical" placeholder="ou=users,o=acme" />
-            <FormHelperText><HelperText><HelperTextItem>One DN per line, where a short name is looked for; none searches the whole tree. Needs the service account.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>One DN per line, where a short name is looked for; none searches the whole directory. Needs the service account.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <FormGroup role="radiogroup" label="When a name matches several people" fieldId="dir-dup" isStack>
             <Radio id="dir-dup-choose" name="dir-dup" label="Let them choose their account" isChecked={duplicates === 'choose'} onChange={() => setDuplicates('choose')} />

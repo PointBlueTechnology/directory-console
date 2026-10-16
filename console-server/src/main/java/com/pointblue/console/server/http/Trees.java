@@ -95,7 +95,7 @@ final class Trees {
         }
         n = n.trim();
         if (n.isEmpty() || n.length() > 64) {
-            throw new Http.Problem(400, "bad-field", "a tree's name is 1 to 64 characters");
+            throw new Http.Problem(400, "bad-field", "a directory's name is 1 to 64 characters");
         }
         return n;
     }
@@ -108,7 +108,7 @@ final class Trees {
         int port = Http.integer(b, "port", 636);
         for (DirectoryConfig d : DirectoryConfig.all(server.config.read())) {
             if (d.host().equalsIgnoreCase(host) && d.port() == port) {
-                throw new Http.Problem(409, "exists", host + ":" + port + " is already the tree " + d.name());
+                throw new Http.Problem(409, "exists", host + ":" + port + " is already the directory " + d.name());
             }
         }
         String provisional = "new-" + Integer.toHexString(System.identityHashCode(s)) + Long.toHexString(System.nanoTime());
@@ -177,11 +177,11 @@ final class Trees {
     private void remove(HttpExchange ex, Sessions.Session s, String id) throws IOException {
         DirectoryConfig d = known(id);
         if (id.equals(s.principal.directoryId())) {
-            throw new Http.Problem(409, "current-tree", "you are signed in to " + d.name() + "; sign in to another tree to remove it");
+            throw new Http.Problem(409, "current-tree", "you are signed in to " + d.name() + "; sign in to another directory to remove it");
         }
         String typed = Http.string(Http.body(ex), "name", true);
         if (!typed.equals(d.name())) {
-            throw new Http.Problem(409, "confirm-name", "type the tree's name, " + d.name() + ", to remove it");
+            throw new Http.Problem(409, "confirm-name", "type the directory's name, " + d.name() + ", to remove it");
         }
         try {
             server.config.update(server.config.version(), s.principal.dn(), "remove tree " + id, doc -> {
@@ -207,7 +207,7 @@ final class Trees {
     private DirectoryConfig known(String id) {
         DirectoryConfig d = DirectoryConfig.find(server.config.read(), id);
         if (d == null) {
-            throw new Http.Problem(404, "unknown-directory", "no tree " + id);
+            throw new Http.Problem(404, "unknown-directory", "no directory " + id);
         }
         return d;
     }

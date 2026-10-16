@@ -7,7 +7,7 @@ It is a beta release. It has been tested against lab trees running eDirectory 9.
 
 | Area | What |
 |---|---|
-| Setup | First sign-in from the setup link sets the console up. More trees (dev, test, production) are added, renamed and removed under Settings > Trees. |
+| Setup | First sign-in from the setup link sets the console up. More directories (dev, test, production) are added, renamed and removed under Settings > Directories. |
 | Sign-in | Direct sign-in with a full name (DN), or a short name once a service account is set. Single sign-on with OpenID Connect. Break-glass accounts. Sign-in to a directory a person types in, when an admin allows it. "Remember my name" keeps the name and tree in the browser, never the password. Each tree sets its own idle timeout and longest session, and people are warned before either ends. |
 | Access | Role mappings from eDirectory groups to viewer, editor, operator and admin, optionally limited to containers. Task presets. Sensitive changes ask for a recent sign-in; production trees ask for the tree's name. |
 | Directory objects | Browse and search (sorted and paged in large containers), view and edit, create (users and groups with eDirectory's standard classes, or any class), rename, move, delete, auxiliary classes with their mandatory attributes, effective rights, account tasks, group membership. |
