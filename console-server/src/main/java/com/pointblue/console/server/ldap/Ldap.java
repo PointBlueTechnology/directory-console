@@ -513,24 +513,48 @@ public final class Ldap implements AutoCloseable {
             }
         }
         int total = 0;
+        List<Part> parts = new ArrayList<>();
         for (Segment g : segments) {
             total += g.total();
+            parts.add(new Part(g.total(), (local, want) -> g.listed() != null
+                ? g.listed().subList(Math.min(local - 1, g.listed().size()), Math.min(g.listed().size(), local - 1 + want))
+                : window(base, g.filter(), args, scope, attrs, g.attr(), descending, local, want, null).entries()));
         }
+        Stitched st = stitch(parts, first, count);
+        return new Window(st.entries(), first, capped ? -1 : total, !capped && !st.repeats() && sortAttrs.size() <= 1);
+    }
+
+    /** One segment of a listing: its reported size, and how to read {@code want} entries from its {@code local}th (1-based). */
+    record Part(int total, Fetch fetch) {
+    }
+
+    interface Fetch {
+        List<Entry> get(int local, int want) throws NamingException;
+    }
+
+    record Stitched(List<Entry> entries, boolean repeats) {
+    }
+
+    /**
+     * Up to {@code count} entries from position {@code first} of the segments laid end to end. A segment's
+     * reported size is eDirectory's estimate (VLV's content count), so a segment may return fewer entries
+     * than it reported: the listing then carries on from the next segment's first entry rather than
+     * reading before it. An entry seen twice (once per value of a multi-valued sort attribute) is kept once.
+     */
+    static Stitched stitch(List<Part> parts, int first, int count) throws NamingException {
         List<Entry> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         boolean repeats = false;
         int consumed = 0;
-        int next = first;
-        for (Segment g : segments) {
+        int next = Math.max(1, first);
+        for (Part g : parts) {
             if (out.size() >= count) {
                 break;
             }
-            if (next <= consumed + g.total()) {
-                int local = next - consumed;
+            if (g.total() > 0 && next <= consumed + g.total()) {
+                int local = Math.max(1, next - consumed);
                 int want = Math.min(count - out.size(), g.total() - local + 1);
-                List<Entry> got = g.listed() != null
-                    ? g.listed().subList(local - 1, local - 1 + want)
-                    : window(base, g.filter(), args, scope, attrs, g.attr(), descending, local, want, null).entries();
+                List<Entry> got = g.fetch().get(local, want);
                 got = got.subList(0, Math.min(want, got.size()));
                 for (Entry e : got) {
                     // the sort lists an entry once per value of a multi-valued sort attribute
@@ -540,11 +564,12 @@ public final class Ldap implements AutoCloseable {
                         repeats = true;
                     }
                 }
-                next += got.size();
+                // a short segment (its size was an estimate): go on from the next segment's start
+                next = got.size() < want ? consumed + g.total() + 1 : next + got.size();
             }
             consumed += g.total();
         }
-        return new Window(out, first, capped ? -1 : total, !capped && !repeats && sortAttrs.size() <= 1);
+        return new Stitched(out, repeats);
     }
 
     private static String[] withAttr(String[] attrs, String a) {

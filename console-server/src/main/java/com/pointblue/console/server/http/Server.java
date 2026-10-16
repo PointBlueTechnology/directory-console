@@ -50,6 +50,8 @@ public final class Server {
 
     final DataDir data;
     final ConfigStore config;
+    /** The console's log (the container's standard output): where unexpected errors are written, with their stack traces. */
+    private final PrintStream log;
     final AuditLog audit;
     final TrustStore trust;
     final ConsoleTls tls;
@@ -76,6 +78,7 @@ public final class Server {
 
     /** Open the data directory and listen on {@code port}. {@code publicUrl} is how browsers reach this server. */
     public Server(DataDir data, int port, String publicUrl, PrintStream out) throws IOException, GeneralSecurityException {
+        this.log = out;
         this.data = data;
         this.config = new ConfigStore(data, SecretBox.open(data.keys().resolve("config.key")));
         this.sessions.limits(this::sessionLimits);
@@ -150,6 +153,28 @@ public final class Server {
 
     // ---- request handling -------------------------------------------------------------------------
 
+    /**
+     * An unexpected error, to the log with its stack trace: the method and path only, never the query string,
+     * body or headers (they may hold names, filters or secrets). The reference ties the log to what the person saw.
+     */
+    private String logError(String method, String path, Throwable e) {
+        String ref = Long.toHexString(System.nanoTime() & 0xffffffL);
+        synchronized (log) {
+            log.println(java.time.Instant.now() + " ERROR [" + ref + "] " + method + " " + path + ": " + e);
+            for (StackTraceElement s : e.getStackTrace()) {
+                log.println("    at " + s);
+            }
+            for (Throwable c = e.getCause(); c != null && c != e; c = c.getCause()) {
+                log.println("  caused by " + c);
+                for (StackTraceElement s : c.getStackTrace()) {
+                    log.println("    at " + s);
+                }
+            }
+            log.flush();
+        }
+        return ref;
+    }
+
     private void handle(HttpExchange ex) {
         try (ex) {
             headers(ex);
@@ -162,10 +187,13 @@ public final class Server {
             } catch (Http.Problem p) {
                 Http.problem(ex, p);
             } catch (RuntimeException e) {
-                Http.problem(ex, new Http.Problem(500, "internal", "unexpected error: " + e.getClass().getSimpleName()));
+                String ref = logError(method, path, e);
+                Http.problem(ex, new Http.Problem(500, "internal", "unexpected error: " + e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : " (" + e.getMessage() + ")") + "; the console's log has the details, reference " + ref));
             } catch (LinkageError e) {
                 // a library class is missing: answer, never drop the connection
-                Http.problem(ex, new Http.Problem(500, "missing-library", "a library this needs is not installed: " + e.getMessage()));
+                String ref = logError(method, path, e);
+                Http.problem(ex, new Http.Problem(500, "missing-library", "a library this needs is not installed: " + e.getMessage() + "; reference " + ref));
             }
         } catch (IOException e) {
             // the client went away
