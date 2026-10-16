@@ -145,3 +145,14 @@
   color: var(--pf-t--global--text--color--subtle);
   padding-block-end: var(--pf-t--global--spacer--md);
 }
+
+/* an object's kind before its name, where the name is not a link (a link carries its own icon) */
+.dc-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pf-t--global--spacer--sm);
+}
+.dc-row-icon {
+  color: var(--pf-t--global--icon--color--subtle);
+  display: inline-flex;
+}

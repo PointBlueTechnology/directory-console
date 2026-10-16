@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Spinner, TreeView, type TreeViewDataItem } from '@patternfly/react-core';
-import { FolderIcon, FolderOpenIcon } from '@patternfly/react-icons';
+import { objectIcon } from './ObjectIcon';
 import type { Row } from '../api';
 import { useSession } from '../session';
 
@@ -52,7 +52,7 @@ export function ContainerTree({ selected, onSelect }: { selected?: string; onSel
         children = undefined;
       }
     }
-    return { id: row.guid, name: row.name, children, icon: <FolderIcon />, expandedIcon: <FolderOpenIcon /> };
+    return { id: row.guid, name: row.name, children, icon: objectIcon(row.objectClasses, true), expandedIcon: objectIcon(row.objectClasses, true, true) };
   };
 
   if (error) {

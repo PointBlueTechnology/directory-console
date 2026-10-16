@@ -1,5 +1,5 @@
 import { Button, Label } from '@patternfly/react-core';
-import { FolderIcon } from '@patternfly/react-icons';
+import { objectIcon } from './ObjectIcon';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import type { Row } from '../api';
 
@@ -28,8 +28,8 @@ export function RowsTable({ rows, selected, onOpen, onDetails, label, highlight,
           <Tr key={r.guid} isClickable onRowClick={() => onDetails(r)} isRowSelected={selected === r.guid || highlight === r.guid}>
             <Td dataLabel="Name">
               {r.container
-                ? <Button variant="link" isInline icon={<FolderIcon />} onClick={(e) => { e.stopPropagation(); onOpen(r); }}>{r.name}</Button>
-                : r.name}
+                ? <Button variant="link" isInline icon={objectIcon(r.objectClasses, true)} onClick={(e) => { e.stopPropagation(); onOpen(r); }}>{r.name}</Button>
+                : <span className="dc-row-name"><span className="dc-row-icon" aria-hidden="true">{objectIcon(r.objectClasses, false)}</span>{r.name}</span>}
               {r.childCount !== undefined && <> <Label isCompact>{r.childCount}</Label></>}
             </Td>
             <Td dataLabel="Class">{r.objectClass}</Td>

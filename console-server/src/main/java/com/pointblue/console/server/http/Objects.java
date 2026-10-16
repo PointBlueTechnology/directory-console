@@ -381,7 +381,7 @@ final class Objects {
         List<Object> classes = e.attributes().getOrDefault("objectclass", List.of());
         m.put("objectClass", schema.structural(classes));
         m.put("objectClasses", classes.stream().map(String::valueOf).toList());
-        boolean container = schema.container(classes);
+        boolean container = schema.entryIsContainer(classes);
         int count = -1;
         try {
             count = e.first("subordinateCount") == null ? -1 : Integer.parseInt(e.first("subordinateCount").trim());
@@ -526,12 +526,8 @@ final class Objects {
         String filter = switch (kind) {
             case "all" -> "(objectClass=*)";
             case "containers", "leaves" -> {
-                StringBuilder f = new StringBuilder("(|");
-                for (String c : schema.containerClasses()) {
-                    f.append("(objectClass=").append(c).append(')');
-                }
-                f.append(')');
-                yield kind.equals("containers") ? f.toString() : "(!" + f + ")";
+                String f = schema.containerFilter();
+                yield kind.equals("containers") ? f : "(!" + f + ")";
             }
             default -> throw new Http.Problem(400, "bad-field", "kind is containers, leaves or all");
         };

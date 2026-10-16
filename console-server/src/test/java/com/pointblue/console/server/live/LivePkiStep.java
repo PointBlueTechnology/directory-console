@@ -130,6 +130,16 @@ public final class LivePkiStep {
                     "parameters", Map.of("process-unassociated", "true")), h));
                 // a job, its name typed
                 case "job-delete" -> show(call("DELETE", t + "/idm/jobs/" + guid(t, h, args[3]), Map.of("name", args[4]), h));
+                // READ-ONLY: a container's first rows, as the browser lists them: class, classes and whether each opens
+                case "children" -> {
+                    Map<String, Object> page = call("GET", t + "/objects/" + guid(t, h, args[3]) + "/children?count=" + (args.length > 4 ? args[4] : "8"), null, h).body();
+                    System.out.println("total " + page.get("total"));
+                    for (Object o : (List<?>) page.get("items")) {
+                        Map<String, Object> r = Json.asMap(o);
+                        System.out.println(r.get("name") + " | " + r.get("objectClass") + " | container=" + r.get("container") + " children=" + r.get("children")
+                            + (r.get("childCount") == null ? "" : " count=" + r.get("childCount")) + " | " + r.get("objectClasses"));
+                    }
+                }
                 // READ-ONLY: a job's definition, as the console reads it
                 case "job-read" -> show(call("GET", t + "/idm/jobs/" + guid(t, h, args[3]) + "/definition", null, h));
                 // READ-ONLY: the DNs an LDAP filter finds, with the named attributes

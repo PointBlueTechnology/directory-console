@@ -78,6 +78,24 @@ public class ObjectModelTest {
     // ---- schema ----
 
     @Test
+    public void aUserIsALeafEvenWhenASuperclassIsNotMarked() {
+        // as in some trees: Person carries no X-NDS_NOT_CONTAINER, so every user's chain has a "container" class
+        Schema s = new Schema(List.of(
+            "( 2.5.6.0 NAME 'Top' STRUCTURAL MUST objectClass X-NDS_AMBIGUOUS_CONTAINMENT '1' )",
+            "( 2.5.6.5 NAME 'organizationalUnit' SUP Top STRUCTURAL MUST ou )",
+            "( 2.5.6.6 NAME 'Person' SUP Top STRUCTURAL MUST ( cn $ sn ) )",
+            "( 2.5.6.7 NAME 'organizationalPerson' SUP Person STRUCTURAL X-NDS_NOT_CONTAINER '1' )",
+            "( 2.16.840.1.113730.3.2.2 NAME 'inetOrgPerson' SUP organizationalPerson STRUCTURAL X-NDS_NOT_CONTAINER '1' )"), List.of());
+        List<String> user = List.of("inetOrgPerson", "organizationalPerson", "Person", "Top");
+        assertTrue("the old any-class rule would call it a container", s.container(user));
+        assertFalse("its base class decides", s.entryIsContainer(user));
+        assertTrue(s.entryIsContainer(List.of("organizationalUnit", "Top")));
+        String f = s.containerFilter();
+        assertTrue(f, f.contains("(objectClass=Person)") && f.contains("(!(|"));
+        assertTrue("the leaf classes that inherit from a container are left out", f.contains("(objectClass=inetOrgPerson)") && f.contains("(objectClass=organizationalPerson)"));
+    }
+
+    @Test
     public void containersFollowEdirectoryFlags() {
         Schema s = schema();
         assertTrue(s.objectClass("organizationalUnit").container());

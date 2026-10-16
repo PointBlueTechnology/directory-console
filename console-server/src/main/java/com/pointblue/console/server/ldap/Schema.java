@@ -138,6 +138,54 @@ public final class Schema {
         return false;
     }
 
+    /**
+     * Whether an entry is a container, by its base class (its most derived structural class) as eDirectory
+     * decides containment: a user ({@code inetOrgPerson}, marked not a container) stays a leaf even when a
+     * superclass in its chain carries no {@code X-NDS_NOT_CONTAINER}. When no base class is known, any of its
+     * classes decides, as before.
+     */
+    public boolean entryIsContainer(Collection<?> objectClasses) {
+        List<?> list = objectClasses instanceof List<?> l ? l : new ArrayList<>(objectClasses);
+        String base = structural(list);
+        ObjectClass c = base == null ? null : objectClass(base);
+        return c != null ? c.container() : container(objectClasses);
+    }
+
+    /**
+     * An LDAP filter for container entries: one of the container classes, and not a leaf class that inherits
+     * from one (whose entries carry the container superclass in {@code objectClass} too).
+     */
+    public String containerFilter() {
+        StringBuilder in = new StringBuilder("(|");
+        containerClasses().forEach(n -> in.append("(objectClass=").append(n).append(')'));
+        in.append(')');
+        List<String> leaves = new ArrayList<>();
+        for (ObjectClass c : classes.values()) {
+            if (c.kind().equals("structural") && !c.container() && inheritsContainer(c, 0)) {
+                leaves.add(c.name());
+            }
+        }
+        if (leaves.isEmpty()) {
+            return in.toString();
+        }
+        StringBuilder out = new StringBuilder("(&").append(in).append("(!(|");
+        leaves.forEach(n -> out.append("(objectClass=").append(n).append(')'));
+        return out.append(")))").toString();
+    }
+
+    private boolean inheritsContainer(ObjectClass c, int guard) {
+        if (guard > 32) {
+            return false;
+        }
+        for (String s : c.superiors()) {
+            ObjectClass p = objectClass(s);
+            if (p != null && (p.container() || inheritsContainer(p, guard + 1))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** The names of every container class, for a containers-only children filter. */
     public List<String> containerClasses() {
         return classes.values().stream().filter(ObjectClass::container).map(ObjectClass::name).toList();
