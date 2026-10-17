@@ -1156,6 +1156,8 @@ export interface Pki {
   ca: (Ref & { host?: string; defaultRsaKeySize?: string; defaultLifeYears?: string; certificates: Certificate[]; configuration?: CaConfiguration }) | null;
   serverCertificates: (Ref & { server: { dn: string; name: string } | null; usedBy: string[]; certificate: Certificate | null; chain: Certificate[] })[];
   trustedRoots: (Ref & { container: string; certificate: Certificate | null })[];
+  /** The containers trusted roots live in, with how many each holds. */
+  trustedRootContainers?: (Ref & { roots: number })[];
   crls: (Ref & { type: 'rsa' | 'ec'; issued?: string; nextIssue?: string; number?: string; status?: string; host?: string;
     distributionPoints: string[]; thisUpdate?: string; nextUpdate?: string | null; revoked?: number; der?: string; crlError?: string })[];
 }
@@ -1274,6 +1276,15 @@ export function security(id: string) {
     caConfiguration: (body: Partial<CaConfiguration>, confirm?: string) =>
       request<CaConfiguration>('PUT', `${base}/pki/ca/configuration`, body, h(confirm)).then((r) => r.data),
     /** The certificate an LDAP server offers: one of its own server's certificates. It takes effect when the LDAP server is refreshed. */
+    createTrustedRootContainer: (parent: string, name: string, confirm?: string) =>
+      request<Pki>('POST', `${base}/pki/trusted-root-containers`, { parent, name }, h(confirm)).then((r) => r.data),
+    deleteTrustedRootContainer: (guid: string, confirm?: string) =>
+      request<Pki>('DELETE', `${base}/pki/trusted-root-containers/${guidPath(guid)}`, undefined, h(confirm)).then((r) => r.data),
+    /** A certificate (PEM or base64 DER) as a trusted root in the container; the name defaults to its CN or OU. */
+    addTrustedRoot: (container: string, certificate: string, name?: string, confirm?: string) =>
+      request<Pki>('POST', `${base}/pki/trusted-root-containers/${guidPath(container)}/roots`, { certificate, name }, h(confirm)).then((r) => r.data),
+    deleteTrustedRoot: (guid: string, confirm?: string) =>
+      request<Pki>('DELETE', `${base}/pki/trusted-roots/${guidPath(guid)}`, undefined, h(confirm)).then((r) => r.data),
     useForLdap: (ldapServerGuid: string, certificateGuid: string, confirm?: string) =>
       request<{ ldapServer: string; certificate: string; previous: string }>('PUT', `${base}/pki/ldap-servers/${guidPath(ldapServerGuid)}/certificate`,
         { certificate: certificateGuid }, h(confirm)).then((r) => r.data),

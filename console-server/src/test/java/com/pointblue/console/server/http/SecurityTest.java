@@ -290,6 +290,27 @@ public class SecurityTest {
     }
 
     @Test
+    public void trustedRootContainersAndRootsAreMadeAndRemoved() throws Exception {
+        String t = "/api/v2/trees/acme/security/pki";
+        Reply made = call("POST", t + "/trusted-root-containers", Map.of("parent", "o=acme", "name", "Partners"), h);
+        assertEquals(String.valueOf(made.body()), 201, made.status());
+        Map<String, Object> c = ((List<?>) made.body().get("trustedRootContainers")).stream().map(Json::asMap).filter(x -> "Partners".equals(x.get("name"))).findFirst().orElseThrow();
+        String cg = (String) c.get("guid");
+        com.pointblue.console.server.tls.TestPki partner = new com.pointblue.console.server.tls.TestPki("PARTNER");
+        String pem = "-----BEGIN CERTIFICATE-----\n" + java.util.Base64.getMimeEncoder().encodeToString(partner.ca.getEncoded()) + "\n-----END CERTIFICATE-----\n";
+        assertEquals(400, call("POST", t + "/trusted-root-containers/" + cg + "/roots", Map.of("certificate", "not a certificate"), h).status());
+        Reply added = call("POST", t + "/trusted-root-containers/" + cg + "/roots", Map.of("certificate", pem), h);
+        assertEquals(String.valueOf(added.body()), 201, added.status());
+        Map<String, Object> root = ((List<?>) added.body().get("trustedRoots")).stream().map(Json::asMap)
+            .filter(r -> String.valueOf(r.get("container")).startsWith("cn=Partners")).findFirst().orElseThrow();
+        assertTrue(String.valueOf(Json.asMap(root.get("certificate")).get("subject")).contains("PARTNER"));
+        assertEquals("not while it holds a root", 409, call("DELETE", t + "/trusted-root-containers/" + cg, null, h).status());
+        assertEquals(200, call("DELETE", t + "/trusted-roots/" + root.get("guid"), null, h).status());
+        assertEquals(200, call("DELETE", t + "/trusted-root-containers/" + cg, null, h).status());
+        assertEquals(404, call("DELETE", t + "/trusted-roots/" + cg, null, h).status());
+    }
+
+    @Test
     public void loginSequencesAreAddedChangedAndRemovedWithoutTouchingTheOthers() throws Exception {
         String t = "/api/v2/trees/acme/security/login-policy";
         Map<String, Object> before = call("GET", t, null, h).body();

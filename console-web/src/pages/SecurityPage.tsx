@@ -14,6 +14,7 @@ import { NewCertificateModal } from '../components/NewCertificate';
 import { SequenceModal } from '../components/SequenceModal';
 import { RevokeModal, revokedNotice } from '../components/RevokeCertificate';
 import { ExportKeyModal } from '../components/ExportKey';
+import { TrustedRootsCard } from '../components/TrustedRoots';
 import { DefaultCertificatesModal } from '../components/DefaultCertificates';
 import { CaConfigurationPanel } from '../components/CaConfiguration';
 import { ExpiryLabel, Fingerprint, WARN_DAYS } from '../components/Certificates';
@@ -195,26 +196,7 @@ function CertificatesView() {
         </CardBody>
       </Card>
 
-      <Card className="dc-tab-body">
-        <CardTitle><Title headingLevel="h2" size="lg">Trusted roots</Title></CardTitle>
-        <CardBody>
-          {pki.trustedRoots.length === 0 ? <p>None.</p> : (
-            <Table aria-label="Trusted roots" variant="compact">
-              <Thead><Tr><Th>Root</Th><Th>Container</Th><Th>Subject</Th><Th>Valid until</Th></Tr></Thead>
-              <Tbody>
-                {pki.trustedRoots.map((t) => (
-                  <Tr key={t.dn}>
-                    <Td dataLabel="Root">{t.name}</Td>
-                    <Td dataLabel="Container" className="dc-mono">{t.container}</Td>
-                    <Td dataLabel="Subject" className="dc-mono">{t.certificate?.subject ?? '—'}</Td>
-                    <Td dataLabel="Valid until"><ExpiryLabel notAfter={t.certificate?.notAfter} /></Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          )}
-        </CardBody>
-      </Card>
+      <TrustedRootsCard pki={pki} api={api} editor={editor} onChanged={setPki} />
 
       <Card className="dc-tab-body">
         <CardTitle><Title headingLevel="h2" size="lg">Certificate revocation lists</Title></CardTitle>

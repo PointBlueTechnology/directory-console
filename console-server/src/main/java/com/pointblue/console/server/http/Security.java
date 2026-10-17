@@ -99,7 +99,7 @@ final class Security {
         Ldap l = s.ldap();
         String route = method + " " + String.join("/", Arrays.copyOfRange(p, 2, p.length))
             .replaceAll("^(password-policies|challenge-sets|objects)/[0-9a-f]{32}", "$1/{guid}")
-            .replaceAll("^pki/(servers|server-certificates|ldap-servers)/[0-9a-f]{32}", "pki/$1/{guid}")
+            .replaceAll("^pki/(servers|server-certificates|ldap-servers|trusted-root-containers|trusted-roots)/[0-9a-f]{32}", "pki/$1/{guid}")
             .replaceAll("^login-policy/sequences/[^/]+$", "login-policy/sequences/{name}")
             .replaceAll("^objects/\\{guid\\}/certificates/[^/]+/(revoke|export)$", "objects/{guid}/certificates/{name}/$1")
             .replaceAll("assignments/[0-9a-f]{32}$", "assignments/{target}");
@@ -145,6 +145,10 @@ final class Security {
                 case "PUT pki/ldap-servers/{guid}/certificate" -> useForLdap(ex, l, s, guid);
                 case "PUT pki/ca/configuration" -> updateCaConfiguration(ex, l, s);
                 case "DELETE pki/server-certificates/{guid}" -> deleteServerCertificate(ex, l, s, guid);
+                case "POST pki/trusted-root-containers" -> createTrustedRootContainer(ex, l, s);
+                case "DELETE pki/trusted-root-containers/{guid}" -> deleteTrustedRootContainer(ex, l, s, guid);
+                case "POST pki/trusted-root-containers/{guid}/roots" -> addTrustedRoot(ex, l, s, guid);
+                case "DELETE pki/trusted-roots/{guid}" -> deleteTrustedRoot(ex, l, s, guid);
                 case "POST pki/server-certificates/{guid}/revoke" -> revokeServerCertificate(ex, l, s, guid);
                 case "POST pki/server-certificates/{guid}/export" -> exportServerCertificate(ex, l, s, guid);
                 case "POST objects/{guid}/certificates/{name}/export" ->
@@ -270,6 +274,128 @@ final class Security {
         }
         audit(s, "pki.server-certificate.delete", guid, Map.of("dn", k.dn()), null);
         Http.json(ex, 204, Map.of());
+    }
+
+    // ---- trusted roots -----------------------------------------------------------------------------
+
+    private static boolean isA(Ldap.Entry e, String objectClass) {
+        return e != null && e.attributes().getOrDefault("objectclass", List.of()).stream().anyMatch(o -> String.valueOf(o).equalsIgnoreCase(objectClass));
+    }
+
+    /** {@code POST pki/trusted-root-containers}: {parent, name}. A container for trusted roots (an Organization, OU or the Security container holds it). */
+    private void createTrustedRootContainer(HttpExchange ex, Ldap l, Sessions.Session s) throws IOException, NamingException {
+        Map<String, Object> b = Http.body(ex);
+        String parent = Http.string(b, "parent", true).trim();
+        Names.parse(parent);
+        String name = Http.string(b, "name", true).trim();
+        if (!name.matches("[A-Za-z0-9 _.-]{1,64}")) {
+            throw new Http.Problem(400, "bad-field", "a name is 1-64 letters, digits, spaces, dots, dashes or underscores");
+        }
+        String dn = Names.child(parent, "cn", name);
+        Map<String, List<Object>> attrs = new LinkedHashMap<>();
+        attrs.put("objectClass", List.of("nDSPKITrustedRoot"));
+        attrs.put("cn", List.of(name));
+        try {
+            l.create(dn, attrs);
+        } catch (NamingException x) {
+            audit(s, "pki.trusted-root-container.create", null, Map.of("dn", dn), Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "pki.trusted-root-container.create", null, Map.of("dn", dn), null);
+        Http.json(ex, 201, pki(l));
+    }
+
+    /** {@code DELETE pki/trusted-root-containers/{guid}}: only an empty one. */
+    private void deleteTrustedRootContainer(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Ldap.Entry c = server.objects.byGuid(l, guid, "objectClass", "cn");
+        if (!isA(c, "nDSPKITrustedRoot")) {
+            throw new Http.Problem(404, "not-found", "no trusted root container has GUID " + guid);
+        }
+        if (!l.search(c.dn(), "(objectClass=*)", null, SearchControls.ONELEVEL_SCOPE, new String[] {"1.1"}, 1).isEmpty()) {
+            throw new Http.Problem(409, "not-empty", "delete the trusted roots in it first");
+        }
+        try {
+            l.delete(c.dn());
+        } catch (NamingException x) {
+            audit(s, "pki.trusted-root-container.delete", guid, Map.of("dn", c.dn()), Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "pki.trusted-root-container.delete", guid, Map.of("dn", c.dn()), null);
+        Http.json(ex, 200, pki(l));
+    }
+
+    /**
+     * {@code POST pki/trusted-root-containers/{guid}/roots}: {certificate (PEM or base64 DER), name?}. The name defaults
+     * to the certificate's common name. Services that use the container (NMAS, SSL clients configured with it) then
+     * accept what that certificate signs.
+     */
+    private void addTrustedRoot(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Map<String, Object> b = Http.body(ex);
+        Ldap.Entry c = server.objects.byGuid(l, guid, "objectClass", "cn");
+        if (!isA(c, "nDSPKITrustedRoot")) {
+            throw new Http.Problem(404, "not-found", "no trusted root container has GUID " + guid);
+        }
+        String text = Http.string(b, "certificate", true).trim();
+        X509Certificate cert;
+        try {
+            byte[] der = text.contains("-----BEGIN")
+                ? java.util.Base64.getMimeDecoder().decode(text.replaceAll("-----(BEGIN|END) CERTIFICATE-----", "").replaceAll("\\s", ""))
+                : java.util.Base64.getMimeDecoder().decode(text.replaceAll("\\s", ""));
+            cert = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(new ByteArrayInputStream(der));
+        } catch (java.security.cert.CertificateException | IllegalArgumentException x) {
+            throw new Http.Problem(400, "bad-certificate", "certificate is one X.509 certificate, PEM or base64 DER");
+        }
+        String name = b.get("name") == null || String.valueOf(b.get("name")).isBlank() ? commonName(cert) : String.valueOf(b.get("name")).trim();
+        if (!name.matches("[A-Za-z0-9 _.()-]{1,64}")) {
+            throw new Http.Problem(400, "bad-field", "a name is 1-64 letters, digits, spaces, dots, dashes, underscores or brackets; give one");
+        }
+        String dn = Names.child(c.dn(), "cn", name);
+        Map<String, List<Object>> attrs = new LinkedHashMap<>();
+        attrs.put("objectClass", List.of("nDSPKITrustedRootObject"));
+        attrs.put("cn", List.of(name));
+        try {
+            attrs.put("nDSPKITrustedRootCertificate", List.of(cert.getEncoded()));
+        } catch (java.security.cert.CertificateEncodingException x) {
+            throw new Http.Problem(400, "bad-certificate", x.getMessage());
+        }
+        Map<String, Object> detail = Map.of("dn", dn, "subject", cert.getSubjectX500Principal().getName(), "sha256", com.pointblue.console.server.tls.Certs.sha256(cert));
+        try {
+            l.create(dn, attrs);
+        } catch (NamingException x) {
+            audit(s, "pki.trusted-root.add", guid, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "pki.trusted-root.add", guid, detail, null);
+        Http.json(ex, 201, pki(l));
+    }
+
+    /** A name from the subject: its CN, else its OU (CAs such as eDirectory's are often OU=Organizational CA), else its first part. */
+    private static String commonName(X509Certificate c) {
+        List<javax.naming.ldap.Rdn> rdns = Names.parse(c.getSubjectX500Principal().getName()).getRdns();
+        for (String type : new String[] {"CN", "OU"}) {
+            for (int i = rdns.size() - 1; i >= 0; i--) {
+                if (rdns.get(i).getType().equalsIgnoreCase(type)) {
+                    return String.valueOf(rdns.get(i).getValue()).replaceAll("[^A-Za-z0-9 _.()-]", "_");
+                }
+            }
+        }
+        return rdns.isEmpty() ? "" : String.valueOf(rdns.get(rdns.size() - 1).getValue()).replaceAll("[^A-Za-z0-9 _.()-]", "_");
+    }
+
+    /** {@code DELETE pki/trusted-roots/{guid}}. */
+    private void deleteTrustedRoot(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Ldap.Entry t = server.objects.byGuid(l, guid, "objectClass", "cn");
+        if (!isA(t, "nDSPKITrustedRootObject")) {
+            throw new Http.Problem(404, "not-found", "no trusted root has GUID " + guid);
+        }
+        try {
+            l.delete(t.dn());
+        } catch (NamingException x) {
+            audit(s, "pki.trusted-root.delete", guid, Map.of("dn", t.dn()), Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "pki.trusted-root.delete", guid, Map.of("dn", t.dn()), null);
+        Http.json(ex, 200, pki(l));
     }
 
     // ---- default server certificates ---------------------------------------------------------------
@@ -1229,6 +1355,13 @@ final class Security {
             roots.add(m);
         }
         out.put("trustedRoots", roots);
+        List<Map<String, Object>> containers = new ArrayList<>();
+        for (Ldap.Entry t : l.search("", "(objectClass=nDSPKITrustedRoot)", null, SearchControls.SUBTREE_SCOPE, new String[] {"GUID", "cn"}, 500)) {
+            Map<String, Object> m = ref(t);
+            m.put("roots", roots.stream().filter(r -> Names.same(String.valueOf(r.get("container")), t.dn())).count());
+            containers.add(m);
+        }
+        out.put("trustedRootContainers", containers);
 
         List<Map<String, Object>> crls = new ArrayList<>();
         for (Ldap.Entry c : l.search("", "(objectClass=ndspkiCRLConfiguration)", null, SearchControls.SUBTREE_SCOPE,

@@ -450,6 +450,16 @@ export const CONTENT: Record<string, HelpTopic> = {
     summary: 'The directory\'s Organizational CA, the certificates it has issued to servers, trusted roots and CRLs.',
     sections: [
       {
+        title: 'Trusted roots',
+        list: [
+          'Trusted root containers hold certificates that services set up to use them (NMAS, SSL clients configured with the container) accept, with whatever those roots sign.',
+          'New container makes one in the Security container, an Organization or an OU; it can be deleted once empty.',
+          'Add a root takes a PEM or DER certificate; its name defaults to the certificate\'s CN, or OU. Removing a root stops those services accepting what it signed.',
+          'These are the directory\'s trusted roots. The certificates the console itself trusts are under Certificates in the navigation.',
+        ],
+      },
+
+      {
         title: 'Default certificates',
         paragraphs: [
           'Each server has default certificates (SSL CertificateDNS, an EC one and, if you choose, SSL CertificateIP) that LDAP and other services use. Renewing makes a new certificate beside the old one. At the end, the dialog offers to move each LDAP server to its new certificate, and then to reload the moved LDAP servers, each on its own server, so they use it. A reload drops every LDAP connection to that server for a moment; reloading the server the console uses signs everyone out of the console. Delete the old certificates once nothing uses them.',

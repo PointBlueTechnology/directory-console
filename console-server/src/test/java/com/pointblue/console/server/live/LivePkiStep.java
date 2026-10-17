@@ -294,6 +294,37 @@ public final class LivePkiStep {
                     show(call("PUT", t + "/edir/servers/" + srv + "/replica-filter", Map.of("classes", List.of()), h));
                     show(call("GET", t + "/edir/servers/" + srv + "/replica-filter", null, h));
                 }
+                // WRITE then REMOVE: a trusted root container in a test OU, a root in it from a PEM file, then all removed (args: PEM path)
+                case "roots-try" -> {
+                    LiveSetupCheck.Reply ou = call("POST", t + "/objects/" + guid(t, h, "o=data") + "/children",
+                        Map.of("objectClass", "organizationalUnit", "name", Map.of("type", "ou", "value", "dc-roots-test")), h);
+                    System.out.println("[" + ou.status() + "] test OU");
+                    LiveSetupCheck.Reply made = call("POST", t + "/security/pki/trusted-root-containers", Map.of("parent", "ou=dc-roots-test,o=data", "name", "DC Test Roots"), h);
+                    System.out.println("[" + made.status() + "] container" + (made.status() >= 300 ? " " + made.body() : ""));
+                    String cg = null;
+                    for (Object o : (List<?>) made.body().get("trustedRootContainers")) {
+                        if ("DC Test Roots".equals(Json.asMap(o).get("name"))) {
+                            cg = (String) Json.asMap(o).get("guid");
+                        }
+                    }
+                    LiveSetupCheck.Reply added = call("POST", t + "/security/pki/trusted-root-containers/" + cg + "/roots", Map.of("certificate", Files.readString(Path.of(args[3]))), h);
+                    System.out.println("[" + added.status() + "] root" + (added.status() >= 300 ? " " + added.body() : ""));
+                    String rg = null;
+                    for (Object o : (List<?>) call("GET", t + "/security/pki", null, h).body().get("trustedRoots")) {
+                        Map<String, Object> r = Json.asMap(o);
+                        if (String.valueOf(r.get("container")).startsWith("cn=DC Test Roots")) {
+                            rg = (String) r.get("guid");
+                            System.out.println("read back: " + r.get("name") + " | " + Json.asMap(r.get("certificate")).get("subject") + " | " + Json.asMap(r.get("certificate")).get("notAfter"));
+                        }
+                    }
+                    System.out.println("[" + call("DELETE", t + "/security/pki/trusted-root-containers/" + cg, null, h).status() + "] container delete while not empty (expect 409)");
+                    System.out.println("[" + call("DELETE", t + "/security/pki/trusted-roots/" + rg, null, h).status() + "] root deleted");
+                    System.out.println("[" + call("DELETE", t + "/security/pki/trusted-root-containers/" + cg, null, h).status() + "] container deleted");
+                    Map<String, String> d = new HashMap<>(h);
+                    d.put("X-Confirm-Count", "1");
+                    d.put("If-Match", "*");
+                    System.out.println("[" + call("DELETE", t + "/objects/" + ou.body().get("guid") + "?subtree=true", null, d).status() + "] test OU deleted");
+                }
                 // READ-ONLY: encryption policies and encrypted replication; a server's replica filter
                 case "encryption" -> show(call("GET", t + "/edir/encryption", null, h));
                 case "replica-filter" -> show(call("GET", t + "/edir/servers/" + serverNamed(call("GET", t + "/edir/servers", null, h), args[3]) + "/replica-filter", null, h));
