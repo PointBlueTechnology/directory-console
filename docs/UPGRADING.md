@@ -91,10 +91,10 @@ Removing the container does not remove the `console-data` volume.
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.3.7
+    image: ghcr.io/pointbluetechnology/directory-console:0.3.8
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.7 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.8 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -114,6 +114,13 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.3.8:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.7
+  needs no restore. What is new for operators:
+  - The console can get its own certificate from an ACME CA (**Settings > Console certificate**), proven with DNS-01
+    through dynamic DNS updates signed with a TSIG key; off until set up. It then connects to the CA and to your DNS
+    server (see the outbound connections below).
+  - Trusted root containers and roots can be made and removed, and a server certificate imported from a PKCS#12 file
+    that eDirectory exported.
 - **0.3.7:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.6
   needs no restore. What is new for operators:
   - The console says *directory* where it said *tree*: **Settings > Trees** is now **Settings > Directories**, and
