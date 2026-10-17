@@ -237,6 +237,20 @@ public class EdirTest {
         assertEquals(400, call("PUT", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/badges/state", Map.of("state", "asleep"), h).status());
         assertEquals("a system index stays online", 409, call("PUT", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/GUID/state", Map.of("state", "offline"), h).status());
         assertEquals(404, call("PUT", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/nope/state", Map.of("state", "offline"), h).status());
+        // copying to another server: the same definition, online, and limber there
+        String g2 = (String) list(call("GET", "/api/v2/trees/acme/edir/servers", null, h)).get(1).get("guid");
+        edir.partitions.triggered.clear();
+        Reply copied = call("POST", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/badges/copy", Map.of("servers", List.of(g2)), h);
+        assertEquals(String.valueOf(copied.body()), 200, copied.status());
+        assertEquals("copied", Json.asMap(((List<?>) copied.body().get("results")).get(0)).get("status"));
+        String s2 = String.valueOf(call("GET", "/api/v2/trees/acme/edir/servers/" + g2, null, h).body().get("indexes"));
+        assertTrue(s2, s2.contains("0$badges$0$2$0$1$acmeBadge"));
+        assertEquals(1, edir.partitions.triggered.size());
+        Reply again = call("POST", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/badges/copy", Map.of("servers", List.of(g2)), h);
+        assertEquals("already-there", Json.asMap(((List<?>) again.body().get("results")).get(0)).get("status"));
+        assertEquals("eDirectory makes its own indexes", 409, call("POST", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/CN/copy", Map.of("servers", List.of(g2)), h).status());
+        assertEquals(400, call("POST", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/badges/copy", Map.of("servers", List.of("nope")), h).status());
+        assertEquals(200, call("DELETE", "/api/v2/trees/acme/edir/servers/" + g2 + "/indexes/badges", null, h).status());
         assertEquals(200, call("DELETE", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/badges", null, h).status());
 
         assertEquals(200, call("DELETE", "/api/v2/trees/acme/edir/schema/classes/acmeAux", null, h).status());

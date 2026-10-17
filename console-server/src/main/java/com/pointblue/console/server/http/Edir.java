@@ -85,7 +85,7 @@ final class Edir {
             .replaceAll("^(servers|partitions)/([0-9a-f]{32}|root)", "$1/{id}")
             .replaceAll("replicas/[0-9a-f]{32}$", "replicas/{server}")
             .replaceAll("indexes/[^/]+$", "indexes/{name}")
-            .replaceAll("indexes/[^/]+/state$", "indexes/{name}/state")
+            .replaceAll("indexes/[^/]+/(state|copy)$", "indexes/{name}/$1")
             .replaceAll("^schema/(attributes|classes)/[^/]+", "schema/$1/{name}")
             .replaceAll("^ldap/(servers|groups)/[0-9a-f]{32}", "ldap/$1/{id}");
         String id = p.length > 3 && p[2].equals("ldap") ? (p.length > 4 ? p[4] : null) : p.length > 3 ? p[3] : null;
@@ -102,6 +102,7 @@ final class Edir {
                 case "POST servers/{id}/indexes" -> addIndex(ex, l, s, id);
                 case "DELETE servers/{id}/indexes/{name}" -> deleteIndex(ex, l, s, id, decode(p[5]));
                 case "PUT servers/{id}/indexes/{name}/state" -> indexState(ex, l, s, id, decode(p[5]));
+                case "POST servers/{id}/indexes/{name}/copy" -> copyIndex(ex, l, s, id, decode(p[5]));
                 case "GET partitions" -> Http.json(ex, 200, partitions(l));
                 case "POST partitions" -> split(ex, l, s);
                 case "POST partitions/{id}/merge" -> partitionOp(ex, l, s, id, "partition.merge", (dn) -> Partitions.merge(l, dn));
@@ -561,6 +562,73 @@ final class Edir {
         }
         audit(s, action, guid, detail, null);
         Http.json(ex, 204, Map.of());
+    }
+
+    /**
+     * {@code POST servers/{id}/indexes/{name}/copy}: {servers: [GUID]}. The same index definition goes on each
+     * server's object (online), and limber builds it there. A server that already has an index of that name
+     * is left alone and reported.
+     */
+    private void copyIndex(HttpExchange ex, Ldap l, Sessions.Session s, String guid, String name) throws IOException, NamingException {
+        List<String> targets = new ArrayList<>();
+        if (Http.body(ex).get("servers") instanceof List<?> list) {
+            list.forEach(x -> targets.add(String.valueOf(x)));
+        }
+        if (targets.isEmpty() || targets.stream().anyMatch(t -> !Names.guid(t))) {
+            throw new Http.Problem(400, "bad-field", "servers is a list of server GUIDs");
+        }
+        Ldap.Entry from = server.objects.byGuid(l, guid, "indexDefinition");
+        if (from == null) {
+            throw new Http.Problem(404, "not-found", "no server has GUID " + guid);
+        }
+        Map<String, Object> ix = null;
+        for (Object v : from.attributes().getOrDefault("indexdefinition", List.of())) {
+            Map<String, Object> m = index(String.valueOf(v));
+            if (m != null && String.valueOf(m.get("name")).equalsIgnoreCase(name)) {
+                ix = m;
+            }
+        }
+        if (ix == null) {
+            throw new Http.Problem(404, "not-found", "this server has no index named " + name);
+        }
+        if (!"user".equals(ix.get("type"))) {
+            throw new Http.Problem(409, "not-copyable", "only user-defined indexes are copied; eDirectory makes the others itself");
+        }
+        String[] f = String.valueOf(ix.get("raw")).split("\\$", -1);
+        f[2] = "0";
+        String value = String.join("$", f);
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (String t : targets) {
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("server", t);
+            Ldap.Entry to = server.objects.byGuid(l, t, "cn", "objectClass", "indexDefinition");
+            if (to == null || to.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("ncpServer"))) {
+                r.put("status", "not-a-server");
+                results.add(r);
+                continue;
+            }
+            r.put("name", String.valueOf(to.first("cn")));
+            boolean has = to.attributes().getOrDefault("indexdefinition", List.of()).stream()
+                .map(v -> index(String.valueOf(v))).anyMatch(m -> m != null && String.valueOf(m.get("name")).equalsIgnoreCase(name));
+            if (has) {
+                r.put("status", "already-there");
+                results.add(r);
+                continue;
+            }
+            Map<String, Object> detail = Map.of("server", to.dn(), "index", value, "from", from.dn());
+            try {
+                l.modify(to.dn(), List.of(new ModificationItem(DirContext.ADD_ATTRIBUTE, new BasicAttribute("indexDefinition", value))));
+                Partitions.trigger(l, "limber", to.dn());
+                audit(s, "index.copy", t, detail, null);
+                r.put("status", "copied");
+            } catch (NamingException x) {
+                audit(s, "index.copy", t, detail, Ldap.Failure.of(x));
+                r.put("status", "failed");
+                r.put("detail", Ldap.Failure.of(x).getMessage());
+            }
+            results.add(r);
+        }
+        Http.json(ex, 200, Map.of("results", results));
     }
 
     private void addIndex(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {

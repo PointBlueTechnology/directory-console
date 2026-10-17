@@ -960,6 +960,10 @@ export function edir(id: string) {
     /** Take an index offline (for a bulk load, say) or bring it back; limber applies it. */
     indexState: (server: string, name: string, state: 'online' | 'offline', confirm?: string) =>
       request<EdirServerDetail>('PUT', `${base}/servers/${guidPath(server)}/indexes/${encodeURIComponent(name)}/state`, { state }, h(confirm)).then((r) => r.data),
+    /** Put a user-defined index on other servers too; each answers copied, already-there or failed. */
+    copyIndex: (server: string, name: string, servers: string[], confirm?: string) =>
+      request<{ results: { server: string; name?: string; status: 'copied' | 'already-there' | 'not-a-server' | 'failed'; detail?: string }[] }>('POST',
+        `${base}/servers/${guidPath(server)}/indexes/${encodeURIComponent(name)}/copy`, { servers }, h(confirm)).then((r) => r.data),
     background: (server: string, process: 'limber' | 'janitor' | 'skulker', confirm?: string) =>
       request<void>('POST', `${base}/servers/${guidPath(server)}/background`, { process }, h(confirm)),
     /** Every LDAP Server object (with its host server and group) and every LDAP Group (with its servers). */

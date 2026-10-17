@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Button, Card, CardBody, Dropdown, DropdownItem, DropdownList, Flex, FlexItem, Form, FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, Label,
+  Alert, Button, Card, CardBody, Checkbox, Dropdown, DropdownItem, DropdownList, Flex, FlexItem, Form, FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, Label,
   LabelGroup, MenuToggle, Modal, TextInput, ModalBody, ModalFooter, ModalHeader, PageSection, Spinner, Tab, Tabs, TabTitleText, Title,
 } from '@patternfly/react-core';
 import { EllipsisVIcon } from '@patternfly/react-icons';
@@ -251,6 +251,9 @@ export function ServerPage({ guid }: { guid: string }) {
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [copying, setCopying] = useState<string | null>(null);
+  const [others, setOthers] = useState<EdirServer[]>([]);
+  useEffect(() => { api.servers().then((all) => setOthers(all.filter((x) => x.guid !== guid)), () => {}); }, [api, guid]);
   const level = useHeading();
   const load = useCallback(() => api.server(guid).then(setS).catch(setError), [api, guid]);
   useEffect(() => { load(); }, [load]);
@@ -333,6 +336,9 @@ export function ServerPage({ guid }: { guid: string }) {
                             (c) => api.indexState(guid, ix.name, ix.state === 'online' ? 'offline' : 'online', c))}>{ix.state === 'online' ? 'Take offline' : 'Bring online'}</Button>
                         </Hint>
                       )}
+                      {ix.type === 'user' && others.length > 0 && (
+                        <Button variant="link" isInline className="dc-gap-right" onClick={() => setCopying(ix.name)}>Copy to…</Button>
+                      )}
                       {ix.removable && <Button variant="link" isInline isDanger onClick={() => sure.ask(`Remove the index ${ix.name}?`,
                         `Searches on ${ix.attributes.join(', ')} on ${s.name} can become slower.`, 'Remove',
                         () => act(`Index ${ix.name} removed.`, (c) => api.removeIndex(guid, ix.name, c)))}>Remove</Button>}
@@ -344,10 +350,53 @@ export function ServerPage({ guid }: { guid: string }) {
           </Table>
         </CardBody>
       </Card>
+      {copying && (
+        <CopyIndexModal name={copying} servers={others} onClose={() => setCopying(null)}
+          onCopy={async (targets) => {
+            const r = await run((c) => api.copyIndex(guid, copying, targets, c));
+            const say = (st: string) => r.results.filter((x) => x.status === st).map((x) => x.name ?? x.server).join(', ');
+            setNotice([say('copied') && `Index ${copying} copied to ${say('copied')}; limber builds it there.`,
+              say('already-there') && `Already on ${say('already-there')}.`, say('failed') && `Not copied to ${say('failed')}.`].filter(Boolean).join(' '));
+            setCopying(null);
+          }} />
+      )}
       {adding && <IndexModal onClose={() => setAdding(false)} onSave={(b) => { setAdding(false); act(`Index ${b.name} added; Limber builds it.`, (c) => api.addIndex(guid, b, c)); }} />}
       {dialog}
       {sure.dialog}
     </PageSection>
+  );
+}
+
+function CopyIndexModal({ name, servers, onCopy, onClose }: { name: string; servers: EdirServer[]; onCopy: (servers: string[]) => Promise<void>; onClose: () => void }) {
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onCopy(chosen);
+    } catch (x) {
+      setError(x);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal variant="small" isOpen onClose={onClose} aria-labelledby="copy-index-title">
+      <ModalHeader title={`Copy the index ${name}`} labelId="copy-index-title" description="The same index goes on each server you choose, and limber builds it there. A server with an index of that name keeps its own." />
+      <ModalBody>
+        {servers.map((x) => (
+          <Checkbox key={x.guid} id={`copy-to-${x.guid}`} label={x.name} isChecked={chosen.includes(x.guid)}
+            onChange={(_e, on) => setChosen(on ? [...chosen, x.guid] : chosen.filter((g) => g !== x.guid))} />
+        ))}
+        <ProblemAlert error={error} />
+      </ModalBody>
+      <ModalFooter>
+        <Button onClick={go} isLoading={busy} isDisabled={busy || chosen.length === 0}>Copy</Button>
+        <Button variant="link" onClick={onClose}>Cancel</Button>
+      </ModalFooter>
+    </Modal>
   );
 }
 
