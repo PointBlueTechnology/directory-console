@@ -145,7 +145,8 @@ export function Shell() {
       {sessionState.can('admin') && path !== '/settings' && <UpdateBanner update={version?.update ?? null} />}
       <SessionWarning />
       <Drawer isExpanded={help.open} isInline position="end">
-        <DrawerContent panelContent={<HelpPanel onClose={() => help.setOpen(false)} />}>
+        {/* the panel is on the page only while open: a closed one sat beside the page, which the browser scrolled onto */}
+        <DrawerContent panelContent={help.open ? <HelpPanel onClose={() => help.setOpen(false)} /> : <></>}>
           <DrawerContentBody>
             <ErrorBoundary resetKey={path}>
               <Suspense fallback={<Bullseye><Spinner aria-label="Loading" /></Bullseye>}>{route(path)}</Suspense>

@@ -678,6 +678,25 @@ export const CONTENT: Record<string, HelpTopic> = {
     ],
   },
   'settings.other': { title: 'Other directories', summary: 'Whether people may sign in to an eDirectory server by typing its address, with their own rights only. This applies to the whole console.', sections: [] },
+  'settings.expiry': {
+    title: 'Certificate expiry',
+    summary: 'A daily check of every certificate the console can see, with notices by e-mail and webhook.',
+    sections: [
+      {
+        title: 'What is checked',
+        list: [
+          'The console\'s own TLS certificate and the certificates it trusts.',
+          'For each directory with a service account: its Organizational CA, server certificates and trusted roots.',
+          'A directory without a service account is skipped, and said so.',
+        ],
+      },
+      {
+        title: 'When notices go out',
+        paragraphs: ['Once when a certificate enters the warning window, again when it is within a week, and once when it has expired. Each is also written to the audit log. Send a test checks the e-mail and webhooks now.'],
+      },
+    ],
+    related: ['certificates', 'security.certificates'],
+  },
   'settings.updates': {
     title: 'Updates',
     summary: 'This console\'s version, and the daily check for a newer release.',

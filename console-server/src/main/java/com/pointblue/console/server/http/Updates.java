@@ -216,7 +216,7 @@ final class Updates {
     }
 
     /** HTTPS_PROXY from the environment (Java does not read it), else the JVM's own settings. */
-    private static ProxySelector proxy() {
+    static ProxySelector proxy() {
         String p = System.getenv("HTTPS_PROXY");
         if (p == null) {
             p = System.getenv("https_proxy");

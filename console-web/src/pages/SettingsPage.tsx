@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActionGroup, Alert, Button, Checkbox, ClipboardCopy, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, EmptyState, EmptyStateBody, Form, FormGroup, FormHelperText, FormSection, HelperText,
+  ActionGroup, Alert, Button, Card, CardBody, Checkbox, ClipboardCopy, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, EmptyState, EmptyStateBody, Form, FormGroup, FormHelperText, FormSection, FormSelect, FormSelectOption, Flex, FlexItem, HelperText,
   HelperTextItem, Label, LabelGroup, List, ListItem, PageSection, Radio, Spinner, Tab, Tabs, TabTitleText, TextArea, TextInput, Title, Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
 import { DownloadIcon, PlusIcon, UploadIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type DirectorySettings, type OidcSettings, type Preset, type RoleMappingJson, type UpdateState, UPGRADING_URL, consoleSettings, settings, updates } from '../api';
+import { type DirectorySettings, type ExpirySettings, type ExpiryState, expiry, type OidcSettings, type Preset, type RoleMappingJson, type UpdateState, UPGRADING_URL, consoleSettings, settings, updates } from '../api';
 import { useSession } from '../session';
 import { HeadingLevel, useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
@@ -16,6 +16,7 @@ import { TreesSection } from '../components/TreesSection';
 import { FieldHelp, Hint, useHelpTopic } from '../help/Help';
 import { explain } from '../help/glossary';
 import { useAreYouSure } from '../components/Confirm';
+import { ExpiryLabel } from '../components/Certificates';
 
 /** A whole number from {@code min} to {@code max}. */
 const sessionOk = (v: string, min: number, max: number) => /^\d+$/.test(v.trim()) && Number(v) >= min && Number(v) <= max;
@@ -67,6 +68,9 @@ export function SettingsPage() {
             </Tab>
             <Tab eventKey="other" title={<TabTitleText>Other directories</TabTitleText>}>
               <OtherDirectoriesSection />
+            </Tab>
+            <Tab eventKey="expiry" title={<TabTitleText>Certificate expiry</TabTitleText>}>
+              <ExpirySection />
             </Tab>
             <Tab eventKey="updates" title={<TabTitleText>Updates</TabTitleText>}>
               <UpdatesSection />
@@ -220,6 +224,143 @@ function UpdatesSection() {
         </>
       )}
       <ProblemAlert error={error} />
+      {dialog}
+    </div>
+  );
+}
+
+const KIND_TEXT: Record<string, string> = { console: 'Console', trusted: 'Trusted by the console', ca: 'Directory CA', server: 'Server certificate', 'trusted-root': 'Trusted root' };
+
+/** Console-wide: the daily certificate expiry check and where its notices go. */
+function ExpirySection() {
+  const { run, dialog } = useStepUp();
+  const [st, setSt] = useState<ExpiryState | null>(null);
+  const [draft, setDraft] = useState<ExpirySettings | null>(null);
+  const [mailPw, setMailPw] = useState('');
+  const [secrets, setSecrets] = useState<Record<number, string>>({});
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const show = (x: ExpiryState) => { setSt(x); setDraft(x.settings); setMailPw(''); setSecrets({}); };
+  useEffect(() => { expiry.get().then(show, setError); }, []);
+  const act = (call: () => Promise<unknown>, after: (x: never) => void) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    call().then((x) => after(x as never), setError).finally(() => setBusy(false));
+  };
+  if (!st || !draft) {
+    return <div className="dc-tab-body">{error ? <ProblemAlert error={error} /> : <Spinner size="md" aria-label="Loading" />}</div>;
+  }
+  const mail = draft.email;
+  const setMail = (patch: Partial<NonNullable<ExpirySettings['email']>>) => setDraft({ ...draft, email: { ...(mail ?? { host: '', port: 587, security: 'starttls', from: '', to: [] }), ...patch } });
+  const save = () => act(() => run(() => expiry.save({
+    ...draft,
+    email: mail && mail.host ? { ...mail, password: mailPw || undefined } : null,
+    webhooks: draft.webhooks.filter((w) => w.url.trim()).map((w, i) => ({ url: w.url.trim(), secret: secrets[i] || undefined, clearSecret: w.clearSecret })),
+  })), (x: ExpiryState) => { show(x); setNotice('Saved.'); });
+  return (
+    <div className="dc-tab-body">
+      <p>This applies to the whole console. Once a day it looks at its own TLS certificate, the certificates it trusts, and each directory's CA, server
+        certificates and trusted roots (for directories with a service account). Anything expired or expiring soon is shown here, written to the audit log,
+        and sent to the recipients below: when it enters the warning window, again a week before, and when it has expired.</p>
+      {notice && <Alert variant="success" isInline isPlain title={notice} className="dc-tab-body" />}
+      <ProblemAlert error={error} />
+      <Card className="dc-tab-body">
+        <CardBody>
+          <Flex alignItems={{ default: 'alignItemsCenter' }}>
+            <FlexItem grow={{ default: 'grow' }}><Title headingLevel="h3" size="md">Last check {st.checkedAt ? <span className="dc-subtle">{new Date(st.checkedAt).toLocaleString()}</span> : <span className="dc-subtle">not yet</span>}</Title></FlexItem>
+            <FlexItem><Button variant="secondary" size="sm" isLoading={busy} isDisabled={busy} onClick={() => act(expiry.checkNow, (x: ExpiryState) => setSt({ ...x, settings: st.settings }))}>Check now</Button></FlexItem>
+          </Flex>
+          {(st.errors ?? []).map((e) => <Alert key={e} variant="warning" isInline isPlain title={`Not checked: ${e}`} />)}
+          {st.findings && (st.findings.length === 0 ? <p className="dc-tab-body">Nothing expired or expiring within {st.settings.warnDays} days.</p> : (
+            <Table aria-label="Certificates to attend to" variant="compact">
+              <Thead><Tr><Th>Certificate</Th><Th>Kind</Th><Th>Where</Th><Th>Expires</Th></Tr></Thead>
+              <Tbody>
+                {st.findings.map((f) => (
+                  <Tr key={`${f.where}-${f.name}-${f.notAfter}`}>
+                    <Td dataLabel="Certificate">{f.name}</Td>
+                    <Td dataLabel="Kind">{KIND_TEXT[f.kind] ?? f.kind}</Td>
+                    <Td dataLabel="Where">{f.where}</Td>
+                    <Td dataLabel="Expires"><ExpiryLabel notAfter={f.notAfter} /></Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          ))}
+        </CardBody>
+      </Card>
+      <Form className="dc-tab-body" onSubmit={(e) => { e.preventDefault(); save(); }} isWidthLimited>
+        <Checkbox id="expiry-on" label="Check once a day" isChecked={draft.enabled} onChange={(_e, v) => setDraft({ ...draft, enabled: v })} />
+        <FormGroup label="Warn this many days ahead" fieldId="expiry-days">
+          <TextInput id="expiry-days" type="number" min={1} max={365} value={String(draft.warnDays)} onChange={(_e, v) => setDraft({ ...draft, warnDays: Number(v) })} style={{ maxWidth: '8rem' }} />
+        </FormGroup>
+        <FormSection title="E-mail" titleElement="h3">
+          <FormGroup label="Mail server" fieldId="expiry-host">
+            <TextInput id="expiry-host" value={mail?.host ?? ''} onChange={(_e, v) => setMail({ host: v })} placeholder="smtp.example.com (empty: no e-mail)" />
+          </FormGroup>
+          {mail?.host && (
+            <>
+              <FormGroup label="Security" fieldId="expiry-security">
+                <FormSelect id="expiry-security" value={mail.security} onChange={(_e, v) => setMail({ security: v as 'starttls', port: v === 'tls' ? 465 : 587 })}>
+                  <FormSelectOption value="starttls" label="STARTTLS (port 587)" />
+                  <FormSelectOption value="tls" label="TLS (port 465)" />
+                  <FormSelectOption value="none" label="None (a relay on a trusted network; no password)" />
+                </FormSelect>
+              </FormGroup>
+              <FormGroup label="Port" fieldId="expiry-port">
+                <TextInput id="expiry-port" type="number" value={String(mail.port)} onChange={(_e, v) => setMail({ port: Number(v) })} style={{ maxWidth: '8rem' }} />
+              </FormGroup>
+              {mail.security !== 'none' && (
+                <>
+                  <FormGroup label="User name" fieldId="expiry-user">
+                    <TextInput id="expiry-user" value={mail.user ?? ''} onChange={(_e, v) => setMail({ user: v })} autoComplete="off" placeholder="empty: no sign-in" />
+                  </FormGroup>
+                  {mail.user && (
+                    <FormGroup label="Password" fieldId="expiry-pw">
+                      <TextInput id="expiry-pw" type="password" autoComplete="new-password" value={mailPw} onChange={(_e, v) => setMailPw(v)}
+                        placeholder={mail.password ? 'Set: leave empty to keep it' : ''} />
+                    </FormGroup>
+                  )}
+                </>
+              )}
+              <FormGroup label="From" fieldId="expiry-from">
+                <TextInput id="expiry-from" value={mail.from} onChange={(_e, v) => setMail({ from: v })} placeholder="directory-console@example.com" />
+              </FormGroup>
+              <FormGroup label="To" fieldId="expiry-to">
+                <TextArea id="expiry-to" value={mail.to.join('\n')} onChange={(_e, v) => setMail({ to: v.split(/[\s,;]+/).filter(Boolean) })} rows={2} resizeOrientation="vertical" />
+                <FormHelperText><HelperText><HelperTextItem>One address per line. The mail server's certificate must be from a public CA.</HelperTextItem></HelperText></FormHelperText>
+              </FormGroup>
+            </>
+          )}
+        </FormSection>
+        <FormSection title="Webhooks" titleElement="h3">
+          <p className="dc-subtle">Each notice is POSTed as JSON (event, subject, text, certificates). With a secret, an X-Console-Signature header carries
+            sha256= and the HMAC-SHA256 of the body.</p>
+          {draft.webhooks.map((w, i) => (
+            <Flex key={i} alignItems={{ default: 'alignItemsFlexEnd' }}>
+              <FlexItem grow={{ default: 'grow' }}>
+                <FormGroup label="URL" fieldId={`hook-${i}`}>
+                  <TextInput id={`hook-${i}`} value={w.url} onChange={(_e, v) => setDraft({ ...draft, webhooks: draft.webhooks.map((x, j) => (j === i ? { ...x, url: v } : x)) })} placeholder="https://hooks.example.com/…" />
+                </FormGroup>
+              </FlexItem>
+              <FlexItem>
+                <FormGroup label="Secret" fieldId={`hook-secret-${i}`}>
+                  <TextInput id={`hook-secret-${i}`} type="password" autoComplete="new-password" value={secrets[i] ?? ''} onChange={(_e, v) => setSecrets({ ...secrets, [i]: v })}
+                    placeholder={w.secret ? 'Set: leave empty to keep it' : 'optional'} />
+                </FormGroup>
+              </FlexItem>
+              <FlexItem><Button variant="link" isDanger onClick={() => setDraft({ ...draft, webhooks: draft.webhooks.filter((_x, j) => j !== i) })}>Remove</Button></FlexItem>
+            </Flex>
+          ))}
+          {draft.webhooks.length < 5 && <div><Button variant="link" isInline onClick={() => setDraft({ ...draft, webhooks: [...draft.webhooks, { url: '' }] })}>Add a webhook</Button></div>}
+        </FormSection>
+        <ActionGroup>
+          <Button type="submit" isLoading={busy} isDisabled={busy}>Save</Button>
+          <Button variant="secondary" isDisabled={busy} onClick={() => act(expiry.test, (x: { results: { destination: string; ok: boolean; error?: string }[] }) =>
+            setNotice(x.results.length === 0 ? 'No e-mail or webhooks saved yet.' : x.results.map((r) => `${r.destination}: ${r.ok ? 'sent' : `not sent (${r.error})`}`).join(' · ')))}>Send a test</Button>
+        </ActionGroup>
+      </Form>
       {dialog}
     </div>
   );

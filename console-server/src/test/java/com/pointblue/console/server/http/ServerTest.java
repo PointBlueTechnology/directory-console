@@ -367,6 +367,112 @@ public class ServerTest {
         }
     }
 
+    /** A minimal SMTP server on loopback that accepts one message and keeps it. */
+    private static Thread smtpStub(java.net.ServerSocket ss, StringBuilder got) {
+        Thread t = new Thread(() -> {
+            try (java.net.Socket c = ss.accept()) {
+                java.io.BufferedReader in = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8));
+                java.io.OutputStream out = c.getOutputStream();
+                java.util.function.Consumer<String> say = l -> {
+                    try {
+                        out.write((l + "\r\n").getBytes(StandardCharsets.UTF_8));
+                        out.flush();
+                    } catch (java.io.IOException e) {
+                        throw new java.io.UncheckedIOException(e);
+                    }
+                };
+                say.accept("220 stub");
+                String line;
+                boolean data = false;
+                while ((line = in.readLine()) != null) {
+                    if (data) {
+                        if (line.equals(".")) {
+                            data = false;
+                            say.accept("250 queued");
+                        } else {
+                            got.append(line).append('\n');
+                        }
+                    } else if (line.startsWith("EHLO")) {
+                        say.accept("250-stub");
+                        say.accept("250 OK");
+                    } else if (line.equals("DATA")) {
+                        data = true;
+                        say.accept("354 go");
+                    } else if (line.equals("QUIT")) {
+                        say.accept("221 bye");
+                        return;
+                    } else {
+                        got.append(line).append('\n');
+                        say.accept("250 OK");
+                    }
+                }
+            } catch (java.io.IOException e) {
+                // the test sees what arrived
+            }
+        });
+        t.setDaemon(true);
+        t.start();
+        return t;
+    }
+
+    @Test
+    public void certificateExpiryIsFoundAndNotifiedOncePerLevel() throws Exception {
+        List<String> hooks = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        com.sun.net.httpserver.HttpServer hook = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        hook.createContext("/hook", ex -> {
+            hooks.add(new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8) + "|" + ex.getRequestHeaders().getFirst("X-Console-Signature"));
+            ex.sendResponseHeaders(204, -1);
+            ex.close();
+        });
+        hook.start();
+        try (java.net.ServerSocket smtp = new java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress())) {
+            String id = firstSignIn();
+            Map<String, String> w = signedIn(id, "cn=admin,o=system", "admin-pw");
+            String url = "http://127.0.0.1:" + hook.getAddress().getPort() + "/hook";
+            assertEquals("not plain http elsewhere", 400, call("PUT", "/api/v2/console/expiry", Map.of("webhooks", List.of(Map.of("url", "http://example.test/hook"))), w).status());
+            assertEquals(400, call("PUT", "/api/v2/console/expiry", Map.of("email", Map.of("host", "127.0.0.1", "security", "none", "user", "u", "password", "p",
+                "from", "console@example.test", "to", List.of("ops@example.test"))), w).status());
+            Map<String, Object> mail = new java.util.HashMap<>(Map.of("host", "127.0.0.1", "port", smtp.getLocalPort(), "security", "none",
+                "from", "console@example.test", "to", List.of("ops@example.test")));
+            Reply saved = call("PUT", "/api/v2/console/expiry", Map.of("warnDays", 30, "email", mail, "webhooks", List.of(Map.of("url", url, "secret", "s3cret"))), w);
+            assertEquals(String.valueOf(saved.body()), 200, saved.status());
+            Map<String, Object> settings = Json.asMap(saved.body().get("settings"));
+            assertEquals("the secret is not shown", Map.of("set", true), Json.asMap(((List<?>) settings.get("webhooks")).get(0)).get("secret"));
+
+            StringBuilder got = new StringBuilder();
+            Thread stub = smtpStub(smtp, got);
+            List<?> results = (List<?>) call("POST", "/api/v2/console/expiry/test", Map.of(), w).body().get("results");
+            stub.join(5000);
+            assertTrue(String.valueOf(results), results.stream().map(Json::asMap).allMatch(r -> Boolean.TRUE.equals(r.get("ok"))));
+            assertTrue(got.toString(), got.toString().contains("RCPT TO:<ops@example.test>") && got.toString().contains("Subject: Directory Console: a test notification"));
+            String test = hooks.get(0);
+            String body = test.substring(0, test.lastIndexOf('|'));
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec("s3cret".getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            assertEquals("signed with the secret", "sha256=" + java.util.HexFormat.of().formatHex(mac.doFinal(body.getBytes(StandardCharsets.UTF_8))),
+                test.substring(test.lastIndexOf('|') + 1));
+
+            // a trusted CA that expires in 3 days: found, notified once, not again the next day
+            com.pointblue.console.server.tls.TestPki soon = new com.pointblue.console.server.tls.TestPki("SOON", java.time.Duration.ofDays(3));
+            server.trust.add(soon.ca, com.pointblue.console.server.tls.TrustStore.Kind.CA, "global", "test", "test");
+            hooks.clear();
+            got.setLength(0);
+            stub = smtpStub(smtp, got);
+            server.expiry.check(true);
+            stub.join(5000);
+            Map<String, Object> st = call("GET", "/api/v2/console/expiry", null, w).body();
+            Map<String, Object> f = ((List<?>) st.get("findings")).stream().map(Json::asMap).filter(x -> "trusted".equals(x.get("kind"))).findFirst().orElseThrow();
+            assertEquals("7days", f.get("level"));
+            assertEquals(1, hooks.size());
+            assertTrue(hooks.get(0), hooks.get(0).contains("certificates.expiring") && hooks.get(0).contains("SOON"));
+            assertTrue(got.toString(), got.toString().contains("expires"));
+            server.expiry.check(true);
+            assertEquals("not again at the same level", 1, hooks.size());
+        } finally {
+            hook.stop(0);
+        }
+    }
+
     @Test
     public void updateCheckReportsANewerReleaseAndSurvivesAnUnreachableServer() throws Exception {
         com.sun.net.httpserver.HttpServer releases = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);

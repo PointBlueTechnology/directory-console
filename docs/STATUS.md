@@ -15,7 +15,7 @@ It is a beta release. It has been tested against lab trees running eDirectory 9.
 | eDirectory | Partitions and replicas, servers, indexes (taking them offline and back, copying them to other servers), LDAP servers and groups (ports, TLS, bind restrictions, limits, referrals, trace, class and attribute mappings) with refresh and reload, schema with attribute flags, CEF auditing settings, SNMP traps, encrypted attribute policies and replica filters, encrypted replication (read-only, deprecated), password policies, challenge sets, login methods, enhanced background authentication. |
 | Certificates | The organizational CA and its configuration, server and user certificates, repairing the default server certificates, CRLs, export with the private key (PKCS#12). |
 | Identity Manager | **Drivers and driver sets:** state, start and stop (also all at once), start options, trace and log levels, named and Remote Loader passwords, properties (read-only), statistics, versions. **Jobs:** run, abort, create, edit, delete. **Inspection:** the cache inspector, the association inspector, the object inspector, per-user password synchronization status. **Data:** migrate and synchronize, mapping tables. |
-| Console | Its own TLS certificate, a trust store with fingerprint confirmation, versioned configuration with encrypted secrets, a hash-chained audit log, trusted reverse proxies. Shows its version, and tells administrators when a newer release is out (a daily check that can be turned off). |
+| Console | Its own TLS certificate, a daily certificate expiry check (its own, its trust store's, and each directory's PKI) with e-mail and signed webhook notices, a trust store with fingerprint confirmation, versioned configuration with encrypted secrets, a hash-chained audit log, trusted reverse proxies. Shows its version, and tells administrators when a newer release is out (a daily check that can be turned off). |
 | Container | Published for amd64 and arm64. Distroless, non-root, read-only root file system. No OpenText code, and nothing to mount for Identity Manager. |
 
 ## Limits
@@ -30,7 +30,7 @@ It is a beta release. It has been tested against lab trees running eDirectory 9.
 
 ## Not built yet
 
-- **Certificates and trust:** ACME certificates for the console, expiry monitoring and notifications (e-mail and webhooks), creating and deleting trusted roots, importing certificates from PKCS#12, and importing a CA.
+- **Certificates and trust:** ACME certificates for the console, creating and deleting trusted roots, importing certificates from PKCS#12, and importing a CA.
 - **Configuration:** backup and restore from inside the console. A volume backup works today; see [UPGRADING.md](UPGRADING.md).
 - **eDirectory:**
   - changing encrypted replication (deprecated from 9.2.7; shown only);

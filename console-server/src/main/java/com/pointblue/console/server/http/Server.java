@@ -60,6 +60,7 @@ public final class Server {
     final OtherDirectory other = new OtherDirectory(this);
     final Trees trees = new Trees(this);
     final Updates updates = new Updates(this);
+    final Expiry expiry = new Expiry(this);
     final Sessions sessions = new Sessions(Duration.ofMinutes(30), Duration.ofHours(12));
     final DirectLogin login;
     final com.pointblue.console.server.auth.OidcLogin oidc;
@@ -74,7 +75,7 @@ public final class Server {
     private final Idm idm = new Idm(this);
     private final Settings settings = new Settings(this);
     private final Edir edir = new Edir(this);
-    private final Security security = new Security(this);
+    final Security security = new Security(this);
     private final StaticFiles ui = new StaticFiles("web");
 
     /** Open the data directory and listen on {@code port}, every address. {@code publicUrl} is how browsers reach this server. */
@@ -136,10 +137,12 @@ public final class Server {
     public void start() {
         http.start();
         updates.start();
+        expiry.start();
     }
 
     public void stop() {
         updates.stop();
+        expiry.stop();
         http.stop(1);
     }
 
@@ -306,6 +309,10 @@ public final class Server {
         }
         if (updates.handles(path)) {
             updates.handle(ex, method, path);
+            return;
+        }
+        if (expiry.handles(path)) {
+            expiry.handle(ex, method, path);
             return;
         }
         if (trees.handles(path)) {

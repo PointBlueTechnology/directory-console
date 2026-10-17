@@ -1147,7 +1147,7 @@ final class Security {
 
     private static final String[] KMO = {"GUID", "cn", "hostServer", "nDSPKIPublicKeyCertificate", "nDSPKICertificateChain", "nDSPKINotAfter", "nDSPKISubjectName"};
 
-    private Map<String, Object> pki(Ldap l) throws NamingException {
+    Map<String, Object> pki(Ldap l) throws NamingException {
         Map<String, Object> out = new LinkedHashMap<>();
         // the Organizational CA
         Ldap.Entry sec = securityContainer(l);

@@ -1502,6 +1502,32 @@ export const updates = {
   checkNow: () => request<UpdateState>('POST', '/api/v2/console/updates/check', {}).then((r) => r.data),
 };
 
+export interface ExpiryFinding { kind: 'console' | 'trusted' | 'ca' | 'server' | 'trusted-root'; name: string; where: string; notAfter: string; days: number; level: 'expired' | '7days' | 'warn' }
+
+export interface ExpirySettings {
+  enabled: boolean;
+  warnDays: number;
+  email: null | { host: string; port: number; security: 'starttls' | 'tls' | 'none'; user?: string; password?: { set: true } | string | null; from: string; to: string[] };
+  webhooks: { url: string; id?: string; secret?: { set: true } | string | null; clearSecret?: boolean }[];
+}
+
+export interface ExpiryState {
+  settings: ExpirySettings;
+  checkedAt?: string;
+  findings?: ExpiryFinding[];
+  /** Directories or stores that could not be read. */
+  errors?: string[];
+  sent?: { destination: string; ok: boolean; error?: string }[];
+}
+
+/** Certificate expiry monitoring: the console's own certificate, its trust store, and each directory's PKI (with a service account). */
+export const expiry = {
+  get: () => request<ExpiryState>('GET', '/api/v2/console/expiry').then((r) => r.data),
+  save: (s: ExpirySettings) => request<ExpiryState>('PUT', '/api/v2/console/expiry', s).then((r) => r.data),
+  checkNow: () => request<ExpiryState>('POST', '/api/v2/console/expiry/check', {}).then((r) => r.data),
+  test: () => request<{ results: { destination: string; ok: boolean; error?: string }[] }>('POST', '/api/v2/console/expiry/test', {}).then((r) => r.data),
+};
+
 export const consoleSettings = {
   get: () => request<ConsoleSettings>('GET', '/api/v2/console/settings').then((r) => r.data),
   /** Either setting, or both; what is left out stays as it is. */
