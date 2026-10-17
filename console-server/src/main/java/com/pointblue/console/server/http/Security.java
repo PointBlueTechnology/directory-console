@@ -140,6 +140,7 @@ final class Security {
                 case "PATCH login-policy/sequences/{name}" -> changeSequence(ex, l, s, java.net.URLDecoder.decode(p[4], java.nio.charset.StandardCharsets.UTF_8));
                 case "DELETE login-policy/sequences/{name}" -> deleteSequence(ex, l, s, java.net.URLDecoder.decode(p[4], java.nio.charset.StandardCharsets.UTF_8));
                 case "POST pki/servers/{guid}/certificates" -> createServerCertificate(ex, l, s, guid);
+                case "POST pki/servers/{guid}/certificates/import" -> importServerCertificate(ex, l, s, guid);
                 case "GET pki/servers/{guid}/default-certificates" -> Http.json(ex, 200, defaultCertificates(l, guid));
                 case "POST pki/servers/{guid}/default-certificates" -> repairDefaultCertificates(ex, l, s, guid);
                 case "PUT pki/ldap-servers/{guid}/certificate" -> useForLdap(ex, l, s, guid);
@@ -235,6 +236,63 @@ final class Security {
         audit(s, "pki.server-certificate.create", made == null ? kmo : Names.guidHex(made.first("GUID")), detail, null);
         Map<String, Object> out = made == null ? Map.of("dn", kmo) : kmoJson(made);
         Http.json(ex, 201, out);
+    }
+
+    /**
+     * {@code POST pki/servers/{guid}/certificates/import}: {name, pkcs12 (base64), password}. A key and its chain from a
+     * PKCS#12 file become a new certificate on the server. The file is opened here first, and the name checked, so
+     * eDirectory is not sent a request it would refuse; it is sent in the form eDirectory's own exports take.
+     */
+    private void importServerCertificate(HttpExchange ex, Ldap l, Sessions.Session s, String serverGuid) throws IOException, NamingException {
+        Ldap.Entry srv = Servers.find(l, serverGuid);
+        if (srv == null) {
+            throw new Http.Problem(404, "no-such-server", "no eDirectory server has GUID " + serverGuid);
+        }
+        Map<String, Object> b = Http.body(ex);
+        String name = Http.string(b, "name", true).trim();
+        if (!name.matches("[A-Za-z0-9 _.-]{1,64}")) {
+            throw new Http.Problem(400, "bad-field", "a certificate name is 1-64 letters, digits, spaces, dots, dashes or underscores");
+        }
+        String password = Http.string(b, "password", true);
+        if (password.isEmpty() || password.length() > 128) {
+            throw new Http.Problem(400, "bad-field", "the file's password is 1 to 128 characters");
+        }
+        byte[] file;
+        try {
+            file = java.util.Base64.getMimeDecoder().decode(Http.string(b, "pkcs12", true));
+        } catch (IllegalArgumentException x) {
+            throw new Http.Problem(400, "bad-field", "pkcs12 is the file, base64-encoded");
+        }
+        String serverName = String.valueOf(srv.first("cn"));
+        String kmo = Names.child(Names.parent(srv.dn()), "cn", name + " - " + serverName);
+        if (l.read(kmo, "cn") != null) {
+            throw new Http.Problem(409, "exists", "the server already has a certificate named " + name);
+        }
+        Pki.KeyAndChain kc;
+        try {
+            kc = Pki.readPkcs12(file, password.toCharArray());
+        } catch (IllegalArgumentException x) {
+            throw new Http.Problem(400, "bad-file", x.getMessage());
+        }
+        // eDirectory reads only files in the form it writes itself; it refuses others, and a refused PKI request has
+        // been followed by ndsd crashing, so they are not sent
+        if (!Pki.edirForm(file)) {
+            throw new Http.Problem(400, "unsupported-file", "eDirectory imports only files protected the way it exports them (PBE-SHA1-3DES for the key, "
+                + "RC2-40 for the certificates): export the certificate from eDirectory (this console's PBES1 export, Identity Console or iManager)");
+        }
+        byte[] forEdir = file;
+        Map<String, Object> detail = new LinkedHashMap<>(Map.of("server", srv.dn(), "name", name,
+            "subject", kc.chain()[0].getSubjectX500Principal().getName(), "sha256", com.pointblue.console.server.tls.Certs.sha256(kc.chain()[0])));
+        try {
+            Pki.importServerCertificate(l, srv.dn(), name, forEdir, password);
+        } catch (Pki.Refused r) {
+            detail.put("code", r.code);
+            audit(s, "pki.server-certificate.import", null, detail, null);
+            throw new Http.Problem(409, "pki-refused", r.getMessage(), Map.of("code", r.code));
+        }
+        Ldap.Entry made = l.read(kmo, KMO);
+        audit(s, "pki.server-certificate.import", made == null ? kmo : Names.guidHex(made.first("GUID")), detail, null);
+        Http.json(ex, 201, made == null ? Map.of("dn", kmo) : kmoJson(made));
     }
 
     private Map<String, Object> kmoJson(Ldap.Entry k) {

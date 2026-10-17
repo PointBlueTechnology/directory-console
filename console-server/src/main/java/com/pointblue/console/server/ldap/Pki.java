@@ -180,6 +180,66 @@ public final class Pki {
         }
     }
 
+    /** A private key and its chain, read from a PKCS#12 file and checked. */
+    public record KeyAndChain(java.security.PrivateKey key, java.security.cert.X509Certificate[] chain) {
+    }
+
+    /**
+     * The key and chain in a PKCS#12 file, or an explanation of what is wrong with it: a wrong password, no private
+     * key, or more than one. Checked here so eDirectory is never sent a file it would refuse.
+     */
+    public static KeyAndChain readPkcs12(byte[] pfx, char[] password) {
+        try {
+            java.security.KeyStore ks = java.security.KeyStore.getInstance("PKCS12");
+            ks.load(new java.io.ByteArrayInputStream(pfx), password);
+            java.security.PrivateKey key = null;
+            java.security.cert.Certificate[] chain = null;
+            for (String alias : java.util.Collections.list(ks.aliases())) {
+                if (ks.isKeyEntry(alias)) {
+                    if (key != null) {
+                        throw new IllegalArgumentException("the file holds more than one private key");
+                    }
+                    key = (java.security.PrivateKey) ks.getKey(alias, password);
+                    chain = ks.getCertificateChain(alias);
+                }
+            }
+            if (key == null || chain == null || chain.length == 0) {
+                throw new IllegalArgumentException("the file holds no private key with its certificate");
+            }
+            java.security.cert.X509Certificate[] x = new java.security.cert.X509Certificate[chain.length];
+            for (int i = 0; i < chain.length; i++) {
+                x[i] = (java.security.cert.X509Certificate) chain[i];
+            }
+            return new KeyAndChain(key, x);
+        } catch (java.io.IOException e) {
+            throw new IllegalArgumentException("the file could not be opened: a wrong password, or not a PKCS#12 file");
+        } catch (java.security.GeneralSecurityException e) {
+            throw new IllegalArgumentException("the file could not be read: " + e.getMessage());
+        }
+    }
+
+    /** Whether a PKCS#12 file is already in the form eDirectory exports: key PBE-SHA1-3DES, certificates PBE-SHA1-RC2-40. */
+    public static boolean edirForm(byte[] pfx) {
+        String hex = java.util.HexFormat.of().formatHex(pfx);
+        return hex.contains("2a864886f70d010c0103") && hex.contains("2a864886f70d010c0106") && !hex.contains("2a864886f70d01050d");
+    }
+
+    /**
+     * Import a key and chain as a new server certificate {@code name} on {@code serverDn} (Identity Console's
+     * importCertificate: {serverDN, certificateName, fileContent, password}). On ig4 (9.2.8, 2026-10-17) eDirectory
+     * imported a file it had exported itself, and refused (-1443, "wrong password") a file re-written with Bouncy
+     * Castle in the very same layout (algorithms, iterations, one-iteration MAC, bag order and attributes): pass
+     * only files in eDirectory's form ({@link #edirForm}), unchanged.
+     */
+    public static void importServerCertificate(Ldap l, String serverDn, String name, byte[] pfx, String password) throws NamingException, Refused {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("serverDN", dotted(serverDn));
+        p.put("certificateName", name);
+        p.put("fileContent", java.util.Base64.getEncoder().encodeToString(pfx));
+        p.put("password", password);
+        call(l, SERVER_CERTIFICATES, "importCertificate", p);
+    }
+
     /** RFC 5280 revocation reasons the CA accepts (7 is unused; 8, remove from CRL, is not a revocation). */
     public static final java.util.Set<Integer> REASONS = java.util.Set.of(0, 1, 2, 3, 4, 5, 6, 9, 10);
 

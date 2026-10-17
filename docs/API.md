@@ -98,6 +98,7 @@ GET    /api/v2/trees/{tree}/edir/servers/{id}/replica-filter
 PUT    /api/v2/trees/{tree}/edir/servers/{id}/replica-filter         {"classes": [{class, attributes}]}; [] clears it
 POST   /api/v2/trees/{tree}/security/pki/server-certificates/{guid}/export           {password, scheme}: PKCS#12
 POST   /api/v2/trees/{tree}/security/objects/{guid}/certificates/{name}/export       the same, for a user's own certificate
+POST   /api/v2/trees/{tree}/security/pki/servers/{guid}/certificates/import          {"name", "pkcs12": base64, "password"}: only files in eDirectory's export form
 POST   /api/v2/trees/{tree}/security/pki/trusted-root-containers                     {"parent", "name"}
 DELETE /api/v2/trees/{tree}/security/pki/trusted-root-containers/{guid}              only an empty one
 POST   /api/v2/trees/{tree}/security/pki/trusted-root-containers/{guid}/roots        {"certificate": PEM or base64 DER, "name"?}

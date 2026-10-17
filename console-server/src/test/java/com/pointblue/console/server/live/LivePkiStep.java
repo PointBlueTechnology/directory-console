@@ -325,6 +325,42 @@ public final class LivePkiStep {
                     d.put("If-Match", "*");
                     System.out.println("[" + call("DELETE", t + "/objects/" + ou.body().get("guid") + "?subtree=true", null, d).status() + "] test OU deleted");
                 }
+                // PKI WRITE: export a server certificate (args: its full name) and import it on another server (args: server name, new name)
+                case "import-try" -> {
+                    String kg = null;
+                    for (Object o : (List<?>) call("GET", t + "/security/pki", null, h).body().get("serverCertificates")) {
+                        if (String.valueOf(Json.asMap(o).get("name")).equals(args[3])) {
+                            kg = (String) Json.asMap(o).get("guid");
+                        }
+                    }
+                    byte[] r = new byte[18];
+                    new java.security.SecureRandom().nextBytes(r);
+                    String filePw = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(r);
+                    LiveSetupCheck.Reply x = call("POST", t + "/security/pki/server-certificates/" + kg + "/export", Map.of("password", filePw, "scheme", args.length > 6 ? args[6] : "pbes2"), h);
+                    System.out.println("[" + x.status() + "] exported " + args[3]);
+                    if (x.status() != 200) {
+                        show(x);
+                        return;
+                    }
+                    String srv = serverNamed(call("GET", t + "/edir/servers", null, h), args[4]);
+                    LiveSetupCheck.Reply imp = call("POST", t + "/security/pki/servers/" + srv + "/certificates/import",
+                        Map.of("name", args[5], "pkcs12", x.body().get("pkcs12"), "password", filePw), h);
+                    show(imp);
+                }
+                // PKI READ: save a server certificate's export (eDirectory's own bytes, PBES1) for analysis (args: name, out file, password)
+                case "export-save" -> {
+                    String kg = null;
+                    for (Object o : (List<?>) call("GET", t + "/security/pki", null, h).body().get("serverCertificates")) {
+                        if (String.valueOf(Json.asMap(o).get("name")).equals(args[3])) {
+                            kg = (String) Json.asMap(o).get("guid");
+                        }
+                    }
+                    LiveSetupCheck.Reply x = call("POST", t + "/security/pki/server-certificates/" + kg + "/export", Map.of("password", args[5], "scheme", "pbes1"), h);
+                    System.out.println("[" + x.status() + "]");
+                    if (x.status() == 200) {
+                        Files.write(Path.of(args[4]), java.util.Base64.getDecoder().decode((String) x.body().get("pkcs12")));
+                    }
+                }
                 // READ-ONLY: encryption policies and encrypted replication; a server's replica filter
                 case "encryption" -> show(call("GET", t + "/edir/encryption", null, h));
                 case "replica-filter" -> show(call("GET", t + "/edir/servers/" + serverNamed(call("GET", t + "/edir/servers", null, h), args[3]) + "/replica-filter", null, h));

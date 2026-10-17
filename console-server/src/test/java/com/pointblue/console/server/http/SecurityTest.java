@@ -290,6 +290,29 @@ public class SecurityTest {
     }
 
     @Test
+    public void anImportIsCheckedBeforeEDirectoryIsAsked() throws Exception {
+        String edir1 = guidOf("cn=edir1,ou=servers,o=system");
+        String t = "/api/v2/trees/acme/security/pki/servers/" + edir1 + "/certificates";
+        com.pointblue.console.server.tls.TestPki ca = new com.pointblue.console.server.tls.TestPki("ACME");
+        com.pointblue.console.server.tls.TestPki.Server made = ca.server("web", List.of("web.example"));
+        java.security.KeyStore ks = java.security.KeyStore.getInstance("PKCS12");
+        ks.load(null, null);
+        ks.setKeyEntry("web", made.key().getPrivate(), "secret-1".toCharArray(), new java.security.cert.Certificate[] {made.cert()});
+        java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+        ks.store(o, "secret-1".toCharArray());
+        String file = java.util.Base64.getEncoder().encodeToString(o.toByteArray());
+        int asked = edir.pkiOps.requests.size();
+        Reply wrong = call("POST", t + "/import", Map.of("name", "web5", "pkcs12", file, "password", "nope"), h);
+        assertEquals(400, wrong.status());
+        assertEquals("bad-file", wrong.body().get("title"));
+        Reply pbes2 = call("POST", t + "/import", Map.of("name", "web5", "pkcs12", file, "password", "secret-1"), h);
+        assertEquals("a file not in eDirectory's own form", "unsupported-file", pbes2.body().get("title"));
+        assertEquals(201, call("POST", t, Map.of("name", "web6"), h).status());
+        assertEquals("a name the server already has", 409, call("POST", t + "/import", Map.of("name", "web6", "pkcs12", file, "password", "secret-1"), h).status());
+        assertEquals("eDirectory was not asked to import", asked + 1, edir.pkiOps.requests.stream().skip(asked).count());
+    }
+
+    @Test
     public void trustedRootContainersAndRootsAreMadeAndRemoved() throws Exception {
         String t = "/api/v2/trees/acme/security/pki";
         Reply made = call("POST", t + "/trusted-root-containers", Map.of("parent", "o=acme", "name", "Partners"), h);

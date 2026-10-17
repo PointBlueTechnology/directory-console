@@ -1265,6 +1265,9 @@ export function security(id: string) {
     deleteSequence: (name: string, confirm?: string, count?: number) =>
       request<LoginPolicy>('DELETE', `${base}/login-policy/sequences/${encodeURIComponent(name)}`, undefined, h(confirm, count ? { 'X-Confirm-Count': String(count) } : {})).then((r) => r.data),
     /** A server certificate (key material object) on a server, from the tree CA. */
+    /** A key and chain from a PKCS#12 file (base64) as a new certificate on the server; eDirectory takes only files in its own export form. */
+    importServerCertificate: (serverGuid: string, name: string, pkcs12: string, password: string, confirm?: string) =>
+      request<unknown>('POST', `${base}/pki/servers/${guidPath(serverGuid)}/certificates/import`, { name, pkcs12, password }, h(confirm)).then((r) => r.data),
     createServerCertificate: (serverGuid: string, body: CertificateRequest, confirm?: string) =>
       request<ServerCertificate>('POST', `${base}/pki/servers/${guidPath(serverGuid)}/certificates`, body, h(confirm)).then((r) => r.data),
     /** A server's default certificates (SSL CertificateDNS, SSL EC CertificateDNS, SSL CertificateIP) and what is wrong with each. */

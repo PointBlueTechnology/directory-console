@@ -450,6 +450,13 @@ export const CONTENT: Record<string, HelpTopic> = {
     summary: 'The directory\'s Organizational CA, the certificates it has issued to servers, trusted roots and CRLs.',
     sections: [
       {
+        title: 'Importing a certificate',
+        list: [
+          'Import… takes a PKCS#12 (.pfx or .p12) file with a key and its chain, and makes it a new certificate on a server.',
+          'eDirectory reads only files protected the way it exports them (3DES for the key, RC2-40 for the certificates), so use an export from eDirectory: Export with key here with PBES1, Identity Console or iManager. Other files are refused before eDirectory is asked.',
+        ],
+      },
+      {
         title: 'Trusted roots',
         list: [
           'Trusted root containers hold certificates that services set up to use them (NMAS, SSL clients configured with the container) accept, with whatever those roots sign.',

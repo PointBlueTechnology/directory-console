@@ -15,6 +15,7 @@ import { SequenceModal } from '../components/SequenceModal';
 import { RevokeModal, revokedNotice } from '../components/RevokeCertificate';
 import { ExportKeyModal } from '../components/ExportKey';
 import { TrustedRootsCard } from '../components/TrustedRoots';
+import { ImportCertificateModal } from '../components/ImportCertificate';
 import { DefaultCertificatesModal } from '../components/DefaultCertificates';
 import { CaConfigurationPanel } from '../components/CaConfiguration';
 import { ExpiryLabel, Fingerprint, WARN_DAYS } from '../components/Certificates';
@@ -63,6 +64,7 @@ function CertificatesView() {
   const [opError, setOpError] = useState<unknown>(null);
   const [revoking, setRevoking] = useState<Pki['serverCertificates'][number] | null>(null);
   const [exporting, setExporting] = useState<Pki['serverCertificates'][number] | null>(null);
+  const [importing, setImporting] = useState(false);
   const [opNotice, setOpNotice] = useState<string | null>(null);
   const confirmed = useConfirmed();
   const sure = useAreYouSure();
@@ -139,6 +141,7 @@ function CertificatesView() {
         <CardTitle><Flex><FlexItem grow={{ default: 'grow' }}><Title headingLevel="h2" size="lg">Server certificates</Title></FlexItem>
           {editor && pki.ca && <FlexItem><Hint text={explain('defaultCertificates')}><Button variant="secondary" onClick={() => setDefaults(true)} isAriaDisabled={servers.length === 0}>Default certificates…</Button></Hint></FlexItem>}
           {editor && pki.ca && <FlexItem><Button variant="secondary" onClick={() => setCreating(true)} isDisabled={servers.length === 0}>New server certificate</Button></FlexItem>}
+          {editor && <FlexItem><Button variant="secondary" onClick={() => setImporting(true)} isDisabled={servers.length === 0}>Import…</Button></FlexItem>}
         </Flex></CardTitle>
         <CardBody>
           <ProblemAlert error={opError} />
@@ -182,6 +185,10 @@ function CertificatesView() {
               onClose={() => setCreating(false)} />
           )}
           {defaults && <DefaultCertificatesModal servers={servers} onClose={() => setDefaults(false)} onChanged={load} />}
+          {importing && (
+            <ImportCertificateModal servers={servers.map((x) => ({ guid: x.guid, name: x.name }))} onClose={() => setImporting(false)}
+              onImport={(server, name, file, password) => confirmed.run((c) => api.importServerCertificate(server, name, file, password, c)).then(() => { load(); })} />
+          )}
           {exporting && (
             <ExportKeyModal name={exporting.name} onClose={() => setExporting(null)}
               onExport={(body) => api.exportServerCertificate(exporting.guid!, body)} />

@@ -78,4 +78,20 @@ public class PkiTest {
         assertEquals(made.cert(), back.getCertificateChain("web")[0]);
         assertThrows(Pki.Refused.class, () -> Pki.pbes2(o.toByteArray(), "wrong-pw".toCharArray()));
     }
+
+    @Test
+    public void anImportIsCheckedAndOnlyEDirectorysOwnFormIsAccepted() throws Exception {
+        com.pointblue.console.server.tls.TestPki ca = new com.pointblue.console.server.tls.TestPki("ACME");
+        com.pointblue.console.server.tls.TestPki.Server made = ca.server("web", List.of("web.example"));
+        char[] pw = "secret-1".toCharArray();
+        java.security.KeyStore ks = java.security.KeyStore.getInstance("PKCS12");
+        ks.load(null, null);
+        ks.setKeyEntry("web", made.key().getPrivate(), pw, new java.security.cert.Certificate[] {made.cert(), ca.ca});
+        java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+        ks.store(o, pw);
+        assertThrows("a wrong password", IllegalArgumentException.class, () -> Pki.readPkcs12(o.toByteArray(), "nope".toCharArray()));
+        Pki.KeyAndChain kc = Pki.readPkcs12(o.toByteArray(), pw);
+        assertEquals(2, kc.chain().length);
+        assertFalse("the JDK writes PBES2", Pki.edirForm(o.toByteArray()));
+    }
 }
