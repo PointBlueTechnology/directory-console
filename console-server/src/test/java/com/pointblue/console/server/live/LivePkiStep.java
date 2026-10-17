@@ -195,6 +195,105 @@ public final class LivePkiStep {
                     LiveSetupCheck.Reply back = call("PATCH", path, Map.of("traps", Map.of(n, Map.of("interval", was))), h);
                     System.out.println("[" + back.status() + "] restored; traps identical to before: " + String.valueOf(back.body().get("traps")).equals(String.valueOf(g.get("traps"))));
                 }
+                // WRITE: a throwaway public-read attribute on a test user, a policy encrypting it on one server, and anonymous
+                // clear-text reads on that server before and after (args: server name, server address)
+                case "eap-try" -> {
+                    String srv = serverNamed(call("GET", t + "/edir/servers", null, h), args[3]);
+                    show(call("POST", t + "/edir/schema/attributes", Map.of("name", "dcTestSecret", "syntax", "1.3.6.1.4.1.1466.115.121.1.15", "singleValue", true,
+                        "flags", List.of("publicRead")), h));
+                    show(call("POST", t + "/edir/schema/classes", Map.of("name", "dcTestAux", "kind", "auxiliary", "may", List.of("dcTestSecret")), h));
+                    LiveSetupCheck.Reply ou = call("POST", t + "/objects/" + guid(t, h, "o=data") + "/children",
+                        Map.of("objectClass", "organizationalUnit", "name", Map.of("type", "ou", "value", "dc-eap-test")), h);
+                    show(ou);
+                    LiveSetupCheck.Reply user = call("POST", t + "/objects/" + ou.body().get("guid") + "/children", Map.of("objectClass", List.of("inetOrgPerson", "dcTestAux"), "name", Map.of("type", "cn", "value", "eapuser"),
+                        "attributes", Map.of("sn", List.of("Eap"), "dcTestSecret", List.of("plain-before"))), h);
+                    show(user);
+                    System.out.println("anonymous clear read before: " + anonymousRead(args[4], "cn=eapuser,ou=dc-eap-test,o=data", "dcTestSecret"));
+                    LiveSetupCheck.Reply made = call("POST", t + "/edir/encryption/policies", Map.of("parent", "ou=dc-eap-test,o=data", "name", "dcTestPolicy",
+                        "attributes", List.of(Map.of("attribute", "dcTestSecret"))), h);
+                    show(made);
+                    String pg = null;
+                    for (Object o : (List<?>) made.body().get("policies")) {
+                        if ("dcTestPolicy".equals(Json.asMap(o).get("name"))) {
+                            pg = (String) Json.asMap(o).get("guid");
+                        }
+                    }
+                    LiveSetupCheck.Reply as = call("PUT", t + "/edir/servers/" + srv + "/encryption-policy", Map.of("policy", pg), h);
+                    if (as.status() == 409 && "server-sign-in-required".equals(as.body().get("title"))) {
+                        show(call("POST", "/api/v2/session/servers", Map.of("server", srv, "password", pw), h));
+                        as = call("PUT", t + "/edir/servers/" + srv + "/encryption-policy", Map.of("policy", pg), h);
+                    }
+                    show(as);
+                    Thread.sleep(20_000);
+                    System.out.println("anonymous clear read after: " + anonymousRead(args[4], "cn=eapuser,ou=dc-eap-test,o=data", "dcTestSecret"));
+                }
+                // WRITE: [Public] may browse the test OU and below (removed with the OU); then an anonymous clear read (args: server address)
+                case "eap-read" -> {
+                    Map<String, String> m = new HashMap<>(h);
+                    m.put("If-Match", "*");
+                    show(call("PATCH", t + "/objects/" + guid(t, h, "ou=dc-eap-test,o=data"), Map.of("changes", List.of(Map.of("op", "add", "attribute", "ACL",
+                        "values", List.of(Map.of("privileges", 1, "scope", "subtree", "trustee", Map.of("special", "[Public]"), "attribute", "[Entry Rights]"))))), m));
+                    Thread.sleep(15_000);
+                    System.out.println("anonymous clear read: " + anonymousRead(args[3], "cn=eapuser,ou=dc-eap-test,o=data", "dcTestSecret"));
+                }
+                // WRITE: give the server the test policy again (limber runs there), wait, then an anonymous clear read (args: server name, address)
+                case "eap-again" -> {
+                    String srv = serverNamed(call("GET", t + "/edir/servers", null, h), args[3]);
+                    String pg = null;
+                    for (Object o : (List<?>) call("GET", t + "/edir/encryption", null, h).body().get("policies")) {
+                        if ("dcTestPolicy".equals(Json.asMap(o).get("name"))) {
+                            pg = (String) Json.asMap(o).get("guid");
+                        }
+                    }
+                    LiveSetupCheck.Reply as = call("PUT", t + "/edir/servers/" + srv + "/encryption-policy", Map.of("policy", pg), h);
+                    if (as.status() == 409 && "server-sign-in-required".equals(as.body().get("title"))) {
+                        show(call("POST", "/api/v2/session/servers", Map.of("server", srv, "password", pw), h));
+                        as = call("PUT", t + "/edir/servers/" + srv + "/encryption-policy", Map.of("policy", pg), h);
+                    }
+                    System.out.println("[" + as.status() + "] assigned again");
+                    Thread.sleep(30_000);
+                    System.out.println("anonymous clear read: " + anonymousRead(args[4], "cn=eapuser,ou=dc-eap-test,o=data", "dcTestSecret"));
+                }
+                case "eap-clean" -> {
+                    String srv = serverNamed(call("GET", t + "/edir/servers", null, h), args[3]);
+                    LiveSetupCheck.Reply un = call("PUT", t + "/edir/servers/" + srv + "/encryption-policy", java.util.Collections.singletonMap("policy", null), h);
+                    if (un.status() == 409 && "server-sign-in-required".equals(un.body().get("title"))) {
+                        show(call("POST", "/api/v2/session/servers", Map.of("server", srv, "password", pw), h));
+                        un = call("PUT", t + "/edir/servers/" + srv + "/encryption-policy", java.util.Collections.singletonMap("policy", null), h);
+                    }
+                    show(un);
+                    for (Object o : (List<?>) un.body().get("policies")) {
+                        if ("dcTestPolicy".equals(Json.asMap(o).get("name"))) {
+                            show(call("DELETE", t + "/edir/encryption/policies/" + Json.asMap(o).get("guid"), null, h));
+                        }
+                    }
+                    String ou = guid(t, h, "ou=dc-eap-test,o=data");
+                    if (ou != null) {
+                        Map<String, String> d = new HashMap<>(h);
+                        d.put("X-Confirm-Count", String.valueOf(call("GET", t + "/objects/" + ou + "/subtree", null, h).body().get("count")));
+                        d.put("If-Match", "*");
+                        show(call("DELETE", t + "/objects/" + ou + "?subtree=true", null, d));
+                    }
+                    show(call("DELETE", t + "/edir/schema/classes/dcTestAux", null, h));
+                    show(call("DELETE", t + "/edir/schema/attributes/dcTestSecret", null, h));
+                }
+                // WRITE then CLEAR: one filter given as JSON (args: server name, JSON list of {class, attributes})
+                case "filter-one" -> {
+                    String srv = serverNamed(call("GET", t + "/edir/servers", null, h), args[3]);
+                    show(call("PUT", t + "/edir/servers/" + srv + "/replica-filter", Map.of("classes", Json.parse(args[4])), h));
+                    show(call("GET", t + "/edir/servers/" + srv + "/replica-filter", null, h));
+                    show(call("PUT", t + "/edir/servers/" + srv + "/replica-filter", Map.of("classes", List.of()), h));
+                }
+                // WRITE then CLEAR: a replica filter on a server with no filtered replicas (args: server name)
+                case "filter-try" -> {
+                    String srv = serverNamed(call("GET", t + "/edir/servers", null, h), args[3]);
+                    show(call("GET", t + "/edir/servers/" + srv + "/replica-filter", null, h));
+                    show(call("PUT", t + "/edir/servers/" + srv + "/replica-filter", Map.of("classes", List.of(
+                        Map.of("class", "inetOrgPerson", "attributes", List.of("cn", "sn", "mail")), Map.of("class", "organizationalUnit", "attributes", List.of()))), h));
+                    show(call("GET", t + "/edir/servers/" + srv + "/replica-filter", null, h));
+                    show(call("PUT", t + "/edir/servers/" + srv + "/replica-filter", Map.of("classes", List.of()), h));
+                    show(call("GET", t + "/edir/servers/" + srv + "/replica-filter", null, h));
+                }
                 // READ-ONLY: encryption policies and encrypted replication; a server's replica filter
                 case "encryption" -> show(call("GET", t + "/edir/encryption", null, h));
                 case "replica-filter" -> show(call("GET", t + "/edir/servers/" + serverNamed(call("GET", t + "/edir/servers", null, h), args[3]) + "/replica-filter", null, h));
@@ -368,6 +467,25 @@ public final class LivePkiStep {
             }
         });
         return found.isEmpty() ? "unrecognised" : String.join(", ", found);
+    }
+
+    /** An anonymous read of one attribute over clear LDAP (port 389): its value, or the error eDirectory gives. */
+    private static String anonymousRead(String host, String dn, String attribute) {
+        java.util.Hashtable<String, String> env = new java.util.Hashtable<>();
+        env.put(javax.naming.Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory");
+        env.put(javax.naming.Context.PROVIDER_URL, "ldap://" + host + ":389");
+        env.put("com.sun.jndi.ldap.connect.timeout", "5000");
+        try {
+            javax.naming.directory.InitialDirContext c = new javax.naming.directory.InitialDirContext(env);
+            try {
+                javax.naming.directory.Attribute a = c.getAttributes(dn, new String[] {attribute}).get(attribute);
+                return a == null ? "(not returned)" : "value " + a.get();
+            } finally {
+                c.close();
+            }
+        } catch (javax.naming.NamingException e) {
+            return "refused: " + e.getMessage();
+        }
     }
 
     private static String guid(String t, Map<String, String> h, String dn) throws Exception {

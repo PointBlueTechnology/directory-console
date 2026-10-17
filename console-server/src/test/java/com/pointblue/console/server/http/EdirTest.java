@@ -344,6 +344,37 @@ public class EdirTest {
         assertTrue(edir.server.getEntry(S1).hasAttributeValue("cefConfiguration", "cefEvents=LOGIN"));
         assertEquals(400, call("PUT", "/api/v2/trees/acme/edir/servers/" + g1 + "/audit", Map.of("events", List.of("NOPE")), h).status());
         assertEquals(false, call("DELETE", "/api/v2/trees/acme/edir/servers/" + g1 + "/audit", null, h).body().get("configured"));
+
+        // policies: made, changed keeping each attribute's scheme, eDirectory's own attributes refused, assigned with limber, deleted when unused
+        String t = "/api/v2/trees/acme/edir/encryption";
+        assertEquals(201, call("POST", t + "/policies", Map.of("parent", "o=acme", "name", "Desk", "attributes", List.of(Map.of("attribute", "description", "scheme", "3des"))), h).status());
+        String desk = ((List<?>) call("GET", t, null, h).body().get("policies")).stream().map(Json::asMap).filter(p -> "Desk".equals(p.get("name"))).findFirst().orElseThrow().get("guid").toString();
+        assertEquals(400, call("POST", t + "/policies", Map.of("parent", "o=acme", "name", "Bad", "attributes", List.of(Map.of("attribute", "ACL"))), h).status());
+        assertEquals(400, call("POST", t + "/policies", Map.of("parent", "o=acme", "name", "Bad", "attributes", List.of(Map.of("attribute", "description", "scheme", "rot13"))), h).status());
+        Reply kept = call("PATCH", t + "/policies/" + desk, Map.of("attributes", List.of(Map.of("attribute", "description"), Map.of("attribute", "mail"))), h);
+        assertEquals(String.valueOf(kept.body()), 200, kept.status());
+        assertTrue(edir.server.getEntry("cn=Desk,o=acme").hasAttributeValue("attrEncryptionDefinition", "3des$description"));
+        String g2 = (String) list(call("GET", "/api/v2/trees/acme/edir/servers", null, h)).get(0).get("guid");
+        edir.partitions.triggered.clear();
+        Reply assigned = call("PUT", "/api/v2/trees/acme/edir/servers/" + g2 + "/encryption-policy", Map.of("policy", desk), h);
+        assertEquals(String.valueOf(assigned.body()), 200, assigned.status());
+        assertEquals(true, assigned.body().get("applied"));
+        assertEquals("limber ran", 1, edir.partitions.triggered.size());
+        assertEquals("in use", 409, call("DELETE", t + "/policies/" + desk, null, h).status());
+        String other = (String) list(call("GET", "/api/v2/trees/acme/edir/servers", null, h)).get(1).get("guid");
+        Reply notSignedIn = call("PUT", "/api/v2/trees/acme/edir/servers/" + other + "/encryption-policy", Map.of("policy", desk), h);
+        assertEquals("server-sign-in-required", notSignedIn.body().get("title"));
+        assertEquals("and nothing changed on that server", false, edir.server.getEntry(S2).hasAttribute("encryptionPolicyDN"));
+        assertEquals(200, call("PUT", "/api/v2/trees/acme/edir/servers/" + g2 + "/encryption-policy", java.util.Collections.singletonMap("policy", null), h).status());
+        assertEquals(200, call("DELETE", t + "/policies/" + desk, null, h).status());
+
+        // a replica filter: checked against the schema, sent with LDAP names
+        assertEquals(400, call("PUT", "/api/v2/trees/acme/edir/servers/" + g2 + "/replica-filter", Map.of("classes", List.of(Map.of("class", "noSuchClass"))), h).status());
+        edir.partitions.triggered.clear();
+        Reply filtered = call("PUT", "/api/v2/trees/acme/edir/servers/" + g2 + "/replica-filter",
+            Map.of("classes", List.of(Map.of("class", "inetOrgPerson", "attributes", List.of("cn", "sn")))), h);
+        assertEquals(String.valueOf(filtered.body()), 200, filtered.status());
+        assertTrue(String.valueOf(edir.partitions.triggered), edir.partitions.triggered.stream().anyMatch(x -> x.startsWith("2.16.840.1.113719.1.27.100.35")));
         assertEquals(false, edir.server.getEntry(S1).hasAttribute("cefConfiguration"));
     }
 }

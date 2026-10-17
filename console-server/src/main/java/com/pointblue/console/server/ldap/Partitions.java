@@ -27,6 +27,7 @@ public final class Partitions {
     static final String REFRESH_LDAP = BASE + "9";
     static final String RELOAD_MODULE = BASE + "127";
     static final String GET_REPLICA_FILTER = BASE + "37";
+    static final String SET_REPLICA_FILTER = BASE + "35";
     static final String REMOVE_REPLICA = BASE + "11";
     static final String ENTRY_COUNT = BASE + "13";
     static final String CHANGE_TYPE = BASE + "15";
@@ -234,6 +235,21 @@ public final class Partitions {
             collectFilter(Ber.read(r), out);
         }
         return out;
+    }
+
+    /**
+     * Set {@code serverDn}'s replica filter (.35, as JLDAP's SetReplicationFilterRequest): the server's DN, then
+     * SEQUENCE OF SEQUENCE { class name, SEQUENCE OF attribute name }. An empty list clears it. Every filtered
+     * replica on the server resynchronises.
+     */
+    public static void setReplicaFilter(Ldap l, String serverDn, List<FilterClass> filter) throws NamingException {
+        java.io.ByteArrayOutputStream classes = new java.io.ByteArrayOutputStream();
+        for (FilterClass c : filter) {
+            java.io.ByteArrayOutputStream attrs = new java.io.ByteArrayOutputStream();
+            c.attributes().forEach(a -> attrs.writeBytes(octets(a)));
+            classes.writeBytes(Ber.tlv(0x30, Ber.concat(octets(c.className()), Ber.tlv(0x30, attrs.toByteArray()))));
+        }
+        l.extended(SET_REPLICA_FILTER, Ber.concat(octets(serverDn), Ber.tlv(0x30, classes.toByteArray())));
     }
 
     private static void collectFilter(List<Ber.Element> elements, List<FilterClass> out) {

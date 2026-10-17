@@ -328,11 +328,11 @@ export const CONTENT: Record<string, HelpTopic> = {
   },
   'edir.encryption': {
     title: 'Encryption',
-    summary: 'Encrypted attribute policies and encrypted replication, shown read-only, and where FIPS mode is set.',
+    summary: 'Encrypted attribute policies and which server uses which, encrypted replication (shown only), and where FIPS mode is set.',
     sections: [
       {
         title: 'Encrypted attributes',
-        paragraphs: ['A policy names attributes a server keeps encrypted in its database. Encrypting cannot be undone securely: values written before stay on disk in clear text. Changing policies is left to Identity Console for now.'],
+        paragraphs: ['A policy names attributes a server keeps encrypted in its database; each server uses at most one. Giving a server a policy runs limber there, which applies it; the console first waits for a new policy to reach that server. Encrypting cannot be undone securely: values written before stay on disk in clear text, and so do pieces of old values when a scheme changes. With secure channel only, clear-text LDAP reads of the values fail (-6089). Do not encrypt indexed attributes or eDirectory\'s own.'],
       },
       {
         title: 'Encrypted replication',

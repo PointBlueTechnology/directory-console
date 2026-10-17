@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActionGroup, Alert, Button, Card, CardBody, CardTitle, Checkbox, ExpandableSection, Flex, FlexItem, Form, FormGroup, FormHelperText, FormSelect,
-  FormSelectOption, HelperText, HelperTextItem, Label, Spinner, TextArea, TextInput, Title,
+  FormSelectOption, HelperText, HelperTextItem, Label, Modal, ModalBody, ModalFooter, ModalHeader, Spinner, TextArea, TextInput, Title,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { type AuditConfig, type CefSettings, type EdirServer, type EncryptionOverview, type SnmpGroup, type SnmpTrap, edir } from '../api';
@@ -9,6 +9,7 @@ import { useSession } from '../session';
 import { linkProps } from '../router';
 import { ProblemAlert } from './Problem';
 import { useAreYouSure, useConfirmed } from './Confirm';
+import { useServerSignIn } from './ServerSignIn';
 
 const CATEGORY: Record<string, string> = { security: 'Security events', object: 'Object events', attribute: 'Attribute events', ldap: 'LDAP events' };
 /** Events that can flood the log on a busy server. */
@@ -228,28 +229,50 @@ function IntervalField({ id, label, hideLabel, value, edit, onSave }: { id: stri
   return hideLabel ? input : <FormGroup label={label} fieldId={id}>{input}</FormGroup>;
 }
 
-/** Encrypted attributes and encrypted replication, read-only for now; and where FIPS mode is set. */
+/** Encrypted attribute policies (made, changed, given to servers) and encrypted replication; and where FIPS mode is set. */
 export function EncryptionView() {
-  const { me } = useSession();
+  const { me, canAt } = useSession();
   const api = useMemo(() => edir(me.directory), [me.directory]);
+  const edit = canAt('editor', '');
   const [e, setE] = useState<EncryptionOverview | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [editing, setEditing] = useState<null | { guid?: string; parent: string; name: string; attributes: { attribute: string; scheme: string }[]; secure: boolean }>(null);
+  const confirmed = useConfirmed();
+  const signIn = useServerSignIn();
+  const sure = useAreYouSure();
   const load = useCallback(() => { setError(null); api.encryption().then(setE, setError); }, [api]);
   useEffect(load, [load]);
   if (!e) {
     return error ? <ProblemAlert error={error} onRetry={load} /> : <Spinner aria-label="Reading the encryption settings" />;
   }
   const policyName = (dn: string | null) => (dn ? e.policies.find((p) => p.dn.toLowerCase() === dn.toLowerCase())?.name ?? dn : null);
+  const done = (what: string) => (x: EncryptionOverview) => { setE(x); setNotice(what); setError(null); };
+  const assign = (srv: { guid: string; name: string }, policy: string | null) => {
+    const p = e.policies.find((x) => x.guid === policy);
+    sure.ask(policy ? `Encrypt ${p?.attributes.map((a) => a.attribute).join(', ')} on ${srv.name}?` : `Stop encrypting on ${srv.name}?`,
+      policy ? `${srv.name} encrypts these attributes in its database when limber runs, which the console starts now. Values it already holds in clear text may stay on its disk; encryption cannot be undone securely. With "secure channel only", clients must use LDAPS or StartTLS to read them, and backups need a password.`
+        : `${srv.name} stops encrypting the policy's attributes when limber runs.`,
+      policy ? 'Encrypt' : 'Stop encrypting',
+      () => signIn.run(() => confirmed.run((c) => api.assignEncryptionPolicy(srv.guid, policy, c))).then((x) => {
+        setE(x);
+        setNotice(x.applied === false ? `Saved, but the policy has not reached ${srv.name} yet: run limber on it (eDirectory > Servers) once it has.`
+          : `${srv.name} ${policy ? 'now uses ' + p?.name : 'uses no policy'}; limber is applying it.`);
+      }, setError));
+  };
   return (
     <div className="dc-tab-body">
+      {notice && <Alert variant="success" isInline isPlain title={notice} className="dc-tab-body" />}
+      <ProblemAlert error={error} />
       <Card className="dc-tab-body">
         <CardTitle><Title headingLevel="h2" size="lg">Encrypted attributes</Title></CardTitle>
         <CardBody>
-          <p className="dc-subtle">An encrypted attribute policy names attributes a server keeps encrypted on disk; a server uses at most one. Encryption cannot be undone
-            securely (values written in clear text before stay on disk), so policies are shown here and changed in Identity Console for now.</p>
+          <p className="dc-subtle">A policy names attributes that a server keeps encrypted in its database; each server uses at most one. Encryption cannot be undone
+            securely: values written before stay on disk in clear text. Avoid indexed attributes (ndsrepair can hang) and eDirectory's own.</p>
+          {edit && <Button variant="secondary" size="sm" className="dc-tab-body" onClick={() => setEditing({ parent: '', name: '', attributes: [{ attribute: '', scheme: 'aes256' }], secure: true })}>New policy</Button>}
           {e.policies.length === 0 ? <p>No encrypted attribute policies.</p> : (
             <Table aria-label="Encrypted attribute policies" variant="compact">
-              <Thead><Tr><Th>Policy</Th><Th>Attributes</Th><Th>Secure channel only</Th><Th>Servers</Th></Tr></Thead>
+              <Thead><Tr><Th>Policy</Th><Th>Attributes</Th><Th>Secure channel only</Th><Th>Servers</Th>{edit && <Th screenReaderText="Actions" />}</Tr></Thead>
               <Tbody>
                 {e.policies.map((p) => (
                   <Tr key={p.dn}>
@@ -257,14 +280,54 @@ export function EncryptionView() {
                     <Td dataLabel="Attributes">{p.attributes.map((x) => <div key={x.attribute}>{x.attribute} <span className="dc-subtle">({x.scheme || '?'})</span></div>)}</Td>
                     <Td dataLabel="Secure channel only">{p.requiresSecureChannel ? 'Yes' : <Label isCompact color="orange">No: readable in clear text</Label>}</Td>
                     <Td dataLabel="Servers">{p.servers.map((x) => x.name).join(', ') || <span className="dc-subtle">none</span>}</Td>
+                    {edit && (
+                      <Td isActionCell>
+                        <Button variant="link" isInline onClick={() => setEditing({ guid: p.guid, parent: '', name: p.name, attributes: p.attributes.map((a) => ({ ...a })), secure: p.requiresSecureChannel })}>Change</Button>{' '}
+                        <Button variant="link" isInline isDanger isAriaDisabled={p.servers.length > 0}
+                          onClick={() => sure.ask(`Delete ${p.name}?`, 'No server uses it; the policy object is deleted.', 'Delete',
+                            () => confirmed.run((c) => api.deleteEncryptionPolicy(p.guid, c)).then(done(`${p.name} deleted.`), setError))}>Delete</Button>
+                      </Td>
+                    )}
                   </Tr>
                 ))}
               </Tbody>
             </Table>
           )}
-          <p className="dc-subtle dc-tab-body">Servers: {e.servers.map((x) => `${x.name} (${policyName(x.policy) ?? 'no policy'})`).join(', ')}</p>
+          <Title headingLevel="h3" size="md" className="dc-tab-body">Each server's policy</Title>
+          <Table aria-label="Servers' policies" variant="compact">
+            <Thead><Tr><Th>Server</Th><Th>Policy</Th></Tr></Thead>
+            <Tbody>
+              {e.servers.map((x) => (
+                <Tr key={x.guid}>
+                  <Td dataLabel="Server">{x.name}</Td>
+                  <Td dataLabel="Policy">
+                    {edit ? (
+                      <FormSelect aria-label={`Policy for ${x.name}`} value={e.policies.find((p) => x.policy && p.dn.toLowerCase() === x.policy.toLowerCase())?.guid ?? ''}
+                        onChange={(_ev, v) => assign(x, v || null)}>
+                        <FormSelectOption value="" label="None" />
+                        {e.policies.map((p) => <FormSelectOption key={p.guid} value={p.guid} label={p.name} />)}
+                      </FormSelect>
+                    ) : (policyName(x.policy) ?? 'none')}
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
         </CardBody>
       </Card>
+      {editing && (
+        <PolicyModal value={editing} onClose={() => setEditing(null)} onSave={async (v) => {
+          const attributes = v.attributes.filter((a) => a.attribute.trim()).map((a) => ({ attribute: a.attribute.trim(), scheme: a.scheme }));
+          const x = v.guid
+            ? await confirmed.run((c) => api.changeEncryptionPolicy(v.guid!, { attributes, requiresSecureChannel: v.secure }, c))
+            : await confirmed.run((c) => api.createEncryptionPolicy({ parent: v.parent.trim(), name: v.name.trim(), attributes, requiresSecureChannel: v.secure }, c));
+          done(v.guid ? `${v.name} saved; its servers apply it when limber next runs.` : `${v.name} made. Choose the servers that use it below.`)(x);
+          setEditing(null);
+        }} />
+      )}
+      {confirmed.dialog}
+      {sure.dialog}
+      {signIn.dialog}
       <Card className="dc-tab-body">
         <CardTitle><Title headingLevel="h2" size="lg">Encrypted replication</Title></CardTitle>
         <CardBody>
@@ -295,37 +358,139 @@ export function EncryptionView() {
   );
 }
 
-/** A server's replica filter: what its filtered (sparse) replicas hold. Read-only: a change resyncs every filtered replica on it. */
-export function ReplicaFilterCard({ guid }: { guid: string }) {
-  const { me } = useSession();
-  const api = useMemo(() => edir(me.directory), [me.directory]);
-  const [f, setF] = useState<Awaited<ReturnType<typeof api.replicaFilter>> | null>(null);
+function PolicyModal({ value, onSave, onClose }: {
+  value: { guid?: string; parent: string; name: string; attributes: { attribute: string; scheme: string }[]; secure: boolean };
+  onSave: (v: typeof value) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [v, setV] = useState(value);
   const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const ready = (v.guid || (v.parent.trim() && /^[A-Za-z0-9 _.-]{1,64}$/.test(v.name.trim()))) && v.attributes.some((a) => a.attribute.trim());
+  const save = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave(v);
+    } catch (x) {
+      setError(x);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const setAttr = (i: number, patch: Partial<{ attribute: string; scheme: string }>) => setV({ ...v, attributes: v.attributes.map((a, j) => (j === i ? { ...a, ...patch } : a)) });
+  return (
+    <Modal variant="medium" isOpen onClose={onClose} aria-labelledby="policy-title">
+      <ModalHeader title={v.guid ? `Change ${v.name}` : 'New encrypted attribute policy'} labelId="policy-title" />
+      <ModalBody>
+        <Form id="policy-form" onSubmit={save}>
+          {!v.guid && (
+            <>
+              <FormGroup label="In container" fieldId="policy-parent" isRequired>
+                <TextInput id="policy-parent" className="dc-mono" value={v.parent} onChange={(_e, x) => setV({ ...v, parent: x })} placeholder="ou=Security,o=acme" />
+              </FormGroup>
+              <FormGroup label="Name" fieldId="policy-name" isRequired>
+                <TextInput id="policy-name" value={v.name} onChange={(_e, x) => setV({ ...v, name: x })} />
+              </FormGroup>
+            </>
+          )}
+          <FormGroup label="Attributes" fieldId="policy-attr-0" role="group">
+            {v.attributes.map((a, i) => (
+              <Flex key={i} className="dc-gap-bottom" alignItems={{ default: 'alignItemsCenter' }}>
+                <FlexItem grow={{ default: 'grow' }}><TextInput id={`policy-attr-${i}`} aria-label="Attribute" value={a.attribute} onChange={(_e, x) => setAttr(i, { attribute: x })} placeholder="an attribute name" /></FlexItem>
+                <FlexItem>
+                  <FormSelect aria-label="Scheme" value={a.scheme} onChange={(_e, x) => setAttr(i, { scheme: x })}>
+                    <FormSelectOption value="aes256" label="AES-256" />
+                    <FormSelectOption value="aes" label="AES" />
+                    <FormSelectOption value="3des" label="Triple DES" />
+                    <FormSelectOption value="des" label="DES" />
+                  </FormSelect>
+                </FlexItem>
+                <FlexItem><Button variant="link" isDanger onClick={() => setV({ ...v, attributes: v.attributes.filter((_x, j) => j !== i) })}>Remove</Button></FlexItem>
+              </Flex>
+            ))}
+            <Button variant="link" isInline onClick={() => setV({ ...v, attributes: [...v.attributes, { attribute: '', scheme: 'aes256' }] })}>Add an attribute</Button>
+            <FormHelperText><HelperText><HelperTextItem>Changing an attribute's scheme leaves pieces of its old values on disk.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+          <Checkbox id="policy-secure" label="Readable only over a secure channel (LDAPS or StartTLS)" isChecked={v.secure} onChange={(_e, x) => setV({ ...v, secure: x })}
+            description="Off: encrypted values can be read in clear text over plain LDAP." />
+          <ProblemAlert error={error} />
+        </Form>
+      </ModalBody>
+      <ModalFooter>
+        <Button type="submit" form="policy-form" isLoading={busy} isDisabled={busy || !ready}>Save</Button>
+        <Button variant="link" onClick={onClose}>Cancel</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+/** A server's replica filter: what its filtered (sparse) replicas hold. A change resyncs every filtered replica on it. */
+export function ReplicaFilterCard({ guid }: { guid: string }) {
+  const { me, canAt } = useSession();
+  const api = useMemo(() => edir(me.directory), [me.directory]);
+  const edit = canAt('editor', '');
+  const [f, setF] = useState<Awaited<ReturnType<typeof api.replicaFilter>> | null>(null);
+  const [draft, setDraft] = useState<{ class: string; attributes: string }[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const confirmed = useConfirmed();
+  const sure = useAreYouSure();
   useEffect(() => { api.replicaFilter(guid).then(setF, setError); }, [api, guid]);
+  const save = () => {
+    const classes = (draft ?? []).filter((c) => c.class.trim()).map((c) => ({ class: c.class.trim(), attributes: c.attributes.split(/[\s,]+/).filter(Boolean) }));
+    sure.ask(classes.length ? 'Set the replica filter?' : 'Clear the replica filter?',
+      `${f?.sparseReplicas.length ? `Every filtered replica on this server (${f.sparseReplicas.map((r) => r.name).join(', ')}) resynchronises.` : 'This server has no filtered replicas yet.'} A filtered read/write replica can create an object only when the filter holds all of its mandatory attributes.`,
+      classes.length ? 'Set it' : 'Clear it',
+      () => confirmed.run((c) => api.setReplicaFilter(guid, classes, c)).then((x) => { setF(x); setDraft(null); setNotice('Replica filter saved.'); setError(null); }, setError));
+  };
   return (
     <Card className="dc-tab-body">
       <CardTitle><Title headingLevel="h2" size="lg">Replica filter</Title></CardTitle>
       <CardBody>
         <ProblemAlert error={error} />
-        {!f ? (!error && <Spinner size="md" aria-label="Reading the replica filter" />) : f.classes.length === 0 ? (
-          <p>No filter: this server holds no filtered replicas{f.sparseReplicas.length > 0 ? ', though it lists some' : ''}.</p>
+        {notice && <Alert variant="success" isInline isPlain title={notice} className="dc-tab-body" />}
+        {!f ? (!error && <Spinner size="md" aria-label="Reading the replica filter" />) : draft ? (
+          <>
+            <p className="dc-subtle">LDAP class names, each with the attributes its filtered replicas keep (empty: all of them).</p>
+            {draft.map((c, i) => (
+              <Flex key={i} className="dc-gap-bottom" alignItems={{ default: 'alignItemsCenter' }}>
+                <FlexItem><TextInput aria-label="Class" value={c.class} placeholder="inetOrgPerson" onChange={(_e, v) => setDraft(draft.map((x, j) => (j === i ? { ...x, class: v } : x)))} /></FlexItem>
+                <FlexItem grow={{ default: 'grow' }}><TextInput aria-label={`Attributes of ${c.class}`} className="dc-mono" value={c.attributes} placeholder="cn, sn, mail"
+                  onChange={(_e, v) => setDraft(draft.map((x, j) => (j === i ? { ...x, attributes: v } : x)))} /></FlexItem>
+                <FlexItem><Button variant="link" isDanger onClick={() => setDraft(draft.filter((_x, j) => j !== i))}>Remove</Button></FlexItem>
+              </Flex>
+            ))}
+            <Button variant="link" isInline onClick={() => setDraft([...draft, { class: '', attributes: '' }])}>Add a class</Button>
+            <ActionGroup className="dc-tab-body">
+              <Button onClick={save}>Save</Button>
+              <Button variant="link" onClick={() => setDraft(null)}>Cancel</Button>
+            </ActionGroup>
+          </>
         ) : (
           <>
-            <p className="dc-subtle">Its filtered replicas ({f.sparseReplicas.map((r) => r.name).join(', ') || 'none yet'}) hold only these classes and attributes.
-              Changing the filter resynchronises every filtered replica on the server.</p>
-            <Table aria-label="Replica filter" variant="compact">
-              <Thead><Tr><Th>Class</Th><Th>Attributes</Th></Tr></Thead>
-              <Tbody>
-                {f.classes.map((c) => (
-                  <Tr key={c.class}>
-                    <Td dataLabel="Class">{c.class}</Td>
-                    <Td dataLabel="Attributes">{c.attributes.length ? c.attributes.join(', ') : <span className="dc-subtle">all</span>}</Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
+            {f.classes.length === 0 ? <p>No filter: filtered replicas on this server would hold nothing{f.sparseReplicas.length > 0 ? ' (it lists some)' : ''}.</p> : (
+              <>
+                <p className="dc-subtle">Its filtered replicas ({f.sparseReplicas.map((r) => r.name).join(', ') || 'none yet'}) hold only these classes and attributes.</p>
+                <Table aria-label="Replica filter" variant="compact">
+                  <Thead><Tr><Th>Class</Th><Th>Attributes</Th></Tr></Thead>
+                  <Tbody>
+                    {f.classes.map((c) => (
+                      <Tr key={c.class}>
+                        <Td dataLabel="Class">{c.class}</Td>
+                        <Td dataLabel="Attributes">{c.attributes.length ? c.attributes.join(', ') : <span className="dc-subtle">all</span>}</Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </>
+            )}
+            {edit && <Button variant="secondary" size="sm" className="dc-tab-body" onClick={() => setDraft(f.classes.length ? f.classes.map((c) => ({ class: c.class, attributes: c.attributes.join(', ') })) : [{ class: '', attributes: '' }])}>Change the filter</Button>}
           </>
         )}
+        {confirmed.dialog}
+        {sure.dialog}
       </CardBody>
     </Card>
   );

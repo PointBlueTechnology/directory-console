@@ -1039,6 +1039,19 @@ export function edir(id: string) {
     changeSnmp: (group: string, body: { trapInterval?: number; trapsDisabled?: boolean; traps?: Record<number, Partial<Pick<SnmpTrap, 'active' | 'failure' | 'interval'>>> }, confirm?: string) =>
       request<SnmpGroup>('PATCH', `${base}/snmp/${guidPath(group)}`, body, h(confirm)).then((r) => r.data),
     encryption: () => request<EncryptionOverview>('GET', `${base}/encryption`).then((r) => r.data),
+    createEncryptionPolicy: (body: { parent: string; name: string; attributes: { attribute: string; scheme?: string }[]; requiresSecureChannel: boolean }, confirm?: string) =>
+      request<EncryptionOverview>('POST', `${base}/encryption/policies`, body, h(confirm)).then((r) => r.data),
+    /** Attributes already in the policy keep their scheme unless another is named. */
+    changeEncryptionPolicy: (guid: string, body: { attributes?: { attribute: string; scheme?: string }[]; requiresSecureChannel?: boolean }, confirm?: string) =>
+      request<EncryptionOverview>('PATCH', `${base}/encryption/policies/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
+    deleteEncryptionPolicy: (guid: string, confirm?: string) =>
+      request<EncryptionOverview>('DELETE', `${base}/encryption/policies/${guidPath(guid)}`, undefined, h(confirm)).then((r) => r.data),
+    /** A server's policy (null: none), then limber there; applied is false when the policy has not reached that server yet. */
+    assignEncryptionPolicy: (server: string, policy: string | null, confirm?: string) =>
+      request<EncryptionOverview & { applied?: boolean }>('PUT', `${base}/servers/${guidPath(server)}/encryption-policy`, { policy }, h(confirm)).then((r) => r.data),
+    /** Every filtered replica on the server resynchronises. An empty list clears the filter. */
+    setReplicaFilter: (server: string, classes: { class: string; attributes: string[] }[], confirm?: string) =>
+      request<ReplicaFilter>('PUT', `${base}/servers/${guidPath(server)}/replica-filter`, { classes }, h(confirm)).then((r) => r.data),
     replicaFilter: (server: string) => request<ReplicaFilter>('GET', `${base}/servers/${guidPath(server)}/replica-filter`).then((r) => r.data),
     ldapRefresh: (confirm?: string) => request<void>('POST', `${base}/ldap-refresh`, {}, h(confirm)),
     addAttribute: (body: { name: string; oid?: string; syntax: string; singleValue: boolean; upperBound?: number; description?: string; flags?: AttributeFlag[] }, confirm?: string) =>

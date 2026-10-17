@@ -88,8 +88,9 @@ final class Edir {
             .replaceAll("indexes/[^/]+/(state|copy)$", "indexes/{name}/$1")
             .replaceAll("^schema/(attributes|classes)/[^/]+", "schema/$1/{name}")
             .replaceAll("^ldap/(servers|groups)/[0-9a-f]{32}", "ldap/$1/{id}")
-            .replaceAll("^snmp/[0-9a-f]{32}$", "snmp/{id}");
-        String id = p.length > 3 && p[2].equals("ldap") ? (p.length > 4 ? p[4] : null) : p.length > 3 ? p[3] : null;
+            .replaceAll("^snmp/[0-9a-f]{32}$", "snmp/{id}")
+            .replaceAll("^encryption/policies/[0-9a-f]{32}$", "encryption/policies/{id}");
+        String id = p.length > 3 && (p[2].equals("ldap") || p[2].equals("encryption")) ? (p.length > 4 ? p[4] : null) : p.length > 3 ? p[3] : null;
         if (!method.equals("GET")) {
             if (!s.principal.may(Role.EDITOR, "")) {
                 throw new Http.Problem(403, "forbidden", "eDirectory administration needs an editor role for the whole directory");
@@ -137,6 +138,11 @@ final class Edir {
                 case "GET snmp" -> Http.json(ex, 200, snmp(l));
                 case "PATCH snmp/{id}" -> changeSnmp(ex, l, s, id);
                 case "GET servers/{id}/replica-filter" -> Http.json(ex, 200, replicaFilter(l, id));
+                case "PUT servers/{id}/replica-filter" -> setReplicaFilter(ex, l, s, id);
+                case "POST encryption/policies" -> createPolicy(ex, l, s);
+                case "PATCH encryption/policies/{id}" -> changePolicy(ex, l, s, id);
+                case "DELETE encryption/policies/{id}" -> deletePolicy(ex, l, s, id);
+                case "PUT servers/{id}/encryption-policy" -> assignPolicy(ex, l, s, id);
                 case "POST ldap/servers/{id}/refresh" -> refreshLdap(ex, s, id, false);
                 case "POST ldap/servers/{id}/reload" -> refreshLdap(ex, s, id, true);
                 case "GET ldap/servers/{id}" -> Http.json(ex, 200, ldapObject(l, id, "ldapServer"));
@@ -640,6 +646,245 @@ final class Edir {
             replication.add(m);
         }
         return Map.of("policies", policies, "servers", servers, "replication", replication);
+    }
+
+    /** eDirectory's own attributes, which must not be encrypted (Administration Guide), and CN. */
+    private static final Set<String> NEVER_ENCRYPT = Set.of("acl", "member", "encryptionpolicydn", "indexdefinition", "host server", "cn",
+        "attrencryptiondefinition", "attrencryptionrequiressecure", "objectclass", "guid", "revision", "replica", "obituary", "nds status");
+
+    /** {attribute, scheme} → {@code scheme$NDS name}; the attribute must exist and be safe to encrypt. */
+    private static List<String> definitions(Object o, com.pointblue.console.server.ldap.Schema schema, Map<String, String> keepSchemes) {
+        if (!(o instanceof List<?> list) || list.isEmpty()) {
+            throw new Http.Problem(400, "bad-field", "attributes is a list of {attribute, scheme}");
+        }
+        List<String> out = new ArrayList<>();
+        for (Object x : list) {
+            Map<String, Object> m = Json.asMap(x);
+            String name = String.valueOf(m.getOrDefault("attribute", "")).trim();
+            com.pointblue.console.server.ldap.Schema.AttributeType at = schema.attribute(name);
+            if (at == null) {
+                throw new Http.Problem(400, "undefined-attribute", "the directory has no attribute " + name);
+            }
+            String nds = at.ndsName() != null ? at.ndsName() : at.names().get(0);
+            if (NEVER_ENCRYPT.contains(nds.toLowerCase(Locale.ROOT)) || nds.toLowerCase(Locale.ROOT).startsWith("ndsstatus")) {
+                throw new Http.Problem(400, "not-encryptable", nds + " is one of eDirectory's own attributes and must not be encrypted");
+            }
+            String scheme = m.get("scheme") != null ? String.valueOf(m.get("scheme")).trim().toLowerCase(Locale.ROOT)
+                : keepSchemes.getOrDefault(nds.toLowerCase(Locale.ROOT), "aes256");
+            if (!List.of("aes256", "aes", "3des", "des").contains(scheme)) {
+                throw new Http.Problem(400, "bad-field", "scheme is aes256, aes, 3des or des");
+            }
+            out.add(scheme + "$" + nds);
+        }
+        return out;
+    }
+
+    /**
+     * {@code POST encryption/policies}: {parent, name, attributes: [{attribute, scheme?}], requiresSecureChannel?}. A new
+     * encrypted attribute policy; nothing is encrypted until a server is given it.
+     */
+    private void createPolicy(HttpExchange ex, Ldap l, Sessions.Session s) throws IOException, NamingException {
+        Map<String, Object> b = Http.body(ex);
+        String parent = Http.string(b, "parent", true).trim();
+        Names.parse(parent);
+        String name = Http.string(b, "name", true).trim();
+        if (!name.matches("[A-Za-z0-9 _.-]{1,64}")) {
+            throw new Http.Problem(400, "bad-field", "a policy name is 1-64 letters, digits, spaces, dots, dashes or underscores");
+        }
+        List<String> defs = definitions(b.get("attributes"), com.pointblue.console.server.ldap.Schema.load(l), Map.of());
+        String dn = Names.child(parent, "cn", name);
+        Map<String, List<Object>> attrs = new LinkedHashMap<>();
+        attrs.put("objectClass", List.of("encryptionPolicy"));
+        attrs.put("cn", List.of(name));
+        attrs.put("attrEncryptionDefinition", new ArrayList<>(defs));
+        attrs.put("attrEncryptionRequiresSecure", List.of(Boolean.FALSE.equals(b.get("requiresSecureChannel")) ? "0" : "1"));
+        Map<String, Object> detail = Map.of("dn", dn, "definitions", defs);
+        try {
+            l.create(dn, attrs);
+        } catch (NamingException x) {
+            audit(s, "edir.encryption-policy.create", null, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "edir.encryption-policy.create", null, detail, null);
+        Http.json(ex, 201, encryption(l));
+    }
+
+    private Ldap.Entry policyEntry(Ldap l, String guid) throws NamingException {
+        Ldap.Entry e = server.objects.byGuid(l, guid, "objectClass", "cn", "attrEncryptionDefinition", "attrEncryptionRequiresSecure");
+        if (e == null || e.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("encryptionPolicy"))) {
+            throw new Http.Problem(404, "not-found", "no encrypted attribute policy has GUID " + guid);
+        }
+        return e;
+    }
+
+    /**
+     * {@code PATCH encryption/policies/{id}}: {attributes?, requiresSecureChannel?}. An attribute already in the policy
+     * keeps its scheme unless another is named (changing a scheme leaves clear-text pieces on disk). The servers
+     * using it apply the change when limber next runs; {@code POST} to their policy assignment runs it now.
+     */
+    private void changePolicy(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Map<String, Object> b = Http.body(ex);
+        Ldap.Entry e = policyEntry(l, guid);
+        Map<String, String> schemes = new LinkedHashMap<>();
+        for (Object v : e.attributes().getOrDefault("attrencryptiondefinition", List.of())) {
+            String d = String.valueOf(v);
+            int dollar = d.indexOf('$');
+            if (dollar > 0) {
+                schemes.put(d.substring(dollar + 1).toLowerCase(Locale.ROOT), d.substring(0, dollar));
+            }
+        }
+        List<ModificationItem> mods = new ArrayList<>();
+        Map<String, Object> detail = new LinkedHashMap<>(Map.of("dn", e.dn()));
+        if (b.containsKey("attributes")) {
+            List<String> defs = definitions(b.get("attributes"), com.pointblue.console.server.ldap.Schema.load(l), schemes);
+            BasicAttribute a = new BasicAttribute("attrEncryptionDefinition");
+            defs.forEach(a::add);
+            mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, a));
+            detail.put("definitions", defs);
+        }
+        if (b.get("requiresSecureChannel") instanceof Boolean secure) {
+            mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute("attrEncryptionRequiresSecure", secure ? "1" : "0")));
+            detail.put("requiresSecureChannel", secure);
+        }
+        if (mods.isEmpty()) {
+            throw new Http.Problem(400, "bad-request", "name attributes or requiresSecureChannel");
+        }
+        try {
+            l.modify(e.dn(), mods);
+        } catch (NamingException x) {
+            audit(s, "edir.encryption-policy.change", guid, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "edir.encryption-policy.change", guid, detail, null);
+        Http.json(ex, 200, encryption(l));
+    }
+
+    /** {@code DELETE encryption/policies/{id}}: only a policy no server uses. */
+    private void deletePolicy(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Ldap.Entry e = policyEntry(l, guid);
+        List<String> users = new ArrayList<>();
+        for (Ldap.Entry srv : l.search("", "(objectClass=ncpServer)", null, javax.naming.directory.SearchControls.SUBTREE_SCOPE, new String[] {"cn", "encryptionPolicyDN"}, 500)) {
+            if (srv.first("encryptionPolicyDN") != null && Names.same(String.valueOf(srv.first("encryptionPolicyDN")), e.dn())) {
+                users.add(String.valueOf(srv.first("cn")));
+            }
+        }
+        if (!users.isEmpty()) {
+            throw new Http.Problem(409, "in-use", "in use by " + String.join(", ", users) + "; take it off those servers first", Map.of("usedBy", users));
+        }
+        try {
+            l.delete(e.dn());
+        } catch (NamingException x) {
+            audit(s, "edir.encryption-policy.delete", guid, Map.of("dn", e.dn()), Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "edir.encryption-policy.delete", guid, Map.of("dn", e.dn()), null);
+        Http.json(ex, 200, encryption(l));
+    }
+
+    /**
+     * {@code PUT servers/{id}/encryption-policy}: {policy: GUID | null}. The server's encrypted attribute policy (at most
+     * one), then limber on that server, which applies it. Limber runs on the server a connection reaches, so it is
+     * sent over a connection to that server.
+     */
+    private void assignPolicy(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Map<String, Object> b = Http.body(ex);
+        Ldap.Entry srv = server.objects.byGuid(l, guid, "objectClass", "cn", "encryptionPolicyDN");
+        if (srv == null || srv.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("ncpServer"))) {
+            throw new Http.Problem(404, "not-found", "no server has GUID " + guid);
+        }
+        String policy = b.get("policy") == null ? null : policyEntry(l, String.valueOf(b.get("policy"))).dn();
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("server", srv.dn());
+        detail.put("policy", policy);
+        detail.put("was", srv.first("encryptionPolicyDN"));
+        ModificationItem mod = policy == null
+            ? new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute("encryptionPolicyDN"))
+            : new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute("encryptionPolicyDN", policy));
+        // the connection to that server first: a direct sign-in may have to sign in there, and nothing changes until it has
+        Server.On on = server.on(s, guid);
+        try {
+            if (policy != null || srv.first("encryptionPolicyDN") != null) {
+                l.modify(srv.dn(), List.of(mod));
+            }
+            // limber applies only the policy it can read on that server: a policy just made elsewhere may not have
+            // replicated there yet (seen on a lab tree: limber ran, nothing was encrypted)
+            boolean there = policy == null || visible(on.ldap(), policy);
+            detail.put("policyOnServer", there);
+            if (there) {
+                Partitions.trigger(on.ldap(), "limber", srv.dn());
+            }
+        } catch (NamingException x) {
+            audit(s, "edir.encryption-policy.assign", guid, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "edir.encryption-policy.assign", guid, detail, null);
+        Map<String, Object> out = new LinkedHashMap<>(encryption(l));
+        out.put("applied", detail.get("policyOnServer"));
+        Http.json(ex, 200, out);
+    }
+
+    /** Whether {@code dn} can be read over {@code l}, waiting up to about 30 seconds for it to replicate there. */
+    private static boolean visible(Ldap l, String dn) throws NamingException {
+        for (int i = 0; i < 15; i++) {
+            try {
+                if (l.read(dn, "cn") != null) {
+                    return true;
+                }
+            } catch (javax.naming.NameNotFoundException e) {
+                // not there yet
+            }
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * {@code PUT servers/{id}/replica-filter}: {classes: [{class, attributes: [...]}]}; an empty list clears it. Every
+     * filtered replica on the server resynchronises.
+     */
+    private void setReplicaFilter(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Ldap.Entry srv = server.objects.byGuid(l, guid, "objectClass", "cn");
+        if (srv == null || srv.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("ncpServer"))) {
+            throw new Http.Problem(404, "not-found", "no server has GUID " + guid);
+        }
+        com.pointblue.console.server.ldap.Schema schema = com.pointblue.console.server.ldap.Schema.load(l);
+        List<Partitions.FilterClass> filter = new ArrayList<>();
+        Object classes = Http.body(ex).get("classes");
+        if (!(classes instanceof List<?> list)) {
+            throw new Http.Problem(400, "bad-field", "classes is a list of {class, attributes}");
+        }
+        for (Object o : list) {
+            Map<String, Object> m = Json.asMap(o);
+            String cls = String.valueOf(m.getOrDefault("class", "")).trim();
+            com.pointblue.console.server.ldap.Schema.ObjectClass oc = schema.objectClass(cls);
+            if (oc == null) {
+                throw new Http.Problem(400, "undefined-class", "the directory has no class " + cls);
+            }
+            List<String> attrs = new ArrayList<>();
+            for (String a : names(m.getOrDefault("attributes", List.of()))) {
+                com.pointblue.console.server.ldap.Schema.AttributeType at = schema.attribute(a);
+                if (at == null) {
+                    throw new Http.Problem(400, "undefined-attribute", "the directory has no attribute " + a);
+                }
+                // LDAP names: eDirectory refused eDirectory's own (Surname, Internet EMail Address) with invalid syntax (lab, 2026-10-17)
+                attrs.add(at.names().get(0));
+            }
+            filter.add(new Partitions.FilterClass(oc.names().get(0), attrs));
+        }
+        Map<String, Object> detail = Map.of("server", srv.dn(), "classes", filter.stream().map(Partitions.FilterClass::className).toList());
+        try {
+            Partitions.setReplicaFilter(l, srv.dn(), filter);
+        } catch (NamingException x) {
+            audit(s, "edir.replica-filter.set", guid, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "edir.replica-filter.set", guid, detail, null);
+        Http.json(ex, 200, replicaFilter(l, guid));
     }
 
     /** {@code GET servers/{id}/replica-filter}: what the server's filtered (sparse) replicas hold, and those replicas. */
