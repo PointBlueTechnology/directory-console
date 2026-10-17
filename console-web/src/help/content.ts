@@ -823,6 +823,35 @@ export const CONTENT: Record<string, HelpTopic> = {
     ],
   },
   'settings.other': { title: 'Other directories', summary: 'Whether people may sign in to an eDirectory server by typing its address, with their own rights only. This applies to the whole console.', sections: [] },
+  'settings.certificate': {
+    title: 'Console certificate',
+    summary: 'The certificate the console presents for HTTPS, and getting and renewing it from an ACME certificate authority.',
+    sections: [
+      {
+        title: 'How DNS-01 works here',
+        list: [
+          'For each name the CA gives a token; the console adds it as a TXT record at _acme-challenge.<name> with a dynamic update (RFC 2136) signed with your TSIG key.',
+          'It waits until the zone\'s server answers the record, tells the CA to look, and removes the record whatever happens.',
+          'It then sends a request for a new key (P-256) and installs the certificate at once, without a restart.',
+          'Once a day it renews when 30 days or fewer remain, or when the names change.',
+        ],
+      },
+      {
+        title: 'Setting it up',
+        list: [
+          'Create a TSIG key on the DNS server, allowed to change only TXT records under _acme-challenge in the zone (in BIND: update-policy { grant key. zonesub TXT; }).',
+          'Enter the zone\'s primary server, the zone, the key\'s name, algorithm and secret, and use Test DNS: it adds a record, reads it back and removes it.',
+          'Try Let\'s Encrypt staging first; its certificates are not trusted by browsers, but its limits are generous.',
+          'An internal ACME CA (step-ca, for example) works too, once the console trusts its root (Certificates, for every directory).',
+        ],
+      },
+      {
+        title: 'When something fails',
+        paragraphs: ['The current certificate stays in use. The page shows the error and the steps that were done; the attempt is also in the audit log.'],
+      },
+    ],
+    related: ['settings.expiry', 'certificates'],
+  },
   'settings.expiry': {
     title: 'Certificate expiry',
     summary: 'A daily check of every certificate the console can see, with notices by e-mail and webhook.',

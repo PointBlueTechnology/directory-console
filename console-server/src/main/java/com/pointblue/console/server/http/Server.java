@@ -62,6 +62,7 @@ public final class Server {
     final Updates updates = new Updates(this);
     final Expiry expiry = new Expiry(this);
     final Syslog syslog = new Syslog(this);
+    final AcmeService acme = new AcmeService(this);
     final Sessions sessions = new Sessions(Duration.ofMinutes(30), Duration.ofHours(12));
     final DirectLogin login;
     final com.pointblue.console.server.auth.OidcLogin oidc;
@@ -140,12 +141,14 @@ public final class Server {
         updates.start();
         expiry.start();
         syslog.start();
+        acme.start();
     }
 
     public void stop() {
         updates.stop();
         expiry.stop();
         syslog.stop();
+        acme.stop();
         http.stop(1);
     }
 
@@ -320,6 +323,10 @@ public final class Server {
         }
         if (syslog.handles(path)) {
             syslog.handle(ex, method, path);
+            return;
+        }
+        if (acme.handles(path)) {
+            acme.handle(ex, method, path);
             return;
         }
         if (trees.handles(path)) {

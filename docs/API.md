@@ -17,7 +17,7 @@ This page covers the conventions they share, and the directory-object routes as 
   - `admin` changes the console's settings.
 - **Sensitive changes:** these need a sign-in within the last 10 minutes; otherwise the answer asks for one:
   - changes to the console's own settings: trust, directories, roles, single sign-on, sign-in to other
-    directories, reverse proxies, certificate expiry, syslog and updates;
+    directories, reverse proxies, certificate expiry, syslog, updates, and the console's ACME certificate (settings and getting one now);
   - exporting a certificate with its private key.
 - **Production directories:** changes need the `X-Confirm-Directory` header with the directory's name. Exports
   with a private key need a recent sign-in instead.
@@ -121,6 +121,10 @@ POST /api/v2/console/expiry/test      send a test notice to every recipient and 
 GET  /api/v2/console/syslog           settings and counters: sent, dropped, waiting, last error
 PUT  /api/v2/console/syslog           {enabled, host, port?, transport: tls|tcp|udp, facility (default authpriv)}
 POST /api/v2/console/syslog/test
+GET  /api/v2/console/acme             settings (the TSIG secret shown only as set), the current certificate, the last attempt
+PUT  /api/v2/console/acme             {enabled, directoryUrl (https), email?, names: [...], dns: {host, port?, zone, keyName, algorithm: hmac-sha256|hmac-sha512, secret?}}
+POST /api/v2/console/acme/dns-test    add a test TXT record, read it back from the server, remove it
+POST /api/v2/console/acme/issue       get a certificate now and install it
 ```
 
 **Webhooks** receive a JSON `POST` with these fields: `event` (`certificates.expiring` or `test`), `subject`, `text`,
@@ -140,6 +144,7 @@ secret. A webhook URL is `https://`; `http://` is accepted only for this host.
 | `/api/v2/console/version`, `/updates` | `Updates.java` |
 | `/api/v2/console/expiry` | `Expiry.java` |
 | `/api/v2/console/syslog` | `Syslog.java` |
+| `/api/v2/console/acme` | `AcmeService.java`: the console's own certificate by ACME (DNS-01) |
 | `/api/v2/console/settings`, `/api/v2/sign-in/options`, `/api/v2/session/other` | `OtherDirectory.java`: sign-in to other directories, trusted proxies |
 | `/api/v2/session…`, `/api/v2/oidc/…`, `/api/v2/config`, `/api/v2/audit/verify`, `/api/v2/health/live` and `/ready` | `Server.java` |
 | `/api/v2/trust/…` | `Server.java`: the console's trust store |

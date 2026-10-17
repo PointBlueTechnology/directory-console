@@ -140,6 +140,7 @@ The console makes these outbound connections:
 - **Your mail server** (SMTP: 587 with STARTTLS by default, 465 with TLS, or a relay without TLS on a port you
   choose) and **your webhooks** (HTTPS), only when certificate expiry notices are set up.
 - **Your syslog server** (6514 over TLS, or 514 over TCP or UDP), only when forwarding is on.
+- **Your ACME CA** (HTTPS) and **your DNS server** (TCP 53, dynamic updates), only when the console gets its own certificate by ACME.
 
 If the console cannot reach the internet, turn off the update check in **Settings > Updates**, or leave it on:
 a failed check only shows a notice, and nothing else is affected. If your network uses a proxy, give it to the

@@ -5,7 +5,7 @@ import {
 } from '@patternfly/react-core';
 import { DownloadIcon, PlusIcon, UploadIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type DirectorySettings, type ExpirySettings, type ExpiryState, type SyslogState, expiry, syslog, type OidcSettings, type Preset, type RoleMappingJson, type UpdateState, UPGRADING_URL, consoleSettings, settings, updates } from '../api';
+import { type AcmeState, type DirectorySettings, type ExpirySettings, type ExpiryState, type SyslogState, acme, expiry, syslog, type OidcSettings, type Preset, type RoleMappingJson, type UpdateState, UPGRADING_URL, consoleSettings, settings, updates } from '../api';
 import { useSession } from '../session';
 import { HeadingLevel, useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
@@ -16,7 +16,7 @@ import { TreesSection } from '../components/TreesSection';
 import { FieldHelp, Hint, useHelpTopic } from '../help/Help';
 import { explain } from '../help/glossary';
 import { useAreYouSure } from '../components/Confirm';
-import { ExpiryLabel } from '../components/Certificates';
+import { ExpiryLabel, Fingerprint } from '../components/Certificates';
 
 /** A whole number from {@code min} to {@code max}. */
 const sessionOk = (v: string, min: number, max: number) => /^\d+$/.test(v.trim()) && Number(v) >= min && Number(v) <= max;
@@ -68,6 +68,9 @@ export function SettingsPage() {
             </Tab>
             <Tab eventKey="other" title={<TabTitleText>Other directories</TabTitleText>}>
               <OtherDirectoriesSection />
+            </Tab>
+            <Tab eventKey="certificate" title={<TabTitleText>Console certificate</TabTitleText>}>
+              <ConsoleCertificateSection />
             </Tab>
             <Tab eventKey="expiry" title={<TabTitleText>Certificate expiry</TabTitleText>}>
               <ExpirySection />
@@ -227,6 +230,112 @@ function UpdatesSection() {
         </>
       )}
       <ProblemAlert error={error} />
+      {dialog}
+    </div>
+  );
+}
+
+const LETS_ENCRYPT = 'https://acme-v02.api.letsencrypt.org/directory';
+const LETS_ENCRYPT_STAGING = 'https://acme-staging-v02.api.letsencrypt.org/directory';
+
+/** Console-wide: the console's own TLS certificate, and getting and renewing it from an ACME CA with DNS-01. */
+function ConsoleCertificateSection() {
+  const { run, dialog } = useStepUp();
+  const [st, setSt] = useState<AcmeState | null>(null);
+  const [draft, setDraft] = useState<AcmeState | null>(null);
+  const [secret, setSecret] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const show = (x: AcmeState) => { setSt(x); setDraft(x); setSecret(''); };
+  useEffect(() => { acme.get().then(show, setError); }, []);
+  if (!st || !draft) {
+    return <div className="dc-tab-body">{error ? <ProblemAlert error={error} /> : <Spinner size="md" aria-label="Loading" />}</div>;
+  }
+  const dns = draft.dns ?? { host: '', port: 53, zone: '', keyName: '', algorithm: 'hmac-sha256' as const };
+  const setDns = (patch: Partial<typeof dns>) => setDraft({ ...draft, dns: { ...dns, ...patch } });
+  const act = (what: string, call: () => Promise<unknown>, after: (x: never) => void) => {
+    setBusy(what);
+    setError(null);
+    setNotice(null);
+    call().then((x) => after(x as never), setError).finally(() => setBusy(null));
+  };
+  const save = () => act('save', () => run(() => acme.save({
+    enabled: draft.enabled, directoryUrl: draft.directoryUrl, email: draft.email || null, names: draft.names,
+    dns: dns.host ? { ...dns, secret: secret || undefined } : null,
+  })), (x: AcmeState) => { show(x); setNotice('Saved.'); });
+  const last = st.last;
+  return (
+    <div className="dc-tab-body">
+      <p>This applies to the whole console: the certificate it presents for HTTPS.</p>
+      <DescriptionList isHorizontal isCompact className="dc-tab-body">
+        <DescriptionListGroup><DescriptionListTerm>Issued by</DescriptionListTerm><DescriptionListDescription className="dc-mono">{st.current.issuer}</DescriptionListDescription></DescriptionListGroup>
+        <DescriptionListGroup><DescriptionListTerm>Valid until</DescriptionListTerm><DescriptionListDescription><ExpiryLabel notAfter={st.current.notAfter} /></DescriptionListDescription></DescriptionListGroup>
+        <DescriptionListGroup><DescriptionListTerm>Fingerprint</DescriptionListTerm><DescriptionListDescription><Fingerprint sha256={st.current.sha256} /></DescriptionListDescription></DescriptionListGroup>
+      </DescriptionList>
+      <Title headingLevel="h3" size="md" className="dc-tab-body">From an ACME certificate authority</Title>
+      <p className="dc-subtle">The console proves it controls its names with DNS-01: it adds a TXT record to your DNS zone with a dynamic update (RFC 2136) signed with a
+        TSIG key, removes it afterwards, and installs the certificate without a restart. Once a day it renews when 30 days or fewer remain.</p>
+      {notice && <Alert variant="success" isInline isPlain title={notice} className="dc-tab-body" />}
+      <ProblemAlert error={error} />
+      {last && last.at && (last.ok
+        ? <Alert variant="success" isInline isPlain className="dc-tab-body" title={`Last certificate ${new Date(last.at).toLocaleString()}: from ${last.issuer}, until ${new Date(last.notAfter!).toLocaleDateString()}.`} />
+        : <Alert variant="danger" isInline className="dc-tab-body" title={`The last attempt failed (${new Date(last.at).toLocaleString()})`}>{last.error}{last.steps?.length ? <><br /><span className="dc-subtle">Done before that: {last.steps.join('; ')}</span></> : null}</Alert>)}
+      <Form className="dc-tab-body" onSubmit={(e) => { e.preventDefault(); save(); }} isWidthLimited>
+        <Checkbox id="acme-on" label="Get and renew the console's certificate automatically" isChecked={draft.enabled} onChange={(_e, v) => setDraft({ ...draft, enabled: v })} />
+        <FormGroup label="Certificate authority" fieldId="acme-dir">
+          <FormSelect id="acme-dir-choice" aria-label="Certificate authority" value={[LETS_ENCRYPT, LETS_ENCRYPT_STAGING].includes(draft.directoryUrl) ? draft.directoryUrl : 'other'}
+            onChange={(_e, v) => setDraft({ ...draft, directoryUrl: v === 'other' ? '' : v })}>
+            <FormSelectOption value={LETS_ENCRYPT} label="Let's Encrypt" />
+            <FormSelectOption value={LETS_ENCRYPT_STAGING} label="Let's Encrypt staging (test certificates)" />
+            <FormSelectOption value="other" label="Another ACME CA (its directory URL)" />
+          </FormSelect>
+          {![LETS_ENCRYPT, LETS_ENCRYPT_STAGING].includes(draft.directoryUrl) && (
+            <TextInput id="acme-dir" className="dc-mono dc-tab-body" value={draft.directoryUrl} onChange={(_e, v) => setDraft({ ...draft, directoryUrl: v })} placeholder="https://ca.example.com/acme/directory" />
+          )}
+          <FormHelperText><HelperText><HelperTextItem>An internal CA's certificate must be trusted by the console (Certificates, for every directory).</HelperTextItem></HelperText></FormHelperText>
+        </FormGroup>
+        <FormGroup label="Contact e-mail" fieldId="acme-email">
+          <TextInput id="acme-email" value={draft.email ?? ''} onChange={(_e, v) => setDraft({ ...draft, email: v })} placeholder="optional: the CA writes about problems" />
+        </FormGroup>
+        <FormGroup label="The console's names" fieldId="acme-names">
+          <TextArea id="acme-names" className="dc-mono" rows={2} resizeOrientation="vertical" value={draft.names.join('\n')}
+            onChange={(_e, v) => setDraft({ ...draft, names: v.split(/[\s,]+/).filter(Boolean) })} />
+          <FormHelperText><HelperText><HelperTextItem>One per line, as people type them in the browser. The first also names the certificate.</HelperTextItem></HelperText></FormHelperText>
+        </FormGroup>
+        <FormSection title="DNS updates" titleElement="h4">
+          <FormGroup label="DNS server" fieldId="acme-dns-host">
+            <TextInput id="acme-dns-host" value={dns.host} onChange={(_e, v) => setDns({ host: v })} placeholder="the zone's primary server" />
+          </FormGroup>
+          <FormGroup label="Port" fieldId="acme-dns-port">
+            <TextInput id="acme-dns-port" type="number" value={String(dns.port)} onChange={(_e, v) => setDns({ port: Number(v) })} style={{ maxWidth: '8rem' }} />
+          </FormGroup>
+          <FormGroup label="Zone" fieldId="acme-dns-zone">
+            <TextInput id="acme-dns-zone" value={dns.zone} onChange={(_e, v) => setDns({ zone: v })} placeholder="example.com" />
+          </FormGroup>
+          <FormGroup label="TSIG key name" fieldId="acme-dns-key">
+            <TextInput id="acme-dns-key" className="dc-mono" value={dns.keyName} onChange={(_e, v) => setDns({ keyName: v })} />
+          </FormGroup>
+          <FormGroup label="Algorithm" fieldId="acme-dns-alg">
+            <FormSelect id="acme-dns-alg" value={dns.algorithm} onChange={(_e, v) => setDns({ algorithm: v as 'hmac-sha256' })}>
+              <FormSelectOption value="hmac-sha256" label="HMAC-SHA256" />
+              <FormSelectOption value="hmac-sha512" label="HMAC-SHA512" />
+            </FormSelect>
+          </FormGroup>
+          <FormGroup label="TSIG secret" fieldId="acme-dns-secret">
+            <TextInput id="acme-dns-secret" type="password" autoComplete="new-password" value={secret} onChange={(_e, v) => setSecret(v)}
+              placeholder={st.dns?.secret ? 'Set: leave empty to keep it' : 'base64, as the DNS server shows it'} />
+            <FormHelperText><HelperText><HelperTextItem>Give the key only the right to change TXT records under _acme-challenge in the zone.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+        </FormSection>
+        <ActionGroup>
+          <Button type="submit" isLoading={busy === 'save'} isDisabled={busy !== null}>Save</Button>
+          <Button variant="secondary" isLoading={busy === 'dns'} isDisabled={busy !== null || !st.dns} onClick={() => act('dns', acme.dnsTest,
+            (r: { ok: boolean; error?: string }) => setNotice(r.ok ? 'The DNS server took a test record, answered it, and removed it.' : `DNS test failed: ${r.error}`))}>Test DNS</Button>
+          <Button variant="secondary" isLoading={busy === 'issue'} isDisabled={busy !== null || !st.dns || st.names.length === 0}
+            onClick={() => act('issue', () => run(acme.issue), (x: AcmeState) => { show(x); if (x.last?.ok) setNotice('A new certificate is installed: reload the page to see it in use.'); })}>Get a certificate now</Button>
+        </ActionGroup>
+      </Form>
       {dialog}
     </div>
   );

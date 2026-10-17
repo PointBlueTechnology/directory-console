@@ -10,7 +10,7 @@ const PAGES = [
   ...['attributes', 'account', 'certificates', 'groups', 'members', 'associations', 'rights', 'replicas', 'identity'].map((t) => `object.${t}`),
   ...['drivers', 'jobs', 'servers', 'properties', 'statistics', 'versions', 'trace', 'mapping-tables', 'log', 'passwords'].map((t) => `idm.${t}`),
   ...['overview', 'jobs', 'associations', 'cache', 'health', 'properties', 'trace', 'mapping-tables', 'log', 'passwords', 'password-sync'].map((t) => `idm.driver.${t}`),
-  ...['directory', 'roles', 'presets', 'sso', 'trees', 'other', 'expiry', 'syslog', 'updates', 'proxy'].map((t) => `settings.${t}`),
+  ...['directory', 'roles', 'presets', 'sso', 'trees', 'other', 'certificate', 'expiry', 'syslog', 'updates', 'proxy'].map((t) => `settings.${t}`),
 ];
 
 describe('help topics', () => {

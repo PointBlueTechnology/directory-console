@@ -508,6 +508,26 @@ public class ServerTest {
     }
 
     @Test
+    public void acmeSettingsAreCheckedAndADnsServerThatCannotBeReachedIsReported() throws Exception {
+        String id = firstSignIn();
+        Map<String, String> w = signedIn(id, "cn=admin,o=system", "admin-pw");
+        String t = "/api/v2/console/acme";
+        Map<String, Object> dns = Map.of("host", "127.0.0.1", "port", 9, "zone", "acme.test", "keyName", "acme-key", "secret", "c2VjcmV0c2VjcmV0c2VjcmV0");
+        assertEquals("only https", 400, call("PUT", t, Map.of("directoryUrl", "http://ca.test/dir", "names", List.of("console.acme.test"), "dns", dns), w).status());
+        assertEquals("a name outside the zone", 400, call("PUT", t, Map.of("names", List.of("console.other.test"), "dns", dns), w).status());
+        assertEquals("not a DNS name", 400, call("PUT", t, Map.of("names", List.of("not a name"), "dns", dns), w).status());
+        assertEquals("names to turn it on", 400, call("PUT", t, Map.of("enabled", true, "dns", dns), w).status());
+        assertEquals(409, call("POST", t + "/dns-test", Map.of(), w).status());
+        Reply saved = call("PUT", t, Map.of("names", List.of("console.acme.test", "*.acme.test"), "dns", dns, "email", "ops@acme.test"), w);
+        assertEquals(String.valueOf(saved.body()), 200, saved.status());
+        assertEquals("the secret is not shown", Map.of("set", true), Json.asMap(saved.body().get("dns")).get("secret"));
+        assertEquals(AcmeService.LETS_ENCRYPT, saved.body().get("directoryUrl"));
+        Map<String, Object> test = call("POST", t + "/dns-test", Map.of(), w).body();
+        assertEquals(false, test.get("ok"));
+        assertTrue(String.valueOf(test), test.get("error") != null);
+    }
+
+    @Test
     public void certificateExpiryIsFoundAndNotifiedOncePerLevel() throws Exception {
         List<String> hooks = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
         com.sun.net.httpserver.HttpServer hook = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);

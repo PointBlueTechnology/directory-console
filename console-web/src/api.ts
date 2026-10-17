@@ -1562,6 +1562,25 @@ export const syslog = {
   test: () => request<{ ok: boolean; error?: string }>('POST', '/api/v2/console/syslog/test', {}).then((r) => r.data),
 };
 
+export interface AcmeState {
+  enabled: boolean;
+  directoryUrl: string;
+  email?: string | null;
+  names: string[];
+  dns: null | { host: string; port: number; zone: string; keyName: string; algorithm: 'hmac-sha256' | 'hmac-sha512'; secret?: { set: true } | string | null };
+  account?: string | null;
+  current: { subject: string; issuer: string; notAfter: string; sha256: string };
+  last?: { at?: string; why?: string; ok?: boolean; error?: string; notAfter?: string; issuer?: string; steps?: string[] };
+}
+
+/** The console's own certificate from an ACME CA, proven with DNS-01 through an RFC 2136 update. */
+export const acme = {
+  get: () => request<AcmeState>('GET', '/api/v2/console/acme').then((r) => r.data),
+  save: (s: Omit<AcmeState, 'current' | 'last' | 'account'>) => request<AcmeState>('PUT', '/api/v2/console/acme', s).then((r) => r.data),
+  dnsTest: () => request<{ ok: boolean; error?: string }>('POST', '/api/v2/console/acme/dns-test', {}).then((r) => r.data),
+  issue: () => request<AcmeState>('POST', '/api/v2/console/acme/issue', {}).then((r) => r.data),
+};
+
 export const consoleSettings = {
   get: () => request<ConsoleSettings>('GET', '/api/v2/console/settings').then((r) => r.data),
   /** Either setting, or both; what is left out stays as it is. */

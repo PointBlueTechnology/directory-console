@@ -77,7 +77,8 @@ docker compose up -d
   - repair of the default server certificates;
   - CRLs;
   - export with the private key (PKCS#12);
-  - a daily expiry check, with e-mail and signed webhook notices.
+  - a daily expiry check, with e-mail and signed webhook notices;
+  - the console's own certificate from an ACME CA (Let's Encrypt or internal), proven with DNS-01, and renewed automatically.
 - **Identity Manager:**
   - **driver sets and drivers:** state, start and stop (one at a time or all), start options, trace and log levels, named passwords, read-only properties, statistics and versions;
   - **jobs:** run, abort, create, edit and delete;

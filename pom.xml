@@ -111,6 +111,7 @@
                             <!-- tests never ask GitHub for the latest release on their own -->
                             <console.updateCheck>off</console.updateCheck>
                             <console.expiryCheck>off</console.expiryCheck>
+                            <console.acmeCheck>off</console.acmeCheck>
                         </systemPropertyVariables>
                     </configuration>
                 </plugin>
