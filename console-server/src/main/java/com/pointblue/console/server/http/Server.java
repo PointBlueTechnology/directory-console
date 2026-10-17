@@ -61,6 +61,7 @@ public final class Server {
     final Trees trees = new Trees(this);
     final Updates updates = new Updates(this);
     final Expiry expiry = new Expiry(this);
+    final Syslog syslog = new Syslog(this);
     final Sessions sessions = new Sessions(Duration.ofMinutes(30), Duration.ofHours(12));
     final DirectLogin login;
     final com.pointblue.console.server.auth.OidcLogin oidc;
@@ -138,11 +139,13 @@ public final class Server {
         http.start();
         updates.start();
         expiry.start();
+        syslog.start();
     }
 
     public void stop() {
         updates.stop();
         expiry.stop();
+        syslog.stop();
         http.stop(1);
     }
 
@@ -313,6 +316,10 @@ public final class Server {
         }
         if (expiry.handles(path)) {
             expiry.handle(ex, method, path);
+            return;
+        }
+        if (syslog.handles(path)) {
+            syslog.handle(ex, method, path);
             return;
         }
         if (trees.handles(path)) {

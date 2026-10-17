@@ -1528,6 +1528,26 @@ export const expiry = {
   test: () => request<{ results: { destination: string; ok: boolean; error?: string }[] }>('POST', '/api/v2/console/expiry/test', {}).then((r) => r.data),
 };
 
+export interface SyslogState {
+  enabled: boolean;
+  host?: string | null;
+  port: number;
+  transport: 'tls' | 'tcp' | 'udp';
+  facility: string;
+  sent?: number;
+  dropped?: number;
+  waiting?: number;
+  lastSent?: string | null;
+  lastError?: string | null;
+}
+
+/** Every audit-log entry sent on to a syslog server: RFC 5424 carrying CEF, over TLS, TCP or UDP. */
+export const syslog = {
+  get: () => request<SyslogState>('GET', '/api/v2/console/syslog').then((r) => r.data),
+  save: (s: Pick<SyslogState, 'enabled' | 'host' | 'port' | 'transport' | 'facility'>) => request<SyslogState>('PUT', '/api/v2/console/syslog', s).then((r) => r.data),
+  test: () => request<{ ok: boolean; error?: string }>('POST', '/api/v2/console/syslog/test', {}).then((r) => r.data),
+};
+
 export const consoleSettings = {
   get: () => request<ConsoleSettings>('GET', '/api/v2/console/settings').then((r) => r.data),
   /** Either setting, or both; what is left out stays as it is. */

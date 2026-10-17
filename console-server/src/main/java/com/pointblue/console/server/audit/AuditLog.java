@@ -70,6 +70,13 @@ public final class AuditLog {
         }
     }
 
+    private final java.util.List<java.util.function.Consumer<Map<String, Object>>> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** Called with each entry once it is written (such as the syslog forwarder); a listener's failure never stops the write. */
+    public void onEntry(java.util.function.Consumer<Map<String, Object>> listener) {
+        listeners.add(listener);
+    }
+
     /** Append one line; returns its sequence number. */
     public synchronized long log(Actor who, String event, String target, Map<String, Object> details, String outcome) throws IOException {
         Map<String, Object> line = new LinkedHashMap<>();
@@ -90,6 +97,14 @@ public final class AuditLog {
         }
         Files.writeString(f, text + "\n", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
         last = sha256(text);
+        Map<String, Object> written = java.util.Collections.unmodifiableMap(line);
+        for (java.util.function.Consumer<Map<String, Object>> l : listeners) {
+            try {
+                l.accept(written);
+            } catch (RuntimeException e) {
+                // the entry is written; a listener cannot undo or block that
+            }
+        }
         return seq;
     }
 

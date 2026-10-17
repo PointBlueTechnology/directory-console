@@ -697,6 +697,32 @@ export const CONTENT: Record<string, HelpTopic> = {
     ],
     related: ['certificates', 'security.certificates'],
   },
+  'settings.syslog': {
+    title: 'Syslog',
+    summary: 'Every audit-log entry sent on to a syslog server as it is written, in CEF, so a SIEM can collect the console\'s events beside eDirectory\'s.',
+    sections: [
+      {
+        title: 'The format',
+        list: [
+          'RFC 5424 syslog messages; the text is CEF: CEF:0|Point Blue|Directory Console|version|event|name|severity|...',
+          'suser is who acted, act the event, outcome ok, refused or failed, cs2 the target, cs3 the details (secrets are never included), cn1 the entry\'s number in the audit log.',
+          'Severity 3 when it went through, 5 when refused, 7 when it failed.',
+        ],
+      },
+      {
+        title: 'Transports',
+        list: [
+          'TLS (RFC 5425, port 6514): the server\'s certificate must be from a public CA or a CA the console trusts, and name the host.',
+          'TCP (octet counting) or UDP (port 514) are not encrypted; UDP can lose messages without telling.',
+        ],
+      },
+      {
+        title: 'When the server cannot be reached',
+        paragraphs: ['Entries wait in a queue of 2000 and are retried; beyond that they are dropped and counted here. The console\'s own audit log always keeps every entry.'],
+      },
+    ],
+    related: ['settings.expiry'],
+  },
   'settings.updates': {
     title: 'Updates',
     summary: 'This console\'s version, and the daily check for a newer release.',

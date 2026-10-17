@@ -415,6 +415,98 @@ public class ServerTest {
         return t;
     }
 
+    /** Reads octet-counted syslog frames (RFC 6587) from one connection into {@code got}. */
+    private static Thread frames(java.net.ServerSocket ss, List<String> got) {
+        Thread t = new Thread(() -> {
+            try (java.net.Socket c = ss.accept()) {
+                java.io.InputStream in = c.getInputStream();
+                while (true) {
+                    StringBuilder len = new StringBuilder();
+                    int ch;
+                    while ((ch = in.read()) != ' ') {
+                        if (ch < 0) {
+                            return;
+                        }
+                        len.append((char) ch);
+                    }
+                    got.add(new String(in.readNBytes(Integer.parseInt(len.toString())), StandardCharsets.UTF_8));
+                }
+            } catch (java.io.IOException | NumberFormatException e) {
+                // the test sees what arrived
+            }
+        });
+        t.setDaemon(true);
+        t.start();
+        return t;
+    }
+
+    private static void waitFor(List<String> got, String part) throws InterruptedException {
+        for (int i = 0; i < 50 && got.stream().noneMatch(m -> m.contains(part)); i++) {
+            Thread.sleep(100);
+        }
+    }
+
+    @Test
+    public void auditEntriesGoToSyslogAsCefOverTcpTlsAndUdp() throws Exception {
+        String id = firstSignIn();
+        Map<String, String> w = signedIn(id, "cn=admin,o=system", "admin-pw");
+        assertEquals(400, call("PUT", "/api/v2/console/syslog", Map.of("enabled", true), w).status());
+        assertEquals(400, call("PUT", "/api/v2/console/syslog", Map.of("enabled", true, "host", "127.0.0.1", "transport", "sctp"), w).status());
+
+        // TCP: every audit entry, octet-counted
+        List<String> got = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        try (java.net.ServerSocket tcp = new java.net.ServerSocket(0, 5, java.net.InetAddress.getLoopbackAddress())) {
+            frames(tcp, got);
+            Reply on = call("PUT", "/api/v2/console/syslog", Map.of("enabled", true, "host", "127.0.0.1", "port", tcp.getLocalPort(), "transport", "tcp", "facility", "local3"), w);
+            assertEquals(String.valueOf(on.body()), 200, on.status());
+            call("PUT", "/api/v2/console/updates", Map.of("enabled", false), w);
+            waitFor(got, "settings.update-check");
+            String m = got.stream().filter(x -> x.contains("settings.update-check")).findFirst().orElseThrow();
+            // local3 (19) x 8 + notice (5)
+            assertTrue(m, m.startsWith("<157>1 "));
+            assertTrue(m, m.contains(" directory-console ") && m.contains("CEF:0|Point Blue|Directory Console|development|settings.update-check|settings update check|3|"));
+            assertTrue(m, m.contains("suser=cn\\=admin,o\\=system") && m.contains("outcome=ok") && m.contains("cs3Label=details"));
+        }
+
+        // TLS: the server's certificate is from a CA the console trusts for every directory
+        com.pointblue.console.server.tls.TestPki pki = new com.pointblue.console.server.tls.TestPki("LOGS");
+        com.pointblue.console.server.tls.TestPki.Server cert = pki.server("localhost", List.of("localhost"));
+        server.trust.add(pki.ca, com.pointblue.console.server.tls.TrustStore.Kind.CA, "global", "test", "test");
+        got.clear();
+        java.security.KeyStore ks = java.security.KeyStore.getInstance("PKCS12");
+        ks.load(null, null);
+        ks.setKeyEntry("s", cert.key().getPrivate(), "pw".toCharArray(), new java.security.cert.Certificate[] {cert.cert(), pki.ca});
+        javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(ks, "pw".toCharArray());
+        javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
+        ctx.init(kmf.getKeyManagers(), null, null);
+        try (java.net.ServerSocket tls = ctx.getServerSocketFactory().createServerSocket(0, 5, java.net.InetAddress.getLoopbackAddress())) {
+            frames(tls, got);
+            assertEquals(200, call("PUT", "/api/v2/console/syslog", Map.of("enabled", true, "host", "localhost", "port", tls.getLocalPort(), "transport", "tls"), w).status());
+            Map<String, Object> test = call("POST", "/api/v2/console/syslog/test", Map.of(), w).body();
+            assertEquals(String.valueOf(test), true, test.get("ok"));
+            waitFor(got, "syslog.test");
+            assertTrue(String.valueOf(got), got.stream().anyMatch(x -> x.contains("syslog.test") && x.startsWith("<85>1 ")));
+        }
+
+        // UDP: one datagram per entry
+        try (java.net.DatagramSocket udp = new java.net.DatagramSocket(0, java.net.InetAddress.getLoopbackAddress())) {
+            udp.setSoTimeout(5000);
+            assertEquals(200, call("PUT", "/api/v2/console/syslog", Map.of("enabled", true, "host", "127.0.0.1", "port", udp.getLocalPort(), "transport", "udp"), w).status());
+            assertEquals(true, call("POST", "/api/v2/console/syslog/test", Map.of(), w).body().get("ok"));
+            java.net.DatagramPacket p = new java.net.DatagramPacket(new byte[9000], 9000);
+            String m = "";
+            for (int i = 0; i < 5 && !m.contains("syslog.test"); i++) {
+                udp.receive(p);
+                m = new String(p.getData(), 0, p.getLength(), StandardCharsets.UTF_8);
+            }
+            assertTrue(m, m.contains("CEF:0|Point Blue|Directory Console|") && m.contains("syslog.test"));
+        }
+        Map<String, Object> st = call("GET", "/api/v2/console/syslog", null, w).body();
+        assertTrue(String.valueOf(st), ((Number) st.get("sent")).longValue() > 0);
+        assertEquals(200, call("PUT", "/api/v2/console/syslog", Map.of("enabled", false, "host", "127.0.0.1"), w).status());
+    }
+
     @Test
     public void certificateExpiryIsFoundAndNotifiedOncePerLevel() throws Exception {
         List<String> hooks = java.util.Collections.synchronizedList(new java.util.ArrayList<>());

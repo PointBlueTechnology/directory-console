@@ -5,7 +5,7 @@ import {
 } from '@patternfly/react-core';
 import { DownloadIcon, PlusIcon, UploadIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type DirectorySettings, type ExpirySettings, type ExpiryState, expiry, type OidcSettings, type Preset, type RoleMappingJson, type UpdateState, UPGRADING_URL, consoleSettings, settings, updates } from '../api';
+import { type DirectorySettings, type ExpirySettings, type ExpiryState, type SyslogState, expiry, syslog, type OidcSettings, type Preset, type RoleMappingJson, type UpdateState, UPGRADING_URL, consoleSettings, settings, updates } from '../api';
 import { useSession } from '../session';
 import { HeadingLevel, useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
@@ -71,6 +71,9 @@ export function SettingsPage() {
             </Tab>
             <Tab eventKey="expiry" title={<TabTitleText>Certificate expiry</TabTitleText>}>
               <ExpirySection />
+            </Tab>
+            <Tab eventKey="syslog" title={<TabTitleText>Syslog</TabTitleText>}>
+              <SyslogSection />
             </Tab>
             <Tab eventKey="updates" title={<TabTitleText>Updates</TabTitleText>}>
               <UpdatesSection />
@@ -224,6 +227,80 @@ function UpdatesSection() {
         </>
       )}
       <ProblemAlert error={error} />
+      {dialog}
+    </div>
+  );
+}
+
+const FACILITIES = ['authpriv', 'auth', 'audit', 'user', 'daemon', 'local0', 'local1', 'local2', 'local3', 'local4', 'local5', 'local6', 'local7'];
+
+/** Console-wide: every audit-log entry sent on to a syslog server, as CEF. */
+function SyslogSection() {
+  const { run, dialog } = useStepUp();
+  const [st, setSt] = useState<SyslogState | null>(null);
+  const [draft, setDraft] = useState<SyslogState | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const show = (x: SyslogState) => { setSt(x); setDraft(x); };
+  useEffect(() => { syslog.get().then(show, setError); }, []);
+  if (!st || !draft) {
+    return <div className="dc-tab-body">{error ? <ProblemAlert error={error} /> : <Spinner size="md" aria-label="Loading" />}</div>;
+  }
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    run(() => syslog.save({ enabled: draft.enabled, host: draft.host?.trim() || null, port: draft.port, transport: draft.transport, facility: draft.facility }))
+      .then((x) => { show(x); setNotice('Saved.'); }, setError).finally(() => setBusy(false));
+  };
+  return (
+    <div className="dc-tab-body">
+      <p>This applies to the whole console. Every entry written to the console's audit log (sign-ins, changes, refusals, exports, certificate expiry
+        notices) is also sent to a syslog server as it happens: an RFC 5424 message carrying CEF, the format eDirectory's own audit events use, so a SIEM
+        reads both alike. Delivery is best effort; the console's own audit log keeps every entry.</p>
+      {notice && <Alert variant="success" isInline isPlain title={notice} className="dc-tab-body" />}
+      <ProblemAlert error={error} />
+      {st.enabled && (
+        <DescriptionList isHorizontal isCompact className="dc-tab-body">
+          <DescriptionListGroup><DescriptionListTerm>Sent</DescriptionListTerm><DescriptionListDescription>{st.sent ?? 0}{st.lastSent && <span className="dc-subtle">, last {new Date(st.lastSent).toLocaleString()}</span>}</DescriptionListDescription></DescriptionListGroup>
+          <DescriptionListGroup><DescriptionListTerm>Waiting</DescriptionListTerm><DescriptionListDescription>{st.waiting ?? 0}</DescriptionListDescription></DescriptionListGroup>
+          <DescriptionListGroup><DescriptionListTerm>Dropped</DescriptionListTerm><DescriptionListDescription>{st.dropped ? <Label isCompact color="orange">{st.dropped}</Label> : 0}</DescriptionListDescription></DescriptionListGroup>
+        </DescriptionList>
+      )}
+      {st.enabled && st.lastError && <Alert variant="warning" isInline isPlain title={`The syslog server could not be reached: ${st.lastError}`} className="dc-tab-body" />}
+      <Form onSubmit={save} isWidthLimited className="dc-tab-body">
+        <Checkbox id="syslog-on" label="Send audit entries to syslog" isChecked={draft.enabled} onChange={(_e, v) => setDraft({ ...draft, enabled: v })} />
+        <FormGroup label="Syslog server" fieldId="syslog-host">
+          <TextInput id="syslog-host" value={draft.host ?? ''} onChange={(_e, v) => setDraft({ ...draft, host: v })} placeholder="siem.example.com" />
+        </FormGroup>
+        <FormGroup label="Transport" fieldId="syslog-transport">
+          <FormSelect id="syslog-transport" value={draft.transport} onChange={(_e, v) => setDraft({ ...draft, transport: v as SyslogState['transport'], port: v === 'tls' ? 6514 : 514 })}>
+            <FormSelectOption value="tls" label="TLS (RFC 5425, port 6514)" />
+            <FormSelectOption value="tcp" label="TCP (port 514), not encrypted" />
+            <FormSelectOption value="udp" label="UDP (port 514), not encrypted, may lose messages" />
+          </FormSelect>
+          <FormHelperText><HelperText><HelperTextItem>With TLS, the server's certificate must be from a public CA or a CA the console trusts (Certificates), and name the host.</HelperTextItem></HelperText></FormHelperText>
+        </FormGroup>
+        <FormGroup label="Port" fieldId="syslog-port">
+          <TextInput id="syslog-port" type="number" value={String(draft.port)} onChange={(_e, v) => setDraft({ ...draft, port: Number(v) })} style={{ maxWidth: '8rem' }} />
+        </FormGroup>
+        <FormGroup label="Facility" fieldId="syslog-facility">
+          <FormSelect id="syslog-facility" value={draft.facility} onChange={(_e, v) => setDraft({ ...draft, facility: v })}>
+            {FACILITIES.map((f) => <FormSelectOption key={f} value={f} label={f} />)}
+          </FormSelect>
+        </FormGroup>
+        <ActionGroup>
+          <Button type="submit" isLoading={busy} isDisabled={busy}>Save</Button>
+          <Button variant="secondary" isDisabled={busy || !st.host} onClick={() => {
+            setBusy(true);
+            setNotice(null);
+            setError(null);
+            syslog.test().then((r) => setNotice(r.ok ? `A test message went to ${st.host}.` : `Not sent: ${r.error}`), setError).finally(() => setBusy(false));
+          }}>Send a test</Button>
+        </ActionGroup>
+      </Form>
       {dialog}
     </div>
   );
