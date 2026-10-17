@@ -51,7 +51,16 @@ public final class DemoServer {
                 + "indexDefinition: 0$GUID$0$0$2$1$GUID\nindexDefinition: 0$GnSnIndex$0$0$0$1$Given Name$Surname\nindexDefinition: 0$mailIdx$0$0$0$1$Internet EMail Address",
             "dn: cn=edir2,ou=servers,o=system\nobjectClass: ncpServer\ncn: edir2\nversion: eDirectory for Linux x86_64 v9.3.2.0000 [DS]\nstatus: 2\nDSRevision: 4030300\n"
                 + "indexDefinition: 0$CN$0$0$1$1$CN\nindexDefinition: 0$GUID$0$0$2$1$GUID",
-            "dn: cn=LDAP Server - edir1,ou=servers,o=system\nobjectClass: ldapServer\ncn: LDAP Server - edir1\nldapHostServer: cn=edir1,ou=servers,o=system\nldapInterfaces: ldaps://:636",
+            "dn: cn=LDAP Server - edir1,ou=servers,o=system\nobjectClass: ldapServer\ncn: LDAP Server - edir1\nldapHostServer: cn=edir1,ou=servers,o=system\nldapInterfaces: ldap://:389\nldapInterfaces: ldaps://:636"
+                + "\nldapGroupDN: cn=LDAP Group - edir1,ou=servers,o=system\nldapKeyMaterialName: SSL CertificateDNS\nldapTLSRequired: FALSE\nldapBindRestrictions: 48"
+                + "\nldapTLSVerifyClientCertificate: 0\nsearchSizeLimit: 0\nsearchTimeLimit: 0\nldapEnablePSearch: TRUE\nldapTraceLevel: 12288\nldapNonStdAllUserAttrsMode: TRUE"
+                + "\nldapSSLConfig: {\"Version\":1,\"Info\":{\"Protocol\":\"\",\"Ciphers\":\"\"}}",
+            "dn: cn=LDAP Group - edir1,ou=servers,o=system\nobjectClass: ldapGroup\ncn: LDAP Group - edir1\nldapServerList: cn=LDAP Server - edir1,ou=servers,o=system"
+                + "\nldapAllowClearTextPassword: FALSE\nldapSearchReferralUsage: 1\nlDAPOtherReferralUsage: 1\nldapDefaultReferralBehavior: 2"
+                + "\nldapClassList: NDSName=User$LDAPNames=inetOrgPerson\nldapClassList: NDSName=Group$LDAPNames=groupOfNames\\24groupOfUniqueNames\\24group"
+                + "\nldapClassList: NDSName=Organizational Unit$LDAPNames=organizationalUnit"
+                + "\nldapAttributeList: NDSName=CN$LDAPNames=cn\\24commonName\nldapAttributeList: NDSName=Surname$LDAPNames=sn\\24surname"
+                + "\nldapAttributeList: NDSName=Internet EMail Address$LDAPNames=mail$Obselete=false$Description=e-mail address",
             "dn: cn=Active Directory,cn=Driver Set,o=system\nobjectClass: DirXML-Driver\ncn: Active Directory\nDirXML-TraceLevel: 3"
                 + "\nDirXML-JavaModule: com.novell.nds.dirxml.remote.driver.DriverShimImpl\nDirXML-ShimAuthID: ACME\\idm"
                 + "\nDirXML-ShimAuthServer: REMOTE(hostname=dc1.acme.example port=8090 kmo=idm)dc1.acme.example"

@@ -51,9 +51,12 @@ public class EdirTest {
             "dn: cn=console,o=system\nobjectClass: inetOrgPerson\ncn: console\nsn: c\nuserPassword: console-pw",
             "dn: ou=servers,o=system\nobjectClass: organizationalUnit\nou: servers",
             "dn: " + S1 + "\nobjectClass: ncpServer\ncn: edir1\nversion: eDirectory for Linux x86_64 v9.2.8.0000 [DS]\nstatus: 2\n"
-                + "indexDefinition: 0$CN$0$0$1$1$CN\nindexDefinition: 0$GnSnIndex$0$0$0$1$Given Name$Surname",
+                + "indexDefinition: 0$CN$0$0$1$1$CN\nindexDefinition: 0$GnSnIndex$0$0$0$1$Given Name$Surname\nindexDefinition: 0$GUID$0$0$2$1$GUID",
             "dn: " + S2 + "\nobjectClass: ncpServer\ncn: edir2\nversion: eDirectory for Linux x86_64 v9.3.2.0000 [DS]\nstatus: 2",
-            "dn: cn=LDAP Server - edir1,ou=servers,o=system\nobjectClass: ldapServer\ncn: LDAP Server - edir1\nldapHostServer: " + S1,
+            "dn: cn=LDAP Server - edir1,ou=servers,o=system\nobjectClass: ldapServer\ncn: LDAP Server - edir1\nldapHostServer: " + S1
+                + "\nldapGroupDN: cn=LDAP Group - edir1,ou=servers,o=system\nldapInterfaces: ldap://:389\nldapInterfaces: ldaps://:636\nldapTLSRequired: FALSE\nsearchSizeLimit: 0",
+            "dn: cn=LDAP Group - edir1,ou=servers,o=system\nobjectClass: ldapGroup\ncn: LDAP Group - edir1\nldapServerList: cn=LDAP Server - edir1,ou=servers,o=system"
+                + "\nldapClassList: NDSName=Group$LDAPNames=groupOfNames\\24group\nldapAllowClearTextPassword: FALSE",
             "dn: ou=Sales,o=acme\nobjectClass: organizationalUnit\nou: Sales");
         edir.server.modify(S1, new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD, "networkAddress",
             concat("9#".getBytes(), java.util.HexFormat.of().parseHex("020c7f000001"))));
@@ -210,6 +213,12 @@ public class EdirTest {
         Map<String, Object> aux = call("GET", "/api/v2/trees/acme/schema/classes/acmeAux", null, h).body();
         assertTrue(String.valueOf(aux), String.valueOf(aux.get("may")).contains("acmeFloor") && String.valueOf(aux.get("may")).contains("acmeBadge"));
         assertEquals(400, call("POST", "/api/v2/trees/acme/edir/schema/attributes", Map.of("name", "x y", "syntax", "1.3"), h).status());
+        assertEquals(201, call("POST", "/api/v2/trees/acme/edir/schema/attributes", Map.of("name", "acmeDesk", "syntax", "1.3.6.1.4.1.1466.115.121.1.15",
+            "flags", List.of("publicRead", "notSyncImmediate")), h).status());
+        String desk = String.valueOf(call("GET", "/api/v2/trees/acme/schema/attributes/acmeDesk", null, h).body());
+        assertTrue(desk, desk.contains("X-NDS_PUBLIC_READ") && desk.contains("X-NDS_NOT_SCHED_SYNC_IMMEDIATE"));
+        assertEquals(400, call("POST", "/api/v2/trees/acme/edir/schema/attributes", Map.of("name", "acmeBad", "syntax", "1.3.6.1.4.1.1466.115.121.1.15",
+            "flags", List.of("everything")), h).status());
 
         Reply ix = call("POST", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes", Map.of("name", "badges", "attributes", List.of("acmeBadge"), "rule", "substring"), h);
         assertEquals(201, ix.status());
@@ -217,10 +226,87 @@ public class EdirTest {
         assertEquals(409, call("POST", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes", Map.of("name", "badges", "attributes", List.of("acmeBadge")), h).status());
         assertEquals(400, call("POST", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes", Map.of("name", "nope", "attributes", List.of("noSuchAttr")), h).status());
         assertEquals("a system index stays", 409, call("DELETE", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/CN", null, h).status());
+        // online and offline: only that value's state changes; eDirectory's own indexes stay online
+        Reply off = call("PUT", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/badges/state", Map.of("state", "offline"), h);
+        assertEquals(String.valueOf(off.body()), 200, off.status());
+        Map<String, Object> badges = ((List<?>) off.body().get("indexes")).stream().map(Json::asMap).filter(i -> "badges".equals(i.get("name"))).findFirst().orElseThrow();
+        assertEquals("offline", badges.get("state"));
+        assertEquals("0$badges$1$2$0$1$acmeBadge", badges.get("raw"));
+        Reply on = call("PUT", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/badges/state", Map.of("state", "online"), h);
+        assertTrue(String.valueOf(on.body().get("indexes")).contains("0$badges$0$2$0$1$acmeBadge"));
+        assertEquals(400, call("PUT", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/badges/state", Map.of("state", "asleep"), h).status());
+        assertEquals("a system index stays online", 409, call("PUT", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/GUID/state", Map.of("state", "offline"), h).status());
+        assertEquals(404, call("PUT", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/nope/state", Map.of("state", "offline"), h).status());
         assertEquals(200, call("DELETE", "/api/v2/trees/acme/edir/servers/" + g1 + "/indexes/badges", null, h).status());
 
         assertEquals(200, call("DELETE", "/api/v2/trees/acme/edir/schema/classes/acmeAux", null, h).status());
         assertEquals(200, call("DELETE", "/api/v2/trees/acme/edir/schema/attributes/acmeBadge", null, h).status());
         assertEquals(404, call("GET", "/api/v2/trees/acme/schema/attributes/acmeBadge", null, h).status());
+    }
+
+    @Test
+    public void ldapServerAndGroupSettingsAreCheckedWrittenAndRefreshed() throws Exception {
+        String t = "/api/v2/trees/acme/edir/ldap";
+        Map<String, Object> all = call("GET", t, null, h).body();
+        Map<String, Object> srv = ((List<?>) all.get("servers")).stream().map(Json::asMap).findFirst().orElseThrow();
+        assertEquals(List.of("ldap://:389", "ldaps://:636"), srv.get("interfaces"));
+        assertEquals("edir1", Json.asMap(srv.get("host")).get("name"));
+        String sg = (String) srv.get("guid");
+        String gg = (String) Json.asMap(srv.get("group")).get("guid");
+
+        Map<String, Object> settings = Json.asMap(call("GET", t + "/servers/" + sg, null, h).body().get("settings"));
+        assertEquals(false, settings.get("ldapTLSRequired"));
+        assertEquals(0, Json.asInt(settings.get("searchSizeLimit"), -1));
+        Reply changed = call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("ldapTLSRequired", true, "searchSizeLimit", 500,
+            "ldapInterfaces", List.of("ldaps://:636"), "ldapSSLConfig", Map.of("protocol", "+TLSv1.2+TLSv1.3", "ciphers", "HIGH"))), h);
+        assertEquals(String.valueOf(changed.body()), 200, changed.status());
+        settings = Json.asMap(changed.body().get("settings"));
+        assertEquals(true, settings.get("ldapTLSRequired"));
+        assertEquals(500, Json.asInt(settings.get("searchSizeLimit"), -1));
+        assertEquals(List.of("ldaps://:636"), settings.get("ldapInterfaces"));
+        assertEquals(Map.of("protocol", "+TLSv1.2+TLSv1.3", "ciphers", "HIGH", "ciphersuites", ""), settings.get("ldapSSLConfig"));
+        assertEquals("{\"Version\":1,\"Info\":{\"Protocol\":\"+TLSv1.2+TLSv1.3\",\"Ciphers\":\"HIGH\",\"Ciphersuites\":\"\"}}",
+            edir.server.getEntry("cn=LDAP Server - edir1,ou=servers,o=system").getAttributeValue("ldapSSLConfig"));
+        assertEquals("an unknown setting", 400, call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("cn", "x")), h).status());
+        assertEquals(400, call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("searchSizeLimit", -1)), h).status());
+        assertEquals(400, call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("ldapTLSVerifyClientCertificate", 7)), h).status());
+        assertEquals(400, call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("ldapInterfaces", List.of("http://:80"))), h).status());
+        assertEquals("a removal of a setting that is not there is fine", 200,
+            call("PATCH", t + "/servers/" + sg, Map.of("settings", java.util.Collections.singletonMap("searchTimeLimit", null)), h).status());
+        assertEquals("a group is not a server", 404, call("GET", t + "/servers/" + gg, null, h).status());
+
+        Map<String, Object> group = call("GET", t + "/groups/" + gg, null, h).body();
+        assertEquals(List.of(Map.of("eDirectory", "Group", "ldap", List.of("groupOfNames", "group"))), Json.asMap(group.get("settings")).get("ldapClassList"));
+        assertEquals("not withheld: it is a setting, not a password", false, Json.asMap(group.get("settings")).get("ldapAllowClearTextPassword"));
+        Reply mapped = call("PATCH", t + "/groups/" + gg, Map.of("settings", Map.of("ldapClassList", List.of(
+            Map.of("eDirectory", "Group", "ldap", List.of("groupOfNames", "group")), Map.of("eDirectory", "User", "ldap", List.of("inetOrgPerson"))))), h);
+        assertEquals(String.valueOf(mapped.body()), 200, mapped.status());
+        assertTrue(edir.server.getEntry("cn=LDAP Group - edir1,ou=servers,o=system").hasAttributeValue("ldapClassList", "NDSName=User$LDAPNames=inetOrgPerson"));
+        assertEquals(400, call("PATCH", t + "/groups/" + gg, Map.of("settings", Map.of("ldapClassList", List.of(Map.of("eDirectory", "User", "ldap", List.of())))), h).status());
+
+        // packed and flag settings: only what eDirectory defines
+        assertEquals("no binds restricted, high ciphers", 200, call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("ldapBindRestrictions", 48)), h).status());
+        assertEquals("cipher level 7 does not exist", 400, call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("ldapBindRestrictions", 112)), h).status());
+        assertEquals("errors only", 200, call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("ldapTraceLevel", 12288)), h).status());
+        assertEquals(400, call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("ldapTraceLevel", 2)), h).status());
+        assertEquals(400, call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("ldapSSLConfig", Map.of("protocol", "SSLv3"))), h).status());
+        Reply tls = call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("ldapTLSRequired", false)), h);
+        assertEquals("TLS changes need the LDAP module reloaded", "reload", tls.body().get("needs"));
+        assertEquals("refresh", call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("searchSizeLimit", 100)), h).body().get("needs"));
+
+        // a mapping keeps Identity Console's extra fields (spelt as it spells them)
+        Reply described = call("PATCH", t + "/groups/" + gg, Map.of("settings", Map.of("ldapAttributeList", List.of(
+            Map.of("eDirectory", "Surname", "ldap", List.of("sn", "surname"), "obsolete", false, "description", "family name")))), h);
+        assertEquals(String.valueOf(described.body()), 200, described.status());
+        assertTrue(edir.server.getEntry("cn=LDAP Group - edir1,ou=servers,o=system").hasAttributeValue("ldapAttributeList",
+            "NDSName=Surname$LDAPNames=sn\\24surname$Obselete=false$Description=family name"));
+        assertEquals(List.of(Map.of("eDirectory", "Surname", "ldap", List.of("sn", "surname"), "obsolete", false, "description", "family name")),
+            Json.asMap(described.body().get("settings")).get("ldapAttributeList"));
+
+        assertEquals(204, call("POST", t + "/servers/" + sg + "/refresh", Map.of(), h).status());
+        edir.partitions.triggered.clear();
+        assertEquals(204, call("POST", t + "/servers/" + sg + "/reload", Map.of(), h).status());
+        assertEquals(List.of("2.16.840.1.113719.1.27.100.127 reloadModule"), edir.partitions.triggered);
+        assertEquals(404, call("POST", t + "/servers/" + gg + "/refresh", Map.of(), h).status());
     }
 }

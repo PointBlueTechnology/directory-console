@@ -12,6 +12,7 @@ import { useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { Hint, useHelpTopic } from '../help/Help';
+import { LdapView } from '../components/LdapView';
 import { REPLICA_TYPE_LABEL, ReplicaTypeLabel, replicaTypeHelp } from '../components/ReplicaType';
 import { explain } from '../help/glossary';
 
@@ -29,14 +30,15 @@ export function ReplicaLabels({ r }: { r: ReplicaState }) {
 }
 
 /** eDirectory administration: partitions and their replicas, and the servers. */
-export function EdirPage({ tab = 'partitions' }: { tab?: 'partitions' | 'servers' }) {
+export function EdirPage({ tab = 'partitions' }: { tab?: 'partitions' | 'servers' | 'ldap' }) {
   useHelpTopic(`edir.${tab}`);
   return (
     <PageSection isFilled>
       <Title headingLevel="h1">eDirectory</Title>
-      <Tabs activeKey={tab} onSelect={(_e, k) => navigate(k === 'servers' ? '/edir/servers' : '/edir')} aria-label="eDirectory" mountOnEnter unmountOnExit className="dc-tab-body">
+      <Tabs activeKey={tab} onSelect={(_e, k) => navigate(k === 'servers' ? '/edir/servers' : k === 'ldap' ? '/edir/ldap' : '/edir')} aria-label="eDirectory" mountOnEnter unmountOnExit className="dc-tab-body">
         <Tab eventKey="partitions" title={<TabTitleText>Partitions and replicas</TabTitleText>}><PartitionsView /></Tab>
         <Tab eventKey="servers" title={<TabTitleText>Servers</TabTitleText>}><ServersView /></Tab>
+        <Tab eventKey="ldap" title={<TabTitleText>LDAP</TabTitleText>}><LdapView /></Tab>
       </Tabs>
     </PageSection>
   );
@@ -312,7 +314,7 @@ export function ServerPage({ guid }: { guid: string }) {
             {admin && <FlexItem><Button variant="secondary" onClick={() => setAdding(true)}>Add an index</Button></FlexItem>}
           </Flex>
           <Table aria-label="Indexes" variant="compact">
-            <Thead><Tr><Th>Index</Th><Th>Attributes</Th><Th>Rule</Th><Th>Kind</Th>{admin && <Th screenReaderText="Remove" />}</Tr></Thead>
+            <Thead><Tr><Th>Index</Th><Th>Attributes</Th><Th>Rule</Th><Th>Kind</Th><Th>State</Th>{admin && <Th screenReaderText="Actions" />}</Tr></Thead>
             <Tbody>
               {s.indexes.map((ix) => (
                 <Tr key={ix.name + ix.rule}>
@@ -320,8 +322,17 @@ export function ServerPage({ guid }: { guid: string }) {
                   <Td dataLabel="Attributes">{ix.attributes.join(', ')}</Td>
                   <Td dataLabel="Rule">{ix.rule}</Td>
                   <Td dataLabel="Kind">{ix.type === 'user' ? 'User-defined' : ix.type === 'system' ? 'System' : ix.type === 'operational' ? 'Operational' : 'With its attribute'}</Td>
+                  <Td dataLabel="State">
+                    <Label isCompact color={ix.state === 'online' ? 'green' : ix.state === 'offline' ? 'orange' : 'blue'}>{ix.state[0].toUpperCase() + ix.state.slice(1)}</Label>
+                  </Td>
                   {admin && (
                     <Td isActionCell>
+                      {ix.switchable && (ix.state === 'online' || ix.state === 'offline') && (
+                        <Hint text={ix.state === 'online' ? 'Stops maintaining the index, for a bulk load say. Searches on it get slower until it is back.' : 'Limber rebuilds the index.'}>
+                          <Button variant="link" isInline className="dc-gap-right" onClick={() => act(`Index ${ix.name} ${ix.state === 'online' ? 'taken offline' : 'coming back online'}; limber applies it.`,
+                            (c) => api.indexState(guid, ix.name, ix.state === 'online' ? 'offline' : 'online', c))}>{ix.state === 'online' ? 'Take offline' : 'Bring online'}</Button>
+                        </Hint>
+                      )}
                       {ix.removable && <Button variant="link" isInline isDanger onClick={() => sure.ask(`Remove the index ${ix.name}?`,
                         `Searches on ${ix.attributes.join(', ')} on ${s.name} can become slower.`, 'Remove',
                         () => act(`Index ${ix.name} removed.`, (c) => api.removeIndex(guid, ix.name, c)))}>Remove</Button>}

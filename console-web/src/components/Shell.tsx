@@ -19,6 +19,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { SessionWarning } from './SessionWarning';
 import { UpdateBanner } from './UpdateBanner';
 import { WARN_DAYS } from './Certificates';
+import { LdapGroupPage, LdapServerPage } from '../pages/LdapPages';
 
 // administration pages load when first opened: most sessions never visit them
 const IdmPage = lazy(() => import('../pages/IdmPage').then((m) => ({ default: m.IdmPage })));
@@ -199,6 +200,17 @@ function route(path: string) {
   }
   if (path === '/edir/servers') {
     return <EdirPage tab="servers" />;
+  }
+  if (path === '/edir/ldap') {
+    return <EdirPage tab="ldap" />;
+  }
+  m = match('/edir/ldap-servers/:guid', path);
+  if (m) {
+    return <LdapServerPage guid={m.guid} />;
+  }
+  m = match('/edir/ldap-groups/:guid', path);
+  if (m) {
+    return <LdapGroupPage guid={m.guid} />;
   }
   m = match('/edir/servers/:guid', path);
   if (m) {

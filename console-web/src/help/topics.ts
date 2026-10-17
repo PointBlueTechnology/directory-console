@@ -70,6 +70,12 @@ export function topicForPath(path: string): string {
   if (p.startsWith('/security/challenge-sets/')) {
     return 'security.challenge-set';
   }
+  if (p.startsWith('/edir/ldap-servers/')) {
+    return 'edir.ldap-server';
+  }
+  if (p.startsWith('/edir/ldap-groups/')) {
+    return 'edir.ldap-group';
+  }
   if (p.startsWith('/edir/servers/')) {
     return 'edir.server';
   }

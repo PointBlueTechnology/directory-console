@@ -25,6 +25,7 @@ public final class Partitions {
     static final String MERGE = BASE + "5";
     static final String ADD_REPLICA = BASE + "7";
     static final String REFRESH_LDAP = BASE + "9";
+    static final String RELOAD_MODULE = BASE + "127";
     static final String REMOVE_REPLICA = BASE + "11";
     static final String ENTRY_COUNT = BASE + "13";
     static final String CHANGE_TYPE = BASE + "15";
@@ -202,6 +203,18 @@ public final class Partitions {
     /** Re-read the LDAP Server object's configuration on the server the console is connected to. */
     public static void refreshLdapServer(Ldap l) throws NamingException {
         l.extended(REFRESH_LDAP, null);
+    }
+
+    /**
+     * Reload the LDAP module (nldap) on {@code hostDn}, which applies TLS, cipher, port and certificate changes
+     * that a refresh does not. Every LDAP connection to that server is dropped. eDirAPI's reloadModule
+     * (read from its binary, 2026-10-17): OID .127, a verb and a JSON payload.
+     */
+    public static void reloadLdapModule(Ldap l, String hostDn) throws NamingException {
+        java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+        o.writeBytes(octets("reloadModule"));
+        o.writeBytes(octets("{\"hostserver\":\"" + hostDn.replace("\\", "\\\\").replace("\"", "\\\"") + "\",\"module\":\"nldap\"}"));
+        l.extended(RELOAD_MODULE, o.toByteArray());
     }
 
     static byte[] octets(String s) {

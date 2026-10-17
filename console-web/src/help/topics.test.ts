@@ -4,7 +4,7 @@ import { TOPICS, topicFor, topicForPath } from './topics';
 /** Every page and tab of the console, as the shell and the tabbed pages name them. */
 const PAGES = [
   'browse', 'object', 'search', 'schema', 'certificates', 'settings',
-  'edir.partitions', 'edir.servers', 'edir.server',
+  'edir.partitions', 'edir.servers', 'edir.server', 'edir.ldap', 'edir.ldap-server', 'edir.ldap-group',
   'security.certificates', 'security.password-policies', 'security.challenge-sets', 'security.login-methods', 'security.eba',
   'security.password-policy', 'security.challenge-set',
   ...['attributes', 'account', 'certificates', 'groups', 'members', 'associations', 'rights', 'replicas', 'identity'].map((t) => `object.${t}`),

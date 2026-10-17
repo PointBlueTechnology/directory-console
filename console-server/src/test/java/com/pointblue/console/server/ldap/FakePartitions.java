@@ -45,7 +45,7 @@ public final class FakePartitions extends InMemoryExtendedOperationHandler {
     @Override
     public List<String> getSupportedExtendedRequestOIDs() {
         List<String> out = new ArrayList<>();
-        for (int n : new int[] {3, 5, 7, 9, 11, 13, 15, 17, 19, 47, 49, 51}) {
+        for (int n : new int[] {3, 5, 7, 9, 11, 13, 15, 17, 19, 47, 49, 51, 127}) {
             out.add(P + n);
         }
         return out;

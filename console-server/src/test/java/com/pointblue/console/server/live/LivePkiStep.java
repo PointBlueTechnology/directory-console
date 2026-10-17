@@ -158,6 +158,38 @@ public final class LivePkiStep {
                     d.put("If-Match", "*");
                     show(call("DELETE", t + "/objects/" + ou + "?subtree=true", null, d));
                 }
+                // READ-ONLY: the LDAP Server and Group objects
+                case "ldap" -> show(call("GET", t + "/edir/ldap", null, h));
+                // READ-ONLY: one LDAP Server or Group object's settings, by name
+                case "ldap-read" -> {
+                    Map<String, Object> all = call("GET", t + "/edir/ldap", null, h).body();
+                    for (String kind : List.of("servers", "groups")) {
+                        for (Object o : (List<?>) all.get(kind)) {
+                            Map<String, Object> m = Json.asMap(o);
+                            if (String.valueOf(m.get("name")).equals(args[3])) {
+                                show(call("GET", t + "/edir/ldap/" + kind + "/" + m.get("guid"), null, h));
+                            }
+                        }
+                    }
+                }
+                // the LDAP server re-reads its configuration, on its own host (signing in there first if asked)
+                case "ldap-refresh", "ldap-reload" -> {
+                    String verb = op.equals("ldap-reload") ? "reload" : "refresh";
+                    String guid = null;
+                    for (Object o : (List<?>) call("GET", t + "/edir/ldap", null, h).body().get("servers")) {
+                        Map<String, Object> m = Json.asMap(o);
+                        if (String.valueOf(m.get("name")).equals(args[3])) {
+                            guid = (String) m.get("guid");
+                        }
+                    }
+                    LiveSetupCheck.Reply r = call("POST", t + "/edir/ldap/servers/" + guid + "/" + verb, Map.of(), h);
+                    if (r.status() == 409 && "server-sign-in-required".equals(r.body().get("title"))) {
+                        System.out.println("(signing in to " + Json.asMap(r.body().get("server")).get("name") + ")");
+                        show(call("POST", "/api/v2/session/servers", Map.of("server", Json.asMap(r.body().get("server")).get("guid"), "password", pw), h));
+                        r = call("POST", t + "/edir/ldap/servers/" + guid + "/" + verb, Map.of(), h);
+                    }
+                    show(r);
+                }
                 case "user-create" -> show(call("POST", t + "/security/objects/" + guid(t, h, args[3]) + "/certificates",
                     Map.of("name", args[4], "algorithm", "rsa", "rsaBits", 2048, "validityYears", 1, "exportable", List.of(args).contains("exportable")), h));
                 // READ-ONLY: the object inspector's view of an object

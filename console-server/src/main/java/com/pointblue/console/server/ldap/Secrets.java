@@ -28,7 +28,8 @@ public final class Secrets {
 
     private static final Pattern RULE = Pattern.compile(".*(privatekey|secretkey|loginsecret).*|.*(password|passwords)$");
 
-    private static final Set<String> NOT_SECRET = Set.of("sssdisablemasterpasswords", "passwordallowchange", "passwordrequired");
+    private static final Set<String> NOT_SECRET = Set.of("sssdisablemasterpasswords", "passwordallowchange", "passwordrequired",
+        "ldapallowcleartextpassword");
 
     private Secrets() {
     }

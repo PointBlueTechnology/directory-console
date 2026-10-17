@@ -3,8 +3,17 @@ import {
   Button, Checkbox, Form, FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, Modal, ModalBody, ModalFooter,
   ModalHeader, NumberInput, TextArea, TextInput,
 } from '@patternfly/react-core';
-import { type Edir } from '../api';
+import { type AttributeFlag, type Edir } from '../api';
 import { ProblemAlert } from './Problem';
+
+/** The flags a new attribute may have, with what each does (they cannot be changed afterwards). */
+const ATTRIBUTE_FLAGS: [AttributeFlag, string, string][] = [
+  ['publicRead', 'Public read', 'Anyone may read it, without rights to it.'],
+  ['serverRead', 'Server read', 'Servers may read it, without rights to it.'],
+  ['writeManaged', 'Write managed', 'Adding a value needs rights to the object it names.'],
+  ['perReplica', 'Kept per server', 'Each server keeps its own value; it is not replicated.'],
+  ['notSyncImmediate', 'Not synchronised immediately', 'A change waits for the next scheduled replication.'],
+];
 
 const NAME = /^[A-Za-z][A-Za-z0-9-]{0,62}$/;
 const OID = /^[0-2](\.(0|[1-9][0-9]*))+$/;
@@ -29,6 +38,7 @@ export function NewAttributeModal({ api, run, onClose, onDone }: { api: Edir; ru
   const [oid, setOid] = useState('');
   const [syntax, setSyntax] = useState(SYNTAX_CHOICES[0].oid);
   const [single, setSingle] = useState(false);
+  const [flags, setFlags] = useState<AttributeFlag[]>([]);
   const [bound, setBound] = useState<number | ''>('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -42,7 +52,7 @@ export function NewAttributeModal({ api, run, onClose, onDone }: { api: Edir; ru
     setBusy(true);
     setError(null);
     try {
-      await run((c) => api.addAttribute({ name, oid: oid || undefined, syntax, singleValue: single, upperBound: bound === '' ? undefined : bound, description: description || undefined }, c));
+      await run((c) => api.addAttribute({ name, oid: oid || undefined, syntax, singleValue: single, upperBound: bound === '' ? undefined : bound, description: description || undefined, flags }, c));
       onDone(name);
     } catch (x) {
       setError(x);
@@ -64,6 +74,10 @@ export function NewAttributeModal({ api, run, onClose, onDone }: { api: Edir; ru
             </FormSelect>
           </FormGroup>
           <Checkbox id="attr-new-single" label="Single value" isChecked={single} onChange={(_e, v) => setSingle(v)} />
+          {ATTRIBUTE_FLAGS.map(([f, label, help]) => (
+            <Checkbox key={f} id={`attr-new-${f}`} label={label} description={help} isChecked={flags.includes(f)}
+              onChange={(_e, v) => setFlags(v ? [...flags, f] : flags.filter((x) => x !== f))} />
+          ))}
           <FormGroup label="Maximum length" fieldId="attr-new-bound">
             <NumberInput id="attr-new-bound" value={bound} min={1} onMinus={() => setBound(Math.max(1, (bound || 2) - 1))} onPlus={() => setBound((bound || 0) + 1)}
               onChange={(e) => { const v = (e.target as HTMLInputElement).value; setBound(v === '' ? '' : Math.max(1, Number(v))); }} inputName="bound" inputAriaLabel="Maximum length" />

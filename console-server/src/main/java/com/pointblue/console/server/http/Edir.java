@@ -6,6 +6,7 @@ import com.pointblue.console.server.auth.Sessions;
 import com.pointblue.console.server.ldap.Ldap;
 import com.pointblue.console.server.ldap.Names;
 import com.pointblue.console.server.ldap.Partitions;
+import com.pointblue.dirxml.dev.json.Json;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.security.SecureRandom;
@@ -58,6 +59,10 @@ final class Edir {
     private static final Pattern NAME = Pattern.compile("[A-Za-z][A-Za-z0-9-]{0,62}");
     private static final Pattern OID = Pattern.compile("[0-2](\\.(0|[1-9][0-9]*))+");
     private static final List<String> RULES = List.of("value", "presence", "substring");
+    /** Flags a new attribute may have, as eDirectory writes them in its schema. */
+    static final Map<String, String> ATTRIBUTE_FLAGS = new java.util.LinkedHashMap<>(Map.of(
+        "publicRead", "X-NDS_PUBLIC_READ", "serverRead", "X-NDS_SERVER_READ", "writeManaged", "X-NDS_NAME_VALUE_ACCESS",
+        "perReplica", "X-NDS_PER_REPLICA", "notSyncImmediate", "X-NDS_NOT_SCHED_SYNC_IMMEDIATE"));
     private static final List<String> INDEX_TYPES = List.of("user", "attribute-creation", "system", "operational");
 
     private final Server server;
@@ -80,8 +85,10 @@ final class Edir {
             .replaceAll("^(servers|partitions)/([0-9a-f]{32}|root)", "$1/{id}")
             .replaceAll("replicas/[0-9a-f]{32}$", "replicas/{server}")
             .replaceAll("indexes/[^/]+$", "indexes/{name}")
-            .replaceAll("^schema/(attributes|classes)/[^/]+", "schema/$1/{name}");
-        String id = p.length > 3 ? p[3] : null;
+            .replaceAll("indexes/[^/]+/state$", "indexes/{name}/state")
+            .replaceAll("^schema/(attributes|classes)/[^/]+", "schema/$1/{name}")
+            .replaceAll("^ldap/(servers|groups)/[0-9a-f]{32}", "ldap/$1/{id}");
+        String id = p.length > 3 && p[2].equals("ldap") ? (p.length > 4 ? p[4] : null) : p.length > 3 ? p[3] : null;
         if (!method.equals("GET")) {
             if (!s.principal.may(Role.EDITOR, "")) {
                 throw new Http.Problem(403, "forbidden", "eDirectory administration needs an editor role for the whole directory");
@@ -94,6 +101,7 @@ final class Edir {
                 case "GET servers/{id}" -> Http.json(ex, 200, serverDetail(l, id));
                 case "POST servers/{id}/indexes" -> addIndex(ex, l, s, id);
                 case "DELETE servers/{id}/indexes/{name}" -> deleteIndex(ex, l, s, id, decode(p[5]));
+                case "PUT servers/{id}/indexes/{name}/state" -> indexState(ex, l, s, id, decode(p[5]));
                 case "GET partitions" -> Http.json(ex, 200, partitions(l));
                 case "POST partitions" -> split(ex, l, s);
                 case "POST partitions/{id}/merge" -> partitionOp(ex, l, s, id, "partition.merge", (dn) -> Partitions.merge(l, dn));
@@ -119,6 +127,13 @@ final class Edir {
                     audit(s, "edir.background", id, Map.of("process", process, "server", srv), null);
                     Http.json(ex, 204, Map.of());
                 }
+                case "GET ldap" -> Http.json(ex, 200, ldapConfigs(l));
+                case "POST ldap/servers/{id}/refresh" -> refreshLdap(ex, s, id, false);
+                case "POST ldap/servers/{id}/reload" -> refreshLdap(ex, s, id, true);
+                case "GET ldap/servers/{id}" -> Http.json(ex, 200, ldapObject(l, id, "ldapServer"));
+                case "PATCH ldap/servers/{id}" -> changeLdapObject(ex, l, s, id, "ldapServer");
+                case "GET ldap/groups/{id}" -> Http.json(ex, 200, ldapObject(l, id, "ldapGroup"));
+                case "PATCH ldap/groups/{id}" -> changeLdapObject(ex, l, s, id, "ldapGroup");
                 case "POST ldap-refresh" -> {
                     Partitions.refreshLdapServer(l);
                     audit(s, "edir.ldap-refresh", null, Map.of(), null);
@@ -322,7 +337,14 @@ final class Edir {
         m.put("rule", ruleName(f[3]));
         int type = parse(f[4]);
         m.put("type", type >= 0 && type < INDEX_TYPES.size() ? INDEX_TYPES.get(type) : f[4]);
-        m.put("state", f[2]);
+        m.put("state", switch (f[2]) {
+            case "0" -> "online";
+            case "1" -> "offline";
+            case "2" -> "new";
+            case "3" -> "pending";
+            default -> f[2];
+        });
+        m.put("switchable", type == 0 || type == 1);
         m.put("attributes", List.of(java.util.Arrays.copyOfRange(f, 6, f.length)));
         m.put("removable", type == 0);
         m.put("raw", v);
@@ -340,6 +362,205 @@ final class Edir {
         } catch (NumberFormatException e) {
             return -1;
         }
+    }
+
+    /**
+     * {@code PUT servers/{id}/indexes/{name}/state}: {state: online | offline}. Only that value's state field
+     * changes (Identity Console rewrites every value); limber then picks it up. User and auto-added indexes
+     * only; system and operational ones belong to eDirectory.
+     */
+    private void indexState(HttpExchange ex, Ldap l, Sessions.Session s, String guid, String name) throws IOException, NamingException {
+        String want = Http.string(Http.body(ex), "state", true);
+        if (!List.of("online", "offline").contains(want)) {
+            throw new Http.Problem(400, "bad-field", "state is online or offline");
+        }
+        Ldap.Entry e = server.objects.byGuid(l, guid, "indexDefinition");
+        if (e == null) {
+            throw new Http.Problem(404, "not-found", "no server has GUID " + guid);
+        }
+        List<String> matches = new ArrayList<>();
+        for (Object v : e.attributes().getOrDefault("indexdefinition", List.of())) {
+            Map<String, Object> ix = index(String.valueOf(v));
+            if (ix != null && String.valueOf(ix.get("name")).equalsIgnoreCase(name)) {
+                matches.add(String.valueOf(v));
+            }
+        }
+        if (matches.isEmpty()) {
+            throw new Http.Problem(404, "not-found", "this server has no index named " + name);
+        }
+        if (matches.size() > 1) {
+            throw new Http.Problem(409, "ambiguous", "this server has " + matches.size() + " indexes named " + name);
+        }
+        String old = matches.get(0);
+        Map<String, Object> ix = index(old);
+        if (!Boolean.TRUE.equals(ix.get("switchable"))) {
+            throw new Http.Problem(409, "not-switchable", "a " + ix.get("type") + " index belongs to eDirectory and stays online");
+        }
+        if (want.equals(ix.get("state"))) {
+            Http.json(ex, 200, serverDetail(l, guid));
+            return;
+        }
+        String[] f = old.split("\\$", -1);
+        f[2] = want.equals("online") ? "0" : "1";
+        String value = String.join("$", f);
+        Map<String, Object> detail = Map.of("server", e.dn(), "index", name, "state", want);
+        try {
+            l.modify(e.dn(), List.of(new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute("indexDefinition", old)),
+                new ModificationItem(DirContext.ADD_ATTRIBUTE, new BasicAttribute("indexDefinition", value))));
+            Partitions.trigger(l, "limber", e.dn());
+        } catch (NamingException x) {
+            audit(s, "index.state", guid, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "index.state", guid, detail, null);
+        Http.json(ex, 200, serverDetail(l, guid));
+    }
+
+    // ---- LDAP Server and LDAP Group objects ------------------------------------------------------------
+
+    private Map<String, Object> ref(Ldap l, String dn) throws NamingException {
+        if (dn == null) {
+            return null;
+        }
+        Ldap.Entry e = l.read(dn, "GUID");
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("dn", dn);
+        m.put("name", Names.identity(dn).get("name"));
+        m.put("guid", e == null || e.attributes().get("guid") == null ? null : Names.guidHex(e.attributes().get("guid").get(0)));
+        return m;
+    }
+
+    /** {@code GET ldap}: every LDAP Server object with its host server and group, and every LDAP Group with its servers. */
+    private Map<String, Object> ldapConfigs(Ldap l) throws NamingException {
+        List<Map<String, Object>> servers = new ArrayList<>();
+        for (Ldap.Entry e : l.search("", "(objectClass=ldapServer)", null, javax.naming.directory.SearchControls.SUBTREE_SCOPE,
+                new String[] {"GUID", "cn", "ldapHostServer", "ldapGroupDN", "ldapInterfaces", "ldapTLSRequired", "ldapKeyMaterialName"}, 500)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("guid", Names.guidHex(e.attributes().get("guid").get(0)));
+            m.put("dn", e.dn());
+            m.put("name", String.valueOf(e.first("cn")));
+            m.put("host", ref(l, e.first("ldapHostServer") == null ? null : String.valueOf(e.first("ldapHostServer"))));
+            m.put("group", ref(l, e.first("ldapGroupDN") == null ? null : String.valueOf(e.first("ldapGroupDN"))));
+            m.put("interfaces", e.attributes().getOrDefault("ldapinterfaces", List.of()).stream().map(String::valueOf).toList());
+            m.put("tlsRequired", "TRUE".equalsIgnoreCase(String.valueOf(e.first("ldapTLSRequired"))));
+            m.put("certificate", e.first("ldapKeyMaterialName") == null ? null : String.valueOf(e.first("ldapKeyMaterialName")));
+            servers.add(m);
+        }
+        List<Map<String, Object>> groups = new ArrayList<>();
+        for (Ldap.Entry e : l.search("", "(objectClass=ldapGroup)", null, javax.naming.directory.SearchControls.SUBTREE_SCOPE,
+                new String[] {"GUID", "cn", "ldapServerList"}, 500)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("guid", Names.guidHex(e.attributes().get("guid").get(0)));
+            m.put("dn", e.dn());
+            m.put("name", String.valueOf(e.first("cn")));
+            List<Map<String, Object>> members = new ArrayList<>();
+            for (Object d : e.attributes().getOrDefault("ldapserverlist", List.of())) {
+                members.add(ref(l, String.valueOf(d)));
+            }
+            m.put("servers", members);
+            groups.add(m);
+        }
+        return Map.of("servers", servers, "groups", groups);
+    }
+
+    private static final String[] LDAP_REFS = {"GUID", "objectClass", "cn", "ldapHostServer", "ldapGroupDN", "ldapServerList", "ldapKeyMaterialName", "extensionInfo"};
+
+    private Ldap.Entry ldapEntry(Ldap l, String guid, String objectClass) throws NamingException {
+        Map<String, LdapObjects.Field> fields = objectClass.equals("ldapServer") ? LdapObjects.SERVER : LdapObjects.GROUP;
+        List<String> attrs = new ArrayList<>(List.of(LDAP_REFS));
+        attrs.addAll(fields.keySet());
+        l.binaryAttributes(List.of("ldapSSLConfig"));
+        Ldap.Entry e = server.objects.byGuid(l, guid, attrs.toArray(String[]::new));
+        if (e == null || e.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase(objectClass))) {
+            throw new Http.Problem(404, "not-found", "no " + (objectClass.equals("ldapServer") ? "LDAP Server" : "LDAP Group") + " object has GUID " + guid);
+        }
+        return e;
+    }
+
+    /** {@code GET ldap/servers/{id}} or {@code ldap/groups/{id}}: the object's settings, and what it is linked to. */
+    private Map<String, Object> ldapObject(Ldap l, String guid, String objectClass) throws NamingException {
+        Ldap.Entry e = ldapEntry(l, guid, objectClass);
+        boolean isServer = objectClass.equals("ldapServer");
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("guid", guid);
+        m.put("dn", e.dn());
+        m.put("name", String.valueOf(e.first("cn")));
+        if (isServer) {
+            m.put("host", ref(l, e.first("ldapHostServer") == null ? null : String.valueOf(e.first("ldapHostServer"))));
+            m.put("group", ref(l, e.first("ldapGroupDN") == null ? null : String.valueOf(e.first("ldapGroupDN"))));
+            m.put("certificate", e.first("ldapKeyMaterialName") == null ? null : String.valueOf(e.first("ldapKeyMaterialName")));
+        } else {
+            List<Map<String, Object>> members = new ArrayList<>();
+            for (Object d : e.attributes().getOrDefault("ldapserverlist", List.of())) {
+                members.add(ref(l, String.valueOf(d)));
+            }
+            m.put("servers", members);
+        }
+        m.put("settings", LdapObjects.read(e, isServer ? LdapObjects.SERVER : LdapObjects.GROUP));
+        return m;
+    }
+
+    /**
+     * {@code PATCH ldap/servers/{id}} or {@code ldap/groups/{id}}: {settings: {attribute: value | null}}. Only the
+     * settings named change; the LDAP server applies them when refreshed.
+     */
+    private void changeLdapObject(HttpExchange ex, Ldap l, Sessions.Session s, String guid, String objectClass) throws IOException, NamingException {
+        Map<String, Object> changes = Json.asMap(Http.body(ex).get("settings"));
+        if (changes.isEmpty()) {
+            throw new Http.Problem(400, "bad-request", "settings names the settings to change");
+        }
+        boolean isServer = objectClass.equals("ldapServer");
+        Ldap.Entry e = ldapEntry(l, guid, objectClass);
+        List<ModificationItem> mods = LdapObjects.modifications(changes, isServer ? LdapObjects.SERVER : LdapObjects.GROUP);
+        // a removal of an attribute that is not there is an error in eDirectory: drop those
+        mods.removeIf(mi -> mi.getModificationOp() == DirContext.REMOVE_ATTRIBUTE
+            && e.attributes().getOrDefault(mi.getAttribute().getID().toLowerCase(Locale.ROOT), List.of()).isEmpty());
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("dn", e.dn());
+        detail.put("settings", new ArrayList<>(changes.keySet()));
+        String action = isServer ? "edir.ldap-server.change" : "edir.ldap-group.change";
+        if (!mods.isEmpty()) {
+            try {
+                l.modify(e.dn(), mods);
+            } catch (NamingException x) {
+                audit(s, action, guid, detail, Ldap.Failure.of(x));
+                throw x;
+            }
+        }
+        audit(s, action, guid, detail, null);
+        Map<String, Object> out = new LinkedHashMap<>(ldapObject(l, guid, objectClass));
+        // what applies at a refresh and what needs the LDAP module reloaded
+        out.put("needs", changes.keySet().stream().anyMatch(LdapObjects.NEED_RELOAD::contains) ? "reload" : "refresh");
+        Http.json(ex, 200, out);
+    }
+
+    /**
+     * {@code POST ldap/servers/{id}/refresh}: the LDAP server re-reads its LDAP Server and LDAP Group objects.
+     * eDirectory's refresh operation acts on the server the request reaches, so it goes over a connection to
+     * the LDAP server's host (signing in to it once, for a direct sign-in, as replica work does).
+     */
+    private void refreshLdap(HttpExchange ex, Sessions.Session s, String guid, boolean reload) throws IOException, NamingException {
+        Ldap l = s.ldap();
+        Ldap.Entry e = server.objects.byGuid(l, guid, "objectClass", "ldapHostServer");
+        if (e == null || e.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("ldapServer"))) {
+            throw new Http.Problem(404, "not-found", "no LDAP Server object has GUID " + guid);
+        }
+        Map<String, Object> host = ref(l, String.valueOf(e.first("ldapHostServer")));
+        Server.On on = server.on(s, (String) host.get("guid"));
+        Map<String, Object> detail = Map.of("ldapServer", e.dn(), "server", on.serverDn());
+        String action = reload ? "edir.ldap-reload" : "edir.ldap-refresh";
+        try {
+            if (reload) {
+                Partitions.reloadLdapModule(on.ldap(), on.serverDn());
+            } else {
+                Partitions.refreshLdapServer(on.ldap());
+            }
+        } catch (NamingException x) {
+            audit(s, action, guid, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, action, guid, detail, null);
+        Http.json(ex, 204, Map.of());
     }
 
     private void addIndex(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
@@ -568,6 +789,13 @@ final class Edir {
         }
         if (Boolean.TRUE.equals(b.get("singleValue"))) {
             def.append(" SINGLE-VALUE");
+        }
+        for (String flag : names(b.get("flags"))) {
+            String x = ATTRIBUTE_FLAGS.get(flag);
+            if (x == null) {
+                throw new Http.Problem(400, "bad-field", "flags are " + String.join(", ", ATTRIBUTE_FLAGS.keySet()));
+            }
+            def.append(" ").append(x).append(" '1'");
         }
         def.append(" )");
         schemaWrite(ex, l, s, "schema.attribute.add", name, List.of(new ModificationItem(DirContext.ADD_ATTRIBUTE, new BasicAttribute("attributeTypes", def.toString()))));

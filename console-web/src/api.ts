@@ -862,13 +862,63 @@ export interface ReplicaState {
   error?: string;
 }
 
+/** Flags a new attribute may have (eDirectory's X-NDS_ schema flags). */
+export type AttributeFlag = 'publicRead' | 'serverRead' | 'writeManaged' | 'perReplica' | 'notSyncImmediate';
+
 export interface EdirIndex {
   name: string;
   rule: 'value' | 'presence' | 'substring' | string;
   type: 'user' | 'attribute-creation' | 'system' | 'operational' | string;
-  state: string;
+  state: 'online' | 'offline' | 'new' | 'pending' | string;
   attributes: string[];
   removable: boolean;
+  /** User and auto-added indexes can be taken offline; system and operational ones cannot. */
+  switchable: boolean;
+}
+
+export interface LdapServerSummary {
+  guid: string;
+  dn: string;
+  name: string;
+  host: Reference & { guid: string | null } | null;
+  group: Reference & { guid: string | null } | null;
+  interfaces: string[];
+  tlsRequired: boolean;
+  certificate: string | null;
+}
+
+/** A mapping between an eDirectory name and its LDAP names; obsolete and description are Identity Console's own fields. */
+export interface LdapMapping {
+  eDirectory: string;
+  ldap: string[];
+  obsolete?: boolean;
+  description?: string;
+}
+
+export interface TlsConfig {
+  protocol: string;
+  ciphers: string;
+  ciphersuites: string;
+}
+
+export type LdapSettings = Record<string, boolean | number | string | string[] | LdapMapping[] | TlsConfig | null>;
+
+export interface LdapObject {
+  guid: string;
+  dn: string;
+  name: string;
+  host?: Reference & { guid: string | null } | null;
+  group?: Reference & { guid: string | null } | null;
+  certificate?: string | null;
+  servers?: (Reference & { guid: string | null })[];
+  settings: LdapSettings;
+  /** After a change: what applies it. */
+  needs?: 'refresh' | 'reload';
+}
+
+export interface LdapConfigs {
+  servers: LdapServerSummary[];
+  groups: { guid: string; dn: string; name: string; servers: (Reference & { guid: string | null })[] }[];
 }
 
 export interface EdirServerDetail extends EdirServer {
@@ -907,10 +957,26 @@ export function edir(id: string) {
       request<EdirServerDetail>('POST', `${base}/servers/${guidPath(server)}/indexes`, body, h(confirm)).then((r) => r.data),
     removeIndex: (server: string, name: string, confirm?: string) =>
       request<EdirServerDetail>('DELETE', `${base}/servers/${guidPath(server)}/indexes/${encodeURIComponent(name)}`, undefined, h(confirm)).then((r) => r.data),
+    /** Take an index offline (for a bulk load, say) or bring it back; limber applies it. */
+    indexState: (server: string, name: string, state: 'online' | 'offline', confirm?: string) =>
+      request<EdirServerDetail>('PUT', `${base}/servers/${guidPath(server)}/indexes/${encodeURIComponent(name)}/state`, { state }, h(confirm)).then((r) => r.data),
     background: (server: string, process: 'limber' | 'janitor' | 'skulker', confirm?: string) =>
       request<void>('POST', `${base}/servers/${guidPath(server)}/background`, { process }, h(confirm)),
+    /** Every LDAP Server object (with its host server and group) and every LDAP Group (with its servers). */
+    ldap: () => request<LdapConfigs>('GET', `${base}/ldap`).then((r) => r.data),
+    /** The LDAP server re-reads its configuration, on its own host: a direct sign-in may first be asked to sign in there. */
+    refreshLdapServer: (guid: string) => request<void>('POST', `${base}/ldap/servers/${guidPath(guid)}/refresh`, {}),
+    /** Reload the LDAP module on the LDAP server's host: needed for TLS, cipher, port and certificate changes. It drops every LDAP connection to that server. */
+    reloadLdapServer: (guid: string) => request<void>('POST', `${base}/ldap/servers/${guidPath(guid)}/reload`, {}),
+    ldapServer: (guid: string) => request<LdapObject>('GET', `${base}/ldap/servers/${guidPath(guid)}`).then((r) => r.data),
+    ldapGroup: (guid: string) => request<LdapObject>('GET', `${base}/ldap/groups/${guidPath(guid)}`).then((r) => r.data),
+    /** Change only the settings named (null removes one). The answer says whether a refresh or a reload applies them. */
+    changeLdapServer: (guid: string, settings: LdapSettings, confirm?: string) =>
+      request<LdapObject>('PATCH', `${base}/ldap/servers/${guidPath(guid)}`, { settings }, h(confirm)).then((r) => r.data),
+    changeLdapGroup: (guid: string, settings: LdapSettings, confirm?: string) =>
+      request<LdapObject>('PATCH', `${base}/ldap/groups/${guidPath(guid)}`, { settings }, h(confirm)).then((r) => r.data),
     ldapRefresh: (confirm?: string) => request<void>('POST', `${base}/ldap-refresh`, {}, h(confirm)),
-    addAttribute: (body: { name: string; oid?: string; syntax: string; singleValue: boolean; upperBound?: number; description?: string }, confirm?: string) =>
+    addAttribute: (body: { name: string; oid?: string; syntax: string; singleValue: boolean; upperBound?: number; description?: string; flags?: AttributeFlag[] }, confirm?: string) =>
       request<unknown>('POST', `${base}/schema/attributes`, body, h(confirm)),
     addClass: (body: { name: string; oid?: string; kind: string; superior: string[]; must: string[]; may: string[]; container?: boolean; naming?: string[]; containment?: string[] }, confirm?: string) =>
       request<unknown>('POST', `${base}/schema/classes`, body, h(confirm)),

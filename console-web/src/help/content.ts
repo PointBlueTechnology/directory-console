@@ -288,7 +288,65 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Indexes',
         paragraphs: ['Indexes make searches on an attribute fast: value (equals), presence (has a value) and substring (contains). Limber builds a new one; removing one slows searches on that attribute on this server.'],
       },
+      {
+        title: 'Taking an index offline',
+        paragraphs: ['eDirectory stops maintaining an offline index, which speeds up a bulk load; searches on it are slower until it is brought back online and limber rebuilds it. eDirectory\'s own (system and operational) indexes always stay online.'],
+      },
     ],
+  },
+  'edir.ldap': {
+    title: 'LDAP',
+    summary: 'Each eDirectory server has an LDAP Server object (ports, TLS, limits) in an LDAP Group (name mappings, referrals, TLS for simple binds).',
+    sections: [
+      {
+        title: 'Refresh or reload',
+        list: [
+          'Refresh: the LDAP server re-reads its LDAP Server and LDAP Group objects. Connections stay open. eDirectory also does this by itself every 30 minutes.',
+          'Reload: the LDAP module restarts, which applies TLS, cipher, bind-restriction, port and certificate changes. Every LDAP connection to that server drops for a moment; reloading the server the console uses signs everyone out of the console.',
+          'Both run on the LDAP server\'s own eDirectory server; with a password sign-in you may be asked to sign in to that server once.',
+        ],
+      },
+    ],
+    related: ['edir.ldap-server', 'edir.ldap-group'],
+  },
+  'edir.ldap-server': {
+    title: 'An LDAP server',
+    summary: 'One server\'s LDAP settings: where it listens, its certificate and TLS, bind restrictions, limits, searches and trace.',
+    sections: [
+      {
+        title: 'After saving',
+        paragraphs: ['Most settings apply at the next refresh. TLS, ciphers, bind restrictions, ports and the certificate need a reload, which drops the server\'s LDAP connections for a moment. The notice after saving says which, with a button.'],
+      },
+      {
+        title: 'Bind restrictions and ciphers',
+        list: [
+          'Bind restrictions refuse anonymous binds, password binds, or binds with a name and no password.',
+          'The cipher level is the weakest cipher a client may use; High is the default. Protocols and ciphers listed under TLS override it.',
+          'Settings here override the LDAP group\'s.',
+        ],
+      },
+      {
+        title: 'Changing ports or TLS',
+        caution: true,
+        paragraphs: ['Clients that rely on the old port or on clear-text binds stop working after the reload. The console itself connects with LDAPS; keep its port open on the server it uses.'],
+      },
+    ],
+    related: ['edir.ldap', 'edir.ldap-group'],
+  },
+  'edir.ldap-group': {
+    title: 'An LDAP group',
+    summary: 'Settings shared by its LDAP servers: TLS for password binds, the proxy user for anonymous clients, referrals, TLS protocols, and how LDAP names map to eDirectory names.',
+    sections: [
+      {
+        title: 'Name mappings',
+        paragraphs: ['Each mapping gives an eDirectory class or attribute its LDAP names. The first is the name the server returns; the others are accepted in requests. Removing a mapping that clients use breaks them.'],
+      },
+      {
+        title: 'Applying changes',
+        paragraphs: ['A change applies when each server in the group is refreshed (TLS settings need a reload). Use Refresh its servers, or wait up to 30 minutes.'],
+      },
+    ],
+    related: ['edir.ldap', 'edir.ldap-server'],
   },
 
   // ---- Security --------------------------------------------------------------------------------
