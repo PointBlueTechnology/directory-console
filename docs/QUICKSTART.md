@@ -7,7 +7,7 @@ Directory Console runs as one container. You need:
   machine, and a tree administrator's full name (DN) and password.
 
 Setup is one screen: you start the container, open the link it prints, and sign in to your tree. You can
-add more trees, such as dev and test, afterwards.
+add more directories, such as dev and test, afterwards.
 
 1. [Get the compose file](#1-get-the-compose-file)
 2. [Start the console](#2-start-the-console)
@@ -172,6 +172,9 @@ Then, in **Settings**:
 
 - **Role mappings:** decide who else may use the console. Map an eDirectory group to a role.
 - **Single sign-on:** set it up if you want it.
+- **Certificate expiry:** the console checks certificates daily and shows administrators a banner. To get notices,
+  add e-mail recipients or a webhook.
+- **Syslog:** to send the console's audit entries to your SIEM as CEF, set a syslog server.
 
 **Several directories (dev, test, production):** in **Settings**, then **Directories**, choose **Add a directory**. Give it
 a name people will recognize, such as Test, and choose Lab or Production. Then enter the directory's address and
@@ -181,6 +184,8 @@ sign-on: sign in to a directory to set those under the other Settings tabs.
 
 **Identity Manager** works with nothing else to install: the console talks to the engine on the
 server you signed in to.
+
+**Help:** the **?** in the header explains the page you are on.
 
 **Everyday commands,** run in the folder with `compose.yaml`:
 
@@ -192,7 +197,7 @@ server you signed in to.
 | Set up again (the old configuration is kept aside) | `docker compose exec console java -jar /app/console.jar admin reset-bootstrap`, then `docker compose restart console` |
 | Remove everything, including all settings | `docker compose down -v` |
 
-The console keeps its settings, certificates and audit log in the `console-data` volume, which survives
+The console keeps its settings, certificates, trust store and audit log in the `console-data` volume, which survives
 updates. Back it up before upgrading: [UPGRADING.md](UPGRADING.md) shows how, and how to go back.
 
 **New versions:** administrators see a banner when a newer release is out. The console checks once a day; turn
@@ -204,7 +209,7 @@ it off in **Settings > Updates** if this console has no internet access.
 the tree's server.
 - **Check the address and port from this machine,** for example in PowerShell:
   `Test-NetConnection 10.1.2.3 -Port 636`.
-- **If the tree's address starts with `172.17.`,** it falls inside the network Docker uses for containers,
+- **If the directory address starts with `172.17.`,** it falls inside the network Docker uses for containers,
   and Docker sends that traffic to its own bridge instead. Move Docker's networks out of the way: in
   Docker Desktop open **Settings**, then **Docker Engine**, add the two lines below inside the outer `{ }`,
   and choose **Apply & restart**. On Linux, put the same lines in `/etc/docker/daemon.json` and restart
@@ -216,7 +221,7 @@ the tree's server.
   ```
 
   Then, in the compose folder, run `docker compose down`, then `docker compose up -d`.
-- **If the tree runs on this same computer,** use `host.docker.internal` as the tree address.
+- **If the tree runs on this same computer,** use `host.docker.internal` as the **Directory address**.
 - **If you reach the tree through a VPN,** connect the VPN before starting Docker Desktop.
 
 **"Port is already allocated" when starting.** Something else uses 8443. In `compose.yaml`, change
@@ -229,5 +234,5 @@ Setup URL from the log, or paste the Setup token into the page.
 **Windows Firewall asks about Docker.** Allow it on private networks if people will use the console from
 other machines; otherwise it is not needed.
 
-**"Signed in but does not have supervisor rights to the tree".** Setup needs a tree administrator: an
+**"Signed in but does not have supervisor rights to the directory".** Setup needs a tree administrator: an
 account with Supervisor rights at the top of the tree.

@@ -15,7 +15,7 @@ import { Hint, useHelpTopic } from '../help/Help';
 import { LdapView } from '../components/LdapView';
 import { AuditView, EncryptionView, ReplicaFilterCard, SnmpView } from '../components/EdirMonitoring';
 import { REPLICA_TYPE_LABEL, ReplicaTypeLabel, replicaTypeHelp } from '../components/ReplicaType';
-import { explain } from '../help/glossary';
+import { GLOSSARY, type Term, explain } from '../help/glossary';
 
 /** A replica's type and state as labels: busy or in transition in blue, anything not "on" in orange. */
 export function ReplicaLabels({ r }: { r: ReplicaState }) {
@@ -328,9 +328,15 @@ export function ServerPage({ guid }: { guid: string }) {
                   <Td dataLabel="Index">{ix.name}</Td>
                   <Td dataLabel="Attributes">{ix.attributes.join(', ')}</Td>
                   <Td dataLabel="Rule">{ix.rule}</Td>
-                  <Td dataLabel="Kind">{ix.type === 'user' ? 'User-defined' : ix.type === 'system' ? 'System' : ix.type === 'operational' ? 'Operational' : 'With its attribute'}</Td>
+                  <Td dataLabel="Kind">
+                    <Hint text={GLOSSARY[`index.${ix.type}` as Term]}>
+                      <span tabIndex={0}>{ix.type === 'user' ? 'User-defined' : ix.type === 'system' ? 'System' : ix.type === 'operational' ? 'Operational' : 'With its attribute'}</span>
+                    </Hint>
+                  </Td>
                   <Td dataLabel="State">
-                    <Label isCompact color={ix.state === 'online' ? 'green' : ix.state === 'offline' ? 'orange' : 'blue'}>{ix.state[0].toUpperCase() + ix.state.slice(1)}</Label>
+                    <Hint text={GLOSSARY[`index.${ix.state}` as Term]}>
+                      <span tabIndex={0}><Label isCompact color={ix.state === 'online' ? 'green' : ix.state === 'offline' ? 'orange' : 'blue'}>{ix.state[0].toUpperCase() + ix.state.slice(1)}</Label></span>
+                    </Hint>
                   </Td>
                   {admin && (
                     <Td isActionCell>

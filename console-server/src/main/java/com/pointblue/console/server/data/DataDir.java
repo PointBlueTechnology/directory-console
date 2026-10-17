@@ -19,6 +19,7 @@ import java.nio.file.attribute.PosixFilePermissions;
  *   tls/                                              the console's own key and certificate
  *   keys/config.key                                   the configuration encryption key
  *   audit/audit-YYYY-MM.jsonl                         the hash-chained audit log
+ *   expiry-notified.json                              certificate expiry notices already sent
  *   bootstrap.txt                                     only while unconfigured
  * </pre>
  */

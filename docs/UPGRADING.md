@@ -57,7 +57,7 @@ docker compose logs --tail 20 console
 container. The log should show the console starting, with no setup link: a setup link means it found no
 configuration. If that happens, see [Going back](#going-back).
 
-Check the version in the user menu, or from the command line (change the port if you changed it):
+Check the version at the foot of the navigation, or from the command line (change the port if you changed it):
 
 ```bash
 curl -sk https://localhost:8443/api/v2/health/live
@@ -91,10 +91,10 @@ Removing the container does not remove the `console-data` volume.
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.3.2
+    image: ghcr.io/pointbluetechnology/directory-console:0.3.7
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.2 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.7 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -114,14 +114,38 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.3.7:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.6
+  needs no restore. What is new for operators:
+  - The console says *directory* where it said *tree*: **Settings > Trees** is now **Settings > Directories**, and
+    the setup page asks for the **Directory address**. API paths are unchanged.
+  - A daily certificate expiry check is on by default (**Settings > Certificate expiry**). Until you add e-mail or
+    webhooks, it only shows administrators a banner. It records what it has already reported in
+    `expiry-notified.json` in the data volume.
+  - Audit entries can be forwarded to syslog (**Settings > Syslog**); off by default.
+  - Server certificates can be exported with their private key (PKCS#12); it needs a recent sign-in and is
+    recorded in the audit log.
+  - Fixed: a request could occasionally go unanswered for 30 to 40 seconds.
 - **From 0.2.x or earlier to 0.3.0 or later:** Identity Manager no longer needs the engine's jars. Remove any
   `./engine:/engine:ro` line from `compose.yaml`; it is ignored if left.
 - **0.3.0 or later:** setup is the first sign-in from the setup link. It only matters for a new install, or after
   `admin reset-bootstrap`.
 
-## Air-gapped consoles
+## Outbound connections and air-gapped consoles
+
+The console makes these outbound connections:
+
+- **Each directory's servers,** over LDAPS: the server you sign in to, and other servers for work on them
+  (replicas, LDAP refresh, encryption policies, Identity Manager).
+- **GitHub** (`api.github.com`), once a day for the release check, unless it is turned off.
+- **Your mail server** (SMTP: 587 with STARTTLS by default, 465 with TLS, or a relay without TLS on a port you
+  choose) and **your webhooks** (HTTPS), only when certificate expiry notices are set up.
+- **Your syslog server** (6514 over TLS, or 514 over TCP or UDP), only when forwarding is on.
 
 If the console cannot reach the internet, turn off the update check in **Settings > Updates**, or leave it on:
 a failed check only shows a notice, and nothing else is affected. If your network uses a proxy, give it to the
-container as `HTTPS_PROXY`, for example in `compose.yaml` under `environment:`. To upgrade without internet
-access, copy the image across with `docker save` and `docker load`, then follow the steps above.
+container as `HTTPS_PROXY`, for example in `compose.yaml` under `environment:`. `HTTPS_PROXY` is used for the
+release check and webhooks. Mail and syslog connect directly. The mail server and webhooks need certificates from
+a public CA. A syslog server's certificate may also come from a CA in the console's trust store.
+
+To upgrade without internet access, copy the image across with `docker save` and `docker load`, then follow the
+steps above.

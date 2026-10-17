@@ -13,6 +13,7 @@ import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { useServerSignIn } from '../components/ServerSignIn';
 import { ObjectPicker } from '../components/ObjectPicker';
 import { FieldHelp, useHelpTopic } from '../help/Help';
+import { explain } from '../help/glossary';
 
 /** Bind restrictions, as the Administration Guide describes them (the low three bits). */
 const BINDS = [
@@ -117,9 +118,9 @@ function Saved({ needs, apply, busy }: { needs: 'refresh' | 'reload'; apply: (re
 }
 
 /** One editable number: empty means not set, which eDirectory reads as its default. */
-function NumberField({ id, label, help, value, onChange }: { id: string; label: string; help: string; value: unknown; onChange: (v: number | null) => void }) {
+function NumberField({ id, label, help, more, value, onChange }: { id: string; label: string; help: string; more?: string; value: unknown; onChange: (v: number | null) => void }) {
   return (
-    <FormGroup label={label} fieldId={id}>
+    <FormGroup label={label} fieldId={id} labelHelp={more ? <FieldHelp label={label}>{more}</FieldHelp> : undefined}>
       <TextInput id={id} type="number" min={0} value={typeof value === 'number' ? String(value) : ''} onChange={(_e, v) => onChange(v === '' ? null : Math.max(0, Number(v)))} />
       <FormHelperText><HelperText><HelperTextItem>{help}</HelperTextItem></HelperText></FormHelperText>
     </FormGroup>
@@ -286,7 +287,7 @@ export function LdapServerPage({ guid }: { guid: string }) {
                 <FormHelperText><HelperText><HelperTextItem>One of {o.host?.name ?? 'its server'}'s certificates, offered to LDAPS and StartTLS clients.</HelperTextItem></HelperText></FormHelperText>
               </FormGroup>
               <Checkbox id="ldap-tls-required" label="Require TLS for all operations" isChecked={bool(s.ldapTLSRequired)} isDisabled={!edit} onChange={(_e, v) => set('ldapTLSRequired', v)} />
-              <FormGroup label="Client certificates" fieldId="ldap-client-certs">
+              <FormGroup label="Client certificates" fieldId="ldap-client-certs" labelHelp={<FieldHelp label="Client certificates">{explain('clientCertificates')}</FieldHelp>}>
                 <FormSelect id="ldap-client-certs" value={String(num(s.ldapTLSVerifyClientCertificate))} isDisabled={!edit} onChange={(_e, v) => set('ldapTLSVerifyClientCertificate', Number(v))}>
                   <FormSelectOption value="0" label="Not requested" />
                   <FormSelectOption value="1" label="Requested" />
@@ -294,7 +295,7 @@ export function LdapServerPage({ guid }: { guid: string }) {
                 </FormSelect>
               </FormGroup>
               <Checkbox id="ldap-mutual" label="Enable and require mutual authentication" isChecked={bool(s.sslEnableMutualAuthentication)} isDisabled={!edit}
-                onChange={(_e, v) => set('sslEnableMutualAuthentication', v)} />
+                onChange={(_e, v) => set('sslEnableMutualAuthentication', v)} description={explain('mutualAuthentication')} />
               <FormGroup label="Bind restrictions" fieldId="ldap-binds">
                 <FormSelect id="ldap-binds" value={String(bind)} isDisabled={!edit} onChange={(_e, v) => setBr(Number(v), cipher, suite)}>
                   {BINDS.map((l, i) => <FormSelectOption key={l} value={String(i)} label={l} />)}
@@ -305,7 +306,7 @@ export function LdapServerPage({ guid }: { guid: string }) {
                   {CIPHERS.map((l, i) => <FormSelectOption key={l} value={String(i)} label={l} />)}
                 </FormSelect>
               </FormGroup>
-              <FormGroup label="Cipher suite level" fieldId="ldap-suite">
+              <FormGroup label="Cipher suite level" fieldId="ldap-suite" labelHelp={<FieldHelp label="Cipher suite level">{explain('cipherSuiteLevel')}</FieldHelp>}>
                 <FormSelect id="ldap-suite" value={String(suite)} isDisabled={!edit} onChange={(_e, v) => setBr(bind, cipher, Number(v))}>
                   {SUITES.map((l, i) => <FormSelectOption key={l} value={String(i)} label={l} />)}
                 </FormSelect>
@@ -322,8 +323,10 @@ export function LdapServerPage({ guid }: { guid: string }) {
               <NumberField id="ldap-idle" label="Idle timeout (seconds)" help="Closes a connection idle this long; 0 means never." value={s.ldapServerIdleTimeout} onChange={(v) => set('ldapServerIdleTimeout', v)} />
             </FormSection>
             <FormSection title="Searches and events" titleElement={level === 'h2' ? 'h3' : 'h2'}>
-              <Checkbox id="ldap-filtered" label="Use filtered replicas for searches" isChecked={num(s.filteredReplicaUsage) === 1} isDisabled={!edit} onChange={(_e, v) => set('filteredReplicaUsage', v ? 1 : 0)} />
-              <Checkbox id="ldap-psearch" label="Allow persistent searches" isChecked={bool(s.ldapEnablePSearch)} isDisabled={!edit} onChange={(_e, v) => set('ldapEnablePSearch', v)} />
+              <Checkbox id="ldap-filtered" label="Use filtered replicas for searches" isChecked={num(s.filteredReplicaUsage) === 1} isDisabled={!edit} onChange={(_e, v) => set('filteredReplicaUsage', v ? 1 : 0)}
+                description={explain('filteredReplicaUsage')} />
+              <Checkbox id="ldap-psearch" label="Allow persistent searches" isChecked={bool(s.ldapEnablePSearch)} isDisabled={!edit} onChange={(_e, v) => set('ldapEnablePSearch', v)}
+                description={explain('persistentSearch')} />
               <NumberField id="ldap-psearch-max" label="Most persistent searches" help="0 means no limit." value={s.ldapMaximumPSearchOperations} onChange={(v) => set('ldapMaximumPSearchOperations', v)} />
               <Checkbox id="ldap-psearch-limits" label="Persistent searches for events ignore the limits" isChecked={bool(s.ldapIgnorePSearchLimitsForEvents)} isDisabled={!edit}
                 onChange={(_e, v) => set('ldapIgnorePSearchLimitsForEvents', v)} />
@@ -341,7 +344,7 @@ export function LdapServerPage({ guid }: { guid: string }) {
                 ['ldapGeneralizedTime', 'Return times as Generalized Time'],
                 ['ldapPermissiveModify', 'Permissive modify (no error for a value already there or not there)'],
               ] as const).map(([k, l]) => <Checkbox key={k} id={`ldap-${k}`} label={l} isChecked={bool(s[k])} isDisabled={!edit} onChange={(_e, v) => set(k, v)} />)}
-              <NumberField id="ldap-lburp" label="Bulk load (LBURP) writer threads" help="1 to 64." value={s.ldapLBURPNumWriterThreads} onChange={(v) => set('ldapLBURPNumWriterThreads', v)} />
+              <NumberField id="ldap-lburp" label="Bulk load (LBURP) writer threads" help="1 to 64." more={explain('lburp')} value={s.ldapLBURPNumWriterThreads} onChange={(v) => set('ldapLBURPNumWriterThreads', v)} />
             </FormSection>
             <FormSection title="Trace" titleElement={level === 'h2' ? 'h3' : 'h2'}>
               <p className="dc-subtle">What the LDAP server writes to ndstrace.</p>

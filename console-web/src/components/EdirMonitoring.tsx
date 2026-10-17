@@ -10,6 +10,8 @@ import { linkProps } from '../router';
 import { ProblemAlert } from './Problem';
 import { useAreYouSure, useConfirmed } from './Confirm';
 import { useServerSignIn } from './ServerSignIn';
+import { explain, tip } from '../help/glossary';
+import { Hint } from '../help/Help';
 
 const CATEGORY: Record<string, string> = { security: 'Security events', object: 'Object events', attribute: 'Attribute events', ldap: 'LDAP events' };
 /** Events that can flood the log on a busy server. */
@@ -67,7 +69,7 @@ export function AuditView() {
     <div className="dc-tab-body">
       <p className="dc-subtle">
         Which events each server sends as CEF, and what they include. Where they go (syslog, a file, TLS, caching) is set in auditlogconfig.properties on the
-        server itself, and the cefauditds module must be loaded there.
+        server itself, and the <Hint text={explain('cefauditds')}><span tabIndex={0} className="dc-mono">cefauditds</span></Hint> module must be loaded there.
       </p>
       <FormGroup label="Server" fieldId="audit-server" className="dc-tab-body">
         <FormSelect id="audit-server" value={server} onChange={(_e, v) => setServer(v)}>
@@ -82,7 +84,7 @@ export function AuditView() {
         <Form onSubmit={save} className="dc-tab-body">
           {!a.configured && <Alert variant="info" isInline isPlain title="Nothing is stored for this server: eDirectory's defaults apply (shown below)." />}
           <Checkbox id="cef-replicated" label="Don't send events that arrive through replication" isChecked={s.noReplicatedEvents} isDisabled={!edit}
-            onChange={(_e, v) => set({ noReplicatedEvents: v })} />
+            onChange={(_e, v) => set({ noReplicatedEvents: v })} description={explain('noReplicatedEvents')} />
           <Checkbox id="cef-large" label="Log large values (over 768 bytes)" isChecked={s.logLargeValues} isDisabled={!edit} onChange={(_e, v) => set({ logLargeValues: v })} />
           <Checkbox id="cef-values" label="Log attribute values (add value, delete value)" isChecked={s.logAttributeValues} isDisabled={!edit}
             onChange={(_e, v) => set({ logAttributeValues: v })} />
@@ -187,7 +189,7 @@ export function SnmpView() {
             <ExpandableSection toggleText={`Traps (${g.traps.filter((t) => t.active).length} of ${g.traps.length} sent)`} isIndented>
               <TextInput aria-label="Filter traps" placeholder="Filter" value={filter} onChange={(_e, v) => setFilter(v)} className="dc-tab-body" />
               <Table aria-label={`${g.name} traps`} variant="compact">
-                <Thead><Tr><Th>Trap</Th><Th>Sent</Th><Th>Failure traps</Th><Th>Interval</Th></Tr></Thead>
+                <Thead><Tr><Th>Trap</Th><Th>Sent</Th><Th info={tip('failureTraps')}>Failure traps</Th><Th info={tip('trapInterval')}>Interval</Th></Tr></Thead>
                 <Tbody>
                   {g.traps.filter((t) => !filter || t.name.toLowerCase().includes(filter.toLowerCase())).map((t: SnmpTrap) => (
                     <Tr key={t.number}>
@@ -272,7 +274,7 @@ export function EncryptionView() {
           {edit && <Button variant="secondary" size="sm" className="dc-tab-body" onClick={() => setEditing({ parent: '', name: '', attributes: [{ attribute: '', scheme: 'aes256' }], secure: true })}>New policy</Button>}
           {e.policies.length === 0 ? <p>No encrypted attribute policies.</p> : (
             <Table aria-label="Encrypted attribute policies" variant="compact">
-              <Thead><Tr><Th>Policy</Th><Th>Attributes</Th><Th>Secure channel only</Th><Th>Servers</Th>{edit && <Th screenReaderText="Actions" />}</Tr></Thead>
+              <Thead><Tr><Th>Policy</Th><Th>Attributes</Th><Th info={tip('secureChannelOnly')}>Secure channel only</Th><Th>Servers</Th>{edit && <Th screenReaderText="Actions" />}</Tr></Thead>
               <Tbody>
                 {e.policies.map((p) => (
                   <Tr key={p.dn}>
@@ -449,6 +451,7 @@ export function ReplicaFilterCard({ guid }: { guid: string }) {
     <Card className="dc-tab-body">
       <CardTitle><Title headingLevel="h2" size="lg">Replica filter</Title></CardTitle>
       <CardBody>
+        <p className="dc-subtle">{explain('replicaFilter')}</p>
         <ProblemAlert error={error} />
         {notice && <Alert variant="success" isInline isPlain title={notice} className="dc-tab-body" />}
         {!f ? (!error && <Spinner size="md" aria-label="Reading the replica filter" />) : draft ? (

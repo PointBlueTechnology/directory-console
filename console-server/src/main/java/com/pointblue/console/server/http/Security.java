@@ -55,10 +55,27 @@ import javax.naming.directory.SearchControls;
  * PATCH  /api/v2/trees/{tree}/security/challenge-sets/{guid}
  * DELETE /api/v2/trees/{tree}/security/challenge-sets/{guid}
  * GET    /api/v2/trees/{tree}/security/login-policy                          sequences, the default, the login methods
+ * POST   /api/v2/trees/{tree}/security/login-policy/sequences                {"name", "methods", "any"}
+ * PATCH  /api/v2/trees/{tree}/security/login-policy/sequences/{name}         {"name", "methods", "any"}
+ * DELETE /api/v2/trees/{tree}/security/login-policy/sequences/{name}
+ * GET    /api/v2/trees/{tree}/security/eba                                   the EBA CA, each server's NCP certificate, pending requests
+ * POST   /api/v2/trees/{tree}/security/pki/servers/{guid}/certificates       a server certificate on that server, from the tree CA
+ * GET    /api/v2/trees/{tree}/security/pki/servers/{guid}/default-certificates
+ * POST   /api/v2/trees/{tree}/security/pki/servers/{guid}/default-certificates  new default certificates for that server
+ * PUT    /api/v2/trees/{tree}/security/pki/ldap-servers/{guid}/certificate   the certificate an LDAP server offers
+ * PUT    /api/v2/trees/{tree}/security/pki/ca/configuration                  the settings named in the body
+ * DELETE /api/v2/trees/{tree}/security/pki/server-certificates/{guid}
+ * POST   /api/v2/trees/{tree}/security/pki/server-certificates/{guid}/revoke {"reason", "comment"}
+ * POST   /api/v2/trees/{tree}/security/pki/server-certificates/{guid}/export {"password", "scheme"}: PKCS#12
+ * GET    /api/v2/trees/{tree}/security/objects/{guid}/certificates           a user's certificates
+ * POST   /api/v2/trees/{tree}/security/objects/{guid}/certificates           a user certificate from the tree CA
+ * POST   /api/v2/trees/{tree}/security/objects/{guid}/certificates/{name}/revoke  {"reason", "comment"}
+ * POST   /api/v2/trees/{tree}/security/objects/{guid}/certificates/{name}/export  the same as a server certificate's export
  * </pre>
  *
  * Writes change who can sign in and how, so they need an editor grant for the whole tree and, on
- * production, the directory's name typed.
+ * production, the directory's name typed. Exports change nothing, so they need a recent sign-in instead of the
+ * typed name: a server certificate's export also needs the editor grant, and only a user can export their own.
  */
 final class Security {
 

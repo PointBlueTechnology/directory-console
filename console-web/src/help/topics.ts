@@ -26,6 +26,9 @@ import { CONTENT } from './content';
 
 export const TOPICS: Record<string, HelpTopic> = {
   ...CONTENT,
+  // a driver's tabs that read as the driver set's
+  'idm.driver.jobs': CONTENT['idm.jobs'],
+  'idm.driver.mapping-tables': CONTENT['idm.mapping-tables'],
   console: {
     title: 'Directory Console',
     summary: 'Directory Console manages eDirectory objects and Identity Manager drivers in a web browser. Everything you do runs with your own eDirectory rights.',
@@ -36,6 +39,7 @@ export const TOPICS: Record<string, HelpTopic> = {
           'The navigation on the left lists what your role lets you use. Its foot shows the console\'s version.',
           'The ? in the header opens help for the page you are on.',
           'Your name, top right, shows which directory you are signed in to and your roles, and signs you out.',
+          'The sun and moon in the header switch between light and dark.',
         ],
       },
     ],

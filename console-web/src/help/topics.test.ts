@@ -20,6 +20,14 @@ describe('help topics', () => {
     }
   });
 
+  it('give every tab a topic of its own', () => {
+    // eDirectory > Partitions and replicas is the eDirectory page's own topic
+    const PARENT_OK = new Set(['edir.partitions']);
+    for (const p of PAGES.filter((x) => !PARENT_OK.has(x))) {
+      expect(topicFor(p).id, p).toBe(p);
+    }
+  });
+
   it('link only to topics that exist', () => {
     for (const [id, t] of Object.entries(TOPICS)) {
       for (const r of t.related ?? []) {

@@ -8,6 +8,7 @@ import { type DirObject, type Row, type SchemaAttribute, type SchemaClass, ApiEr
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
 import { type InputValue, ValueInput } from './ValueInput';
+import { explain } from '../help/glossary';
 
 /** Every write names its exact target before it runs (section 13). */
 export function Target({ obj, label = 'Object' }: { obj: Pick<Row, 'name' | 'dn' | 'guid'>; label?: string }) {
@@ -142,7 +143,7 @@ export function RenameModal({ obj, etag, onClose, onDone }: EditProps) {
               </HelperText>
             </FormHelperText>
           </FormGroup>
-          <Checkbox id="rename-alias" label="Leave an alias at the old name" description="References to the old name keep working"
+          <Checkbox id="rename-alias" label="Leave an alias at the old name" description={explain('aliasObject')}
             isChecked={alias} onChange={(_e, v) => setAlias(v)} />
           <ProblemAlert error={error} />
         </Form>
@@ -202,7 +203,7 @@ export function MoveModal({ obj, etag, onClose, onDone }: EditProps) {
           </FormGroup>
           {target && <Target obj={target} label="Into" />}
           {target && (
-            <Checkbox id="move-alias" label="Leave an alias at the old place" description="References to the old name keep working"
+            <Checkbox id="move-alias" label="Leave an alias at the old place" description={explain('aliasObject')}
               isChecked={alias} onChange={(_e, v) => setAlias(v)} />
           )}
           {target && <Alert variant="info" isInline isPlain title="eDirectory finishes a move in the background; the object may be busy for a few seconds." />}

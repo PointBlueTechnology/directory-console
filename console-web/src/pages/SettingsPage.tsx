@@ -286,7 +286,7 @@ function SyslogSection() {
         <FormGroup label="Port" fieldId="syslog-port">
           <TextInput id="syslog-port" type="number" value={String(draft.port)} onChange={(_e, v) => setDraft({ ...draft, port: Number(v) })} style={{ maxWidth: '8rem' }} />
         </FormGroup>
-        <FormGroup label="Facility" fieldId="syslog-facility">
+        <FormGroup label="Facility" fieldId="syslog-facility" labelHelp={<FieldHelp label="Facility">{explain('syslogFacility')}</FieldHelp>}>
           <FormSelect id="syslog-facility" value={draft.facility} onChange={(_e, v) => setDraft({ ...draft, facility: v })}>
             {FACILITIES.map((f) => <FormSelectOption key={f} value={f} label={f} />)}
           </FormSelect>
@@ -369,8 +369,9 @@ function ExpirySection() {
       </Card>
       <Form className="dc-tab-body" onSubmit={(e) => { e.preventDefault(); save(); }} isWidthLimited>
         <Checkbox id="expiry-on" label="Check once a day" isChecked={draft.enabled} onChange={(_e, v) => setDraft({ ...draft, enabled: v })} />
-        <FormGroup label="Warn this many days ahead" fieldId="expiry-days">
+        <FormGroup label="Warn this many days ahead" fieldId="expiry-days" labelHelp={<FieldHelp label="Warn this many days ahead">{explain('warnDays')}</FieldHelp>}>
           <TextInput id="expiry-days" type="number" min={1} max={365} value={String(draft.warnDays)} onChange={(_e, v) => setDraft({ ...draft, warnDays: Number(v) })} style={{ maxWidth: '8rem' }} />
+          <FormHelperText><HelperText><HelperTextItem>1 to 365. This sets when notices go out; the banner, Security &gt; Certificates and the default-certificate check always warn 30 days ahead.</HelperTextItem></HelperText></FormHelperText>
         </FormGroup>
         <FormSection title="E-mail" titleElement="h3">
           <FormGroup label="Mail server" fieldId="expiry-host">

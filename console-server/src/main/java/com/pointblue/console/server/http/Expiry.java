@@ -35,6 +35,15 @@ import java.util.concurrent.TimeUnit;
  * logged in the audit log, and sent to the configured e-mail recipients and webhooks: once when it enters the
  * window, again at 7 days, and once when it has expired.
  *
+ * <pre>
+ * GET  /api/v2/console/expiry           settings (secrets shown only as set), the last check's findings and errors
+ * PUT  /api/v2/console/expiry           {enabled, warnDays, email?, webhooks} (recent sign-in)
+ * POST /api/v2/console/expiry/check     check now
+ * POST /api/v2/console/expiry/test      send a test notice to every recipient and webhook
+ * </pre>
+ *
+ * All of them need the admin role.
+ *
  * <p>Configuration ({@code expiry} in the console's configuration): {enabled, warnDays, email: {host, port,
  * security, user, password (sealed), from, to: [...]}, webhooks: [{url, secret (sealed)}]}. Turned off for tests
  * with {@code console.expiryCheck=off}.

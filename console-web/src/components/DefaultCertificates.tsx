@@ -9,8 +9,8 @@ import {
   edir, security,
 } from '../api';
 import { useSession } from '../session';
-import { useConfirmed } from './Confirm';
-import { ProblemAlert } from './Problem';
+import { useAreYouSure, useConfirmed } from './Confirm';
+import { useServerSignIn } from './ServerSignIn';
 
 type Step = 'servers' | 'options' | 'review' | 'running' | 'done';
 const KINDS: DefaultCertificateKind[] = ['dns', 'ec', 'ip'];
@@ -32,7 +32,7 @@ function StateCell({ c }: { c?: DefaultCertificates['certificates'][number] }) {
  * when the tree CA has an EC key, and optionally SSL CertificateIP), server by server: choose servers,
  * choose what to renew, review, then each server in turn. Nothing is deleted: a missing certificate is
  * made under its standard name, an existing one gets a successor "<name> <date>" beside it, and an LDAP
- * server is moved to the successor as a separate step at the end. (Deleting and re-making a certificate
+ * server is moved to the successor as a separate step at the end, and reloaded on its own host to use it. (Deleting and re-making a certificate
  * under the same name crashed ndsd on a lab tree; eDirectory's own renewal replaces in place, which no LDAP
  * operation can.)
  */
@@ -40,6 +40,8 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
   const { me } = useSession();
   const api = useMemo(() => security(me.directory), [me.directory]);
   const confirmed = useConfirmed();
+  const signIn = useServerSignIn();
+  const sure = useAreYouSure();
   const [states, setStates] = useState<Record<string, DefaultCertificates | Error>>({});
   const [selected, setSelected] = useState<string[] | null>(null);
   const [step, setStep] = useState<Step>('servers');
@@ -50,7 +52,9 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
   const [ipText, setIpText] = useState('');
   const [results, setResults] = useState<Record<string, DefaultCertificateResult[] | Error>>({});
   const [current, setCurrent] = useState<string | null>(null);
-  const [refreshed, setRefreshed] = useState<'no' | 'busy' | 'yes' | Error>('no');
+  // LDAP server GUID → what reloading it did
+  const [reloaded, setReloaded] = useState<Record<string, 'busy' | 'yes' | Error>>({});
+  const [reloading, setReloading] = useState(false);
   // LDAP server GUID → what moving it to a successor did
   const [moved, setMoved] = useState<Record<string, 'busy' | string | Error>>({});
   const today = new Date().toISOString().slice(0, 10);
@@ -132,10 +136,37 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
     onChanged();
   };
 
-  const refreshLdap = () => {
-    setRefreshed('busy');
-    confirmed.run((c) => edir(me.directory).ldapRefresh(c)).then(() => setRefreshed('yes'), (e) => setRefreshed(e instanceof Error ? e : new Error(String(e))));
+  // the LDAP servers moved to a new certificate, once each; the console's own last, as reloading it signs everyone out
+  const isMoved = (guid: string) => typeof moved[guid] === 'string' && moved[guid] !== 'busy';
+  const movedLdap = [...new Map(moves.filter(({ ldap }) => isMoved(ldap.guid!)).map((x) => [x.ldap.guid!, x])).values()]
+    .sort((a, b) => Number((states[a.server.guid] as DefaultCertificates).connected) - Number((states[b.server.guid] as DefaultCertificates).connected));
+  const toReload = movedLdap.filter(({ ldap }) => reloaded[ldap.guid!] !== 'yes');
+
+  // each on its own host, one after another; a failure does not stop the others
+  const reloadLdap = async () => {
+    setReloading(true);
+    const api = edir(me.directory);
+    for (const { ldap } of toReload) {
+      const guid = ldap.guid!;
+      setReloaded((old) => ({ ...old, [guid]: 'busy' }));
+      try {
+        await signIn.run(() => api.reloadLdapServer(guid));
+        setReloaded((old) => ({ ...old, [guid]: 'yes' }));
+      } catch (e) {
+        setReloaded((old) => ({ ...old, [guid]: e instanceof Error ? e : new Error(String(e)) }));
+      }
+    }
+    setReloading(false);
   };
+  const askReload = () => {
+    const own = toReload.some(({ server }) => (states[server.guid] as DefaultCertificates).connected);
+    sure.ask(`Reload ${toReload.length === 1 ? toReload[0].ldap.name : 'these LDAP servers'}?`,
+      `The LDAP module restarts, which drops every LDAP connection to ${toReload.map(({ ldap }) => ldap.name).join(', ')} for a moment.${own
+        ? ' That includes the console\'s own: everyone signed in to the console will have to sign in again.' : ''}`,
+      'Reload', () => void reloadLdap());
+  };
+  const reloadedNames = movedLdap.filter(({ ldap }) => reloaded[ldap.guid!] === 'yes').map(({ ldap }) => ldap.name);
+  const failedNames = movedLdap.filter(({ ldap }) => reloaded[ldap.guid!] instanceof Error).map(({ ldap }) => ldap.name);
 
   const ipValid = !withIp || !single || lines(ipText).length > 0;
   return (
@@ -244,10 +275,10 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
             {step === 'review' && changes === 0 && <p className="dc-tab-body">Nothing needs replacing on the chosen servers.</p>}
             {step === 'done' && moves.length > 0 && (
               <div className="dc-tab-body">
-                <p><strong>Move LDAP servers to the new certificates</strong> (optional; each takes effect when the LDAP servers are refreshed).</p>
+                <p><strong>Move LDAP servers to the new certificates</strong> (optional; each takes effect when that LDAP server is reloaded).</p>
                 {connected && (
                   <Alert variant="warning" isInline isPlain title={`The console reaches the directory through ${connected.name}`}>
-                    If the console trusts it by its own certificate rather than the directory's CA, accept the new certificate on the Certificates page after the refresh.
+                    If the console trusts it by its own certificate rather than the directory's CA, accept the new certificate on the Certificates page after the reload.
                   </Alert>
                 )}
                 <Table aria-label="LDAP servers" variant="compact">
@@ -255,6 +286,7 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
                   <Tbody>
                     {moves.map(({ ldap, result }) => {
                       const m = moved[ldap.guid!];
+                      const r = reloaded[ldap.guid!];
                       return (
                         <Tr key={ldap.guid}>
                           <Td dataLabel="LDAP server">{ldap.name}</Td>
@@ -264,6 +296,9 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
                             {typeof m === 'string' && m !== 'busy' ? <Label color="green" isCompact>moved</Label>
                               : <Button variant="secondary" size="sm" isLoading={m === 'busy'} isDisabled={m === 'busy'} onClick={() => moveLdap(ldap.guid!, result.guid!)}>Use the new one</Button>}
                             {m instanceof Error && <Label color="red" isCompact>{m.message}</Label>}
+                            {r === 'busy' && <> <Spinner size="sm" aria-label="Reloading" /></>}
+                            {r === 'yes' && <> <Label color="green" isCompact>reloaded</Label></>}
+                            {r instanceof Error && <> <Label color="red" isCompact>reload failed: {r.message}</Label></>}
                           </Td>
                         </Tr>
                       );
@@ -278,14 +313,20 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
                   <ListItem>The old certificates are still there; delete them on the Certificates page once nothing uses them.</ListItem>
                   <ListItem>Clients that trust these servers by their certificate, not the directory's CA, must trust the new ones before an LDAP server is moved.</ListItem>
                 </List>
-                {Object.values(moved).some((m) => typeof m === 'string' && m !== 'busy') && (refreshed === 'yes' ? <Alert variant="success" isInline isPlain title="The LDAP servers were refreshed." />
-                  : <Button variant="secondary" isLoading={refreshed === 'busy'} isDisabled={refreshed === 'busy'} onClick={refreshLdap}>Refresh the LDAP servers now</Button>)}
-                {refreshed instanceof Error && <ProblemAlert error={refreshed} />}
+                {!reloading && reloadedNames.length > 0 && <Alert variant="success" isInline isPlain title={`Reloaded: ${reloadedNames.join(', ')}.`} />}
+                {!reloading && failedNames.length > 0 && <Alert variant="danger" isInline isPlain title={`Not reloaded: ${failedNames.join(', ')}. Try again, or reload ${failedNames.length === 1 ? 'it' : 'each'} from its own page (eDirectory > LDAP).`} />}
+                {(reloading || toReload.length > 0) && (
+                  <Button variant="secondary" isLoading={reloading} isDisabled={reloading} onClick={askReload}>
+                    Reload the moved LDAP server{toReload.length === 1 ? '' : 's'} now
+                  </Button>
+                )}
               </div>
             )}
           </>
         )}
         {confirmed.dialog}
+        {signIn.dialog}
+        {sure.dialog}
       </ModalBody>
       <ModalFooter>
         {step === 'servers' && <Button onClick={toOptions} isDisabled={chosen.length === 0}>Next</Button>}

@@ -41,6 +41,14 @@ import javax.net.ssl.X509TrustManager;
  * and counted, when the server stays unreachable; the console's own audit log keeps them all. A TLS server's
  * certificate must chain to a public CA or to a CA in the console's trust store, and name the host.
  *
+ * <pre>
+ * GET  /api/v2/console/syslog           settings and counters: sent, dropped, waiting, last error
+ * PUT  /api/v2/console/syslog           {enabled, host, port?, transport, facility} (recent sign-in)
+ * POST /api/v2/console/syslog/test      send a test message
+ * </pre>
+ *
+ * All of them need the admin role.
+ *
  * <p>Configuration ({@code syslog}): {enabled, host, port, transport: tls | tcp | udp, facility}.
  */
 final class Syslog {

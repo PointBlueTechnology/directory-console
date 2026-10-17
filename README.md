@@ -7,7 +7,7 @@
 A web console for NetIQ/OpenText **eDirectory** and **Identity Manager**. It runs as one container.
 
 - **Directory objects:** browse, search, edit and manage objects.
-- **eDirectory administration:** schema, partitions and replicas, indexes, password policies and certificates.
+- **eDirectory administration:** schema, partitions and replicas, indexes, LDAP servers, auditing, SNMP, encryption, password policies and certificates.
 - **Identity Manager:** run and inspect drivers and jobs.
 
 Every action runs with the signed-in person's own eDirectory rights, and every change is audited.
@@ -27,7 +27,7 @@ docker compose logs console
 ```
 
 The log prints a setup link. Open it, check the certificate fingerprint it shows, and sign in to your tree
-as an administrator. That tree becomes the console's tree, and that administrator its break-glass
+as an administrator. That tree becomes the console's first directory, and that administrator its break-glass
 account. You can add more directories (dev, test, production) later under **Settings > Directories**. The
 [quickstart](docs/QUICKSTART.md) walks through every step.
 
@@ -50,7 +50,7 @@ docker compose up -d
 - upgrading a `docker run` install;
 - pinning a version;
 - going back;
-- consoles without internet access.
+- outbound connections, and consoles without internet access.
 
 ## Features
 
@@ -64,26 +64,32 @@ docker compose up -d
   - account tasks: enable, unlock, reset a password;
   - group membership.
 - **eDirectory administration:**
-  - the schema: browse it, and add classes and attributes;
-  - partitions and replicas;
-  - servers and their indexes;
+  - the schema: browse it, and add classes and attributes, with their flags;
+  - partitions and replicas, and replica filters;
+  - servers and their indexes: add, take offline and back, copy to other servers;
+  - LDAP servers and groups, with refresh and reload;
+  - CEF auditing settings and SNMP traps;
+  - encrypted attribute policies;
   - password policies, challenge sets, login methods and enhanced background authentication.
 - **Certificates:**
   - the organizational CA and its configuration;
   - server and user certificates;
   - repair of the default server certificates;
-  - CRLs.
+  - CRLs;
+  - export with the private key (PKCS#12);
+  - a daily expiry check, with e-mail and signed webhook notices.
 - **Identity Manager:**
   - **driver sets and drivers:** state, start and stop (one at a time or all), start options, trace and log levels, named passwords, read-only properties, statistics and versions;
-  - **jobs:** run, create, edit and delete;
+  - **jobs:** run, abort, create, edit and delete;
   - **inspection:** the cache inspector, the association inspector, the object inspector, and per-user password synchronization status;
   - **data:** migrate and synchronize, and mapping tables.
 - **Sign-in and access:**
   - direct sign-in, or single sign-on with OpenID Connect;
-  - several trees, chosen at sign-in;
+  - several directories, chosen at sign-in;
   - role mappings from eDirectory groups to four roles, optionally limited to containers: viewer, editor, operator (Identity Manager) and admin;
   - task presets for delegated work;
   - break-glass accounts.
+- **Help:** the ? in the header explains the page you are on; hover hints explain terms and fields.
 
 ## How it works
 
@@ -98,20 +104,24 @@ docker compose up -d
   console keeps its own trust store.
 - **Records:**
   - **Configuration:** versioned, and secrets in it are encrypted.
-  - **Audit log:** hash-chained, so tampering shows.
+  - **Audit log:** hash-chained, so tampering shows, and can be forwarded to syslog as CEF.
   - **Writes:** each one is audited with attribute names, never values.
 - **Hardened container:** distroless Java 21 as a non-root user, with a read-only root file system. Everything
   the console keeps is in the `/data` volume.
 
 ## Configuration
 
-Almost everything is configured in the console itself. The container takes three environment variables:
+Almost everything is configured in the console itself. The container takes a few environment variables:
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `CONSOLE_PUBLIC_URL` | `https://localhost:8443` | How browsers reach the console; its host name goes into the console's certificate. |
 | `CONSOLE_PORT` | `8443` | The HTTPS port inside the container. |
 | `CONSOLE_DATA` | `/data` | Where the configuration, certificates and audit log are kept. |
+| `HTTPS_PROXY` | none | A proxy for the release check and webhooks. |
+| `CONSOLE_UPDATE_URL` | GitHub's latest-release API | Where the release check looks; for a mirror. |
+
+The console's outbound connections are listed in [UPGRADING.md](docs/UPGRADING.md#outbound-connections-and-air-gapped-consoles).
 
 Commands for the host, run in the folder with `compose.yaml`:
 

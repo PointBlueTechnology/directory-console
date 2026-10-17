@@ -39,7 +39,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Actions',
         list: [
-          'The ⋮ menu holds what you may do to this object: edit, rename, move, delete, add or remove auxiliary classes, and task presets granted to you.',
+          'The ⋮ menu holds what you may do to this object: edit an attribute, set a user\'s password, enable or disable a user, rename, move, delete, add or remove auxiliary classes, make a container a partition, and task presets granted to you.',
           'Rename and move can leave an alias at the old name or place, so references to it keep working.',
           'Deleting a container with objects in it asks you to type its name.',
         ],
@@ -102,7 +102,14 @@ export const CONTENT: Record<string, HelpTopic> = {
     title: 'User certificates',
     summary: 'Certificates issued to this user by the directory\'s Organizational CA.',
     sections: [
-      { title: 'Revoking', caution: true, paragraphs: ['Revoking a certificate cannot be undone. The next CRL lists it.'] },
+      {
+        title: 'Working with certificates',
+        list: [
+          'New certificate issues one for this user from the Organizational CA.',
+          'Download gives the certificate and its chain. Export with key gives a password-protected .pfx (PKCS#12) file with the private key; it needs a recent sign-in and is recorded in the audit log. eDirectory refuses a key not made exportable.',
+        ],
+      },
+      { title: 'Revoking', caution: true, paragraphs: ['Revoking cannot be undone, except with the reason "Certificate on hold". The CA lists the certificate on its CRL from the CRL\'s next issue.'] },
     ],
     related: ['security.certificates'],
   },
@@ -205,10 +212,11 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Building a search',
         list: [
-          'Start at a container, and choose its own level or everything below it.',
-          '"All" matches objects meeting every condition; "any" those meeting at least one.',
+          'Search under a container (or the whole directory): everything below it, or only what is directly inside.',
+          '"All of these" matches objects meeting every condition; "Any of these" those meeting at least one.',
           '"Sounds like" matches names that sound alike; "is at least" and "is at most" compare in order.',
           'Or type an LDAP filter. Escape parentheses and asterisks in values as \\28, \\29 and \\2a.',
+          'Sort by names an attribute; eDirectory sorts large results itself.',
         ],
       },
       { title: 'Results', paragraphs: ['Large results are sorted and paged by eDirectory, and their total is an estimate.'] },
@@ -230,7 +238,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Changing the schema',
         caution: true,
-        paragraphs: ['A schema change reaches every server in the directory. Only optional attributes can be added to an existing class, and base schema cannot be deleted.'],
+        paragraphs: ['A schema change reaches every server in the directory. New attributes and classes can be made, and optional attributes added to an existing class. An attribute or class in use, and base schema, cannot be deleted.'],
       },
     ],
   },
@@ -252,7 +260,15 @@ export const CONTENT: Record<string, HelpTopic> = {
       },
       {
         title: 'Changes take time',
-        paragraphs: ['Adding, removing and changing replicas, and splitting or merging partitions, complete in the background. The page refreshes while they run.'],
+        paragraphs: ['Adding, removing and changing replicas, and splitting or merging partitions, complete in the background. The page follows them while they run, and marks the partition "in progress".'],
+      },
+      {
+        title: 'Changing replicas',
+        list: [
+          'Add a replica puts a read/write or read-only copy of the partition on another server.',
+          'Change the type can also make a replica the master; the current master becomes read/write.',
+          'Remove deletes the server\'s copy; it keeps a subordinate reference where eDirectory needs one.',
+        ],
       },
       {
         title: 'Cautions',
@@ -268,7 +284,7 @@ export const CONTENT: Record<string, HelpTopic> = {
   'edir.servers': {
     title: 'Servers',
     summary: 'The directory\'s servers: version, status, and the server the console is connected through.',
-    sections: [],
+    sections: [{ title: 'Status', paragraphs: ['Up or down as eDirectory reports it; "connected" marks the server the console works through.'] }],
     related: ['edir.server'],
   },
   'edir.server': {
@@ -278,10 +294,10 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Background processes',
         list: [
-          'Limber: checks the server\'s name and addresses, and builds new indexes.',
+          'Limber: checks the server\'s name and addresses, builds new indexes, and applies index and encrypted attribute changes.',
           'Janitor: housekeeping, such as purging deleted objects.',
           'Skulker: checks and drives replica synchronization.',
-          'Refresh the LDAP server: makes LDAP re-read its configuration.',
+          'Refresh the LDAP server (only on the server the console is connected through): its LDAP server re-reads its configuration. Refresh other servers\' LDAP servers on eDirectory > LDAP.',
         ],
       },
       {
@@ -292,7 +308,21 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Taking an index offline',
         paragraphs: ['eDirectory stops maintaining an offline index, which speeds up a bulk load; searches on it are slower until it is brought back online and limber rebuilds it. eDirectory\'s own (system and operational) indexes always stay online.'],
       },
+      {
+        title: 'Index kinds and states',
+        list: [
+          'User-defined indexes can be removed, taken offline and copied to other servers; a copy is built there by limber, and a server with an index of that name keeps its own.',
+          'System and operational indexes are eDirectory\'s own. "With its attribute" ones were made when the attribute was created.',
+          'New and pending indexes are waiting for limber, or being built.',
+        ],
+      },
+      {
+        title: 'Replica filter',
+        caution: true,
+        paragraphs: ['The filter says which classes and attributes this server\'s filtered (sparse) replicas hold, by LDAP name. Changing it resynchronises every filtered replica on the server. A filtered read/write replica can create an object only if the filter holds all of its mandatory attributes.'],
+      },
     ],
+    related: ['edir', 'edir.encryption'],
   },
   'edir.audit': {
     title: 'Auditing',
@@ -304,6 +334,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Here: the events, whether replicated events are skipped, whether values are logged, and filters by class and attribute. Stored on the server\'s object.',
           'On the server: where events go (syslog over UDP, TCP or TLS, or a file), caching, and loading the cefauditds module. These are in auditlogconfig.properties.',
           'eDirectory applies a change here within three minutes, or at once when cefauditds is reloaded.',
+          'Use eDirectory\'s defaults removes what is stored here; the server then audits its default events.',
         ],
       },
       {
@@ -315,6 +346,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         ],
       },
     ],
+    related: ['settings.syslog'],
   },
   'edir.snmp': {
     title: 'SNMP',
@@ -322,7 +354,7 @@ export const CONTENT: Record<string, HelpTopic> = {
     sections: [
       {
         title: 'Traps',
-        paragraphs: ['A trap is sent when its event happens, at most once per interval (0 uses the group\'s default). Failure traps report the event failing. Where traps go, and community strings, are set in the server\'s SNMP agent; the subagent may need restarting to pick up a change made here.'],
+        paragraphs: ['Send no traps turns a group\'s traps off. A trap is sent when its event happens, at most once per interval (0 uses the group\'s default). Failure traps report the event failing. Where traps go, and community strings, are set in the server\'s SNMP agent; the subagent may need restarting to pick up a change made here.'],
       },
     ],
   },
@@ -332,12 +364,13 @@ export const CONTENT: Record<string, HelpTopic> = {
     sections: [
       {
         title: 'Encrypted attributes',
-        paragraphs: ['A policy names attributes a server keeps encrypted in its database; each server uses at most one. Giving a server a policy runs limber there, which applies it; the console first waits for a new policy to reach that server. Encrypting cannot be undone securely: values written before stay on disk in clear text, and so do pieces of old values when a scheme changes. With secure channel only, clear-text LDAP reads of the values fail (-6089). Do not encrypt indexed attributes or eDirectory\'s own.'],
+        paragraphs: ['A policy names attributes a server keeps encrypted in its database; each server uses at most one. Giving a server a policy runs limber there, which applies it. A new policy must first reach that server: the console waits up to about 30 seconds, and if it has not arrived by then says so, and you run limber on that server later (eDirectory > Servers, the server). Changing an existing policy applies on each of its servers when limber next runs there. A policy can be deleted only when no server uses it. Encrypting cannot be undone securely: values written before stay on disk in clear text, and so do pieces of old values when a scheme changes. With secure channel only, clear-text LDAP reads of the values fail (-6089). Do not encrypt indexed attributes or eDirectory\'s own. DES and Triple DES are older schemes: prefer AES-256.'],
       },
       {
         title: 'Encrypted replication',
         paragraphs: ['Deprecated from eDirectory 9.2.7; Enhanced Background Authentication secures traffic between servers instead.'],
       },
+      { title: 'Auditing encrypted attributes', caution: true, paragraphs: ['With "Log values of encrypted attributes" on (eDirectory > Auditing), their values are written to the audit log in clear text.'] },
     ],
   },
   'edir.ldap': {
@@ -348,8 +381,9 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Refresh or reload',
         list: [
           'Refresh: the LDAP server re-reads its LDAP Server and LDAP Group objects. Connections stay open. eDirectory also does this by itself every 30 minutes.',
-          'Reload: the LDAP module restarts, which applies TLS, cipher, bind-restriction, port and certificate changes. Every LDAP connection to that server drops for a moment; reloading the server the console uses signs everyone out of the console.',
+          'Reload: the LDAP module restarts, which applies TLS, cipher, bind-restriction, mutual authentication, port and certificate changes. Every LDAP connection to that server drops for a moment; reloading the server the console uses signs everyone out of the console.',
           'Both run on the LDAP server\'s own eDirectory server; with a password sign-in you may be asked to sign in to that server once.',
+          'This tab refreshes. Reload is on each LDAP server\'s own page; an LDAP group\'s page refreshes all of its servers.',
         ],
       },
     ],
@@ -368,7 +402,16 @@ export const CONTENT: Record<string, HelpTopic> = {
         list: [
           'Bind restrictions refuse anonymous binds, password binds, or binds with a name and no password.',
           'The cipher level is the weakest cipher a client may use; High is the default. Protocols and ciphers listed under TLS override it.',
-          'Settings here override the LDAP group\'s.',
+          'TLS protocols and ciphers, and referrals, set here override the LDAP group\'s.',
+        ],
+      },
+      {
+        title: 'Limits, searches and compatibility',
+        list: [
+          'Limits: 0 means no limit. The search entry limit does not apply to administrators of the LDAP Server object.',
+          'Persistent searches and event monitoring let clients follow changes; they can load a busy server, so cap them.',
+          'Compatibility settings are for clients that expect non-standard behaviour: change them only for such a client.',
+          'Trace chooses what the LDAP server writes to ndstrace.',
         ],
       },
       {
@@ -409,11 +452,21 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Default certificates',
         paragraphs: [
-          'Each server has default certificates (SSL CertificateDNS, an EC one and SSL CertificateIP) that LDAP and other services use. Renewing makes a new certificate beside the old one; you then move the LDAP server to it and refresh it, as a separate step.',
+          'Each server has default certificates (SSL CertificateDNS, an EC one and, if you choose, SSL CertificateIP) that LDAP and other services use. Renewing makes a new certificate beside the old one. At the end, the dialog offers to move each LDAP server to its new certificate, and then to reload the moved LDAP servers, each on its own server, so they use it. A reload drops every LDAP connection to that server for a moment; reloading the server the console uses signs everyone out of the console. Delete the old certificates once nothing uses them.',
         ],
       },
-      { title: 'CA configuration', paragraphs: ['Server self-provisioning lets eDirectory\'s own PKI Health Check renew default certificates in place when ndsd starts.'] },
-      { title: 'Revoking', caution: true, paragraphs: ['Revoking a certificate cannot be undone.'] },
+      {
+        title: 'Server certificates',
+        list: [
+          'New server certificate: issued by the Organizational CA; eDirectory makes and keeps the key pair. Allow export when you make it if you will need the key elsewhere.',
+          'Download gives the certificate and its chain. Export with key gives a password-protected .pfx (PKCS#12) file with the private key; it needs a recent sign-in and is recorded in the audit log. eDirectory refuses a key not made exportable.',
+          'PBES2 with AES-256 is the protection to use; PBES1 with 3DES is for older software, such as Java 8 or Windows Server 2016.',
+          'A certificate an LDAP server uses cannot be deleted.',
+        ],
+      },
+      { title: 'Expiry', paragraphs: ['Certificates that have expired, or expire within 30 days, are listed at the top.'] },
+      { title: 'CA configuration', paragraphs: ['Each switch changes the Organizational CA at once. Server self-provisioning lets eDirectory\'s own PKI Health Check create or renew a server\'s SSL CertificateDNS in place when ndsd starts or DSRepair runs there. Suite B mode needs a CA with only an EC P-256 or P-384 certificate.'] },
+      { title: 'Revoking', caution: true, paragraphs: ['Revoking cannot be undone, except with the reason "Certificate on hold". The CA lists the certificate on its CRL from the CRL\'s next issue.'] },
     ],
     related: ['certificates'],
   },
@@ -464,7 +517,8 @@ export const CONTENT: Record<string, HelpTopic> = {
   'security.eba': {
     title: 'Enhanced Background Authentication',
     summary: 'EBA secures server-to-server connections (NCP) with certificates from the directory\'s EBA CA.',
-    sections: [],
+    sections: [{ title: 'Shown only', paragraphs: ['The EBA CA, each server\'s NCP certificate and requests awaiting approval are shown here; EBA is set up and renewed on the servers.'] }],
+    related: ['edir.encryption'],
   },
 
   // ---- Identity Manager ------------------------------------------------------------------------
@@ -483,13 +537,20 @@ export const CONTENT: Record<string, HelpTopic> = {
         list: [
           'Start options: Automatic starts with the engine; Manual waits to be started; Disabled never starts.',
           'A stopped driver queues events in its cache and sends them when started again.',
-          'A disabled driver keeps no events: changes made meanwhile are not sent.',
+          'Disabling a driver deletes its cache: queued events are discarded, and changes made while it is disabled are never sent. It cannot start until its start option is Automatic or Manual again.',
         ],
       },
     ],
     related: ['idm.jobs', 'idm.driver'],
   },
-  'idm.drivers': { title: 'Drivers', summary: 'The driver set\'s drivers on the chosen server: state, start option, cache and trace level.', sections: [], related: ['idm', 'idm.driver'] },
+  'idm.drivers': {
+    title: 'Drivers',
+    summary: 'The driver set\'s drivers on the chosen server: state, start option, cache and trace level.',
+    sections: [
+      { title: 'Start all and stop all', paragraphs: ['They act on every driver on the chosen server that needs it, one at a time, and show each result. A disabled driver is not started.'] },
+    ],
+    related: ['idm', 'idm.driver'],
+  },
   'idm.jobs': {
     title: 'Jobs',
     summary: 'Scheduled and on-demand tasks the engine runs, such as triggering a driver or checking driver health.',
@@ -501,6 +562,8 @@ export const CONTENT: Record<string, HelpTopic> = {
           'The schedule is five cron fields (minute hour day month weekday), in each server\'s local time. No schedule means it runs only when started.',
           'Objects: the job runs once per object found under each container or entry you give; with none it runs once.',
           'Some job types need a named password on the job; set it before the job runs.',
+          'Runs on: the servers whose engine runs the job. Each server needs it chosen; it runs in that server\'s local time.',
+          'A job that is not enabled keeps its settings but never runs. Deleting a job asks for its name.',
         ],
       },
     ],
@@ -510,7 +573,10 @@ export const CONTENT: Record<string, HelpTopic> = {
   'idm.properties': {
     title: 'Driver set properties',
     summary: 'The driver set\'s settings, as configured. They are changed in Designer, not here.',
-    sections: [{ title: 'Global configuration values', paragraphs: ['GCVs are named settings policies read, set on the driver set and on each driver.'] }],
+    sections: [
+      { title: 'Global configuration values', paragraphs: ['GCVs are named settings policies read, set on the driver set and on each driver.'] },
+      { title: 'Java environment', paragraphs: ['Java environment changes take effect when the Identity Vault restarts.'] },
+    ],
   },
   'idm.statistics': {
     title: 'Statistics',
@@ -533,6 +599,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           '0 to 10. Level 1 shows errors but not their causes; 5 shows password synchronization.',
           'A driver without its own level uses the driver set\'s.',
           'Higher levels slow the engine: set them back when you are done.',
+          'Only the trace level is changed here. The trace file, its size limit and the other settings are shown; they are changed in Designer.',
         ],
       },
     ],
@@ -547,12 +614,17 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Each column has a type that decides how values compare.',
           'Tables can be exported and imported as CSV.',
           'A table installed by a package may be overwritten when the package is upgraded.',
+          'Deleting a table asks for its name; policies that name it then fail to find it.',
         ],
       },
       { title: 'When changes apply', caution: true, paragraphs: ['Drivers read a table when they start: restart the drivers that use it.'] },
     ],
   },
-  'idm.log': { title: 'Log level', summary: 'Which events the engine records in its log, for the driver set or a single driver.', sections: [] },
+  'idm.log': {
+    title: 'Log level',
+    summary: 'Which events the engine records in its log. The driver set\'s level is shown here; each driver\'s is changed on its own Log level tab.',
+    sections: [{ title: 'Levels', list: ['Off, errors, or errors and warnings.', '"Only record when it last logged" keeps no events, only the time.', 'A driver can use the driver set\'s level.'] }],
+  },
   'idm.passwords': {
     title: 'Named passwords',
     summary: 'Passwords stored for drivers and the driver set, such as the Remote Loader\'s.',
@@ -570,12 +642,29 @@ export const CONTENT: Record<string, HelpTopic> = {
     ],
     related: ['idm', 'idm.driver.cache'],
   },
-  'idm.driver.overview': { title: 'Driver overview', summary: 'State, start option and cache, with start, stop and restart.', sections: [], related: ['idm.driver'] },
+  'idm.driver.overview': {
+    title: 'Driver overview',
+    summary: 'State, start option and cache on the chosen server, with start, stop and restart, resynchronising and migrating.',
+    sections: [
+      { title: 'Start option', paragraphs: ['Automatic starts with the engine; Manual waits to be started. Disabled deletes the cache and keeps no events: stop the driver instead to keep queueing them.'] },
+      { title: 'On each server', paragraphs: ['With more than one server, a table shows the driver\'s state and start option on each.'] },
+      {
+        title: 'Migrate',
+        list: [
+          'Vault objects to the application: each object found is sent as if just added, so the driver matches or creates it. Find the objects shows what would be sent first.',
+          'Application objects into the vault: the engine asks the application for its objects and brings each in through the publisher channel\'s matching, creation and placement policies.',
+        ],
+      },
+      { title: 'Resynchronising', caution: true, paragraphs: ['Resynchronising asks the driver to send its objects again, optionally only those changed since a date. On a large driver this loads the connected system.'] },
+    ],
+    related: ['idm.driver'],
+  },
   'idm.driver.associations': {
     title: 'Association inspector',
     summary: 'Every object associated with this driver, counted by state, with bulk changes.',
     sections: [
       { title: 'Counts', paragraphs: ['A count marked with ~ is an estimate.'] },
+      { title: 'Setting the state', paragraphs: ['Set to changes the state of the chosen objects; the five states are explained on an object\'s Associations tab.'] },
       { title: 'Bulk changes', caution: true, paragraphs: ['Removing associations means the driver may create or match accounts again the next time those objects change.'] },
     ],
     related: ['object.associations'],
@@ -594,6 +683,22 @@ export const CONTENT: Record<string, HelpTopic> = {
     summary: 'The driver\'s configuration: shim, authentication, parameters, GCVs, engine control values and filter. Read-only: they are changed in Designer.',
     sections: [{ title: 'Filter', list: ['Sync: the channel sends changes and keeps the two sides in step.', 'Notify: changes are reported to the policies but not written.', 'Reset: a change is undone, back to the authoritative side\'s value.', 'Ignore: the channel does not handle the attribute.'] }],
   },
+  'idm.driver.trace': {
+    title: 'Driver trace',
+    summary: 'How much this driver writes to its trace, and where.',
+    sections: [{ title: 'Levels', list: ['0 to 10; 5 shows password synchronization.', '"Use the driver set\'s" removes the driver\'s own level.', 'Higher levels slow the engine: set them back when you are done.'] }],
+    related: ['idm.trace'],
+  },
+  'idm.driver.log': { title: 'Log level', summary: 'Which events the engine records in its log for this driver, or the driver set\'s level.', sections: [], related: ['idm.log'] },
+  'idm.driver.passwords': {
+    title: 'Driver passwords',
+    summary: 'Named passwords for this driver\'s policies, and the passwords it uses with the Remote Loader.',
+    sections: [
+      { title: 'Write-only', paragraphs: ['Passwords can be set or cleared here, but never read back. Removing a named password leaves policies that read it with nothing.'] },
+      { title: 'Remote Loader', list: ['Remote Loader password: what the engine and the Remote Loader use to trust each other.', 'Key and keystore passwords: for mutual authentication with certificates.'] },
+    ],
+    related: ['idm.passwords'],
+  },
   'idm.driver.password-sync': { title: 'Password synchronization', summary: 'How this driver handles passwords between the vault and the connected system.', sections: [] },
 
   // ---- Console certificates and settings -------------------------------------------------------
@@ -605,10 +710,20 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Kinds of trust',
         list: [
           'Certificate authority: any server certificate it issued is accepted.',
-          'This server only (pinned): exactly this certificate, at this address. If the server presents another, admins are alerted.',
+          'This server only (pinned): exactly this certificate, at this address. If the server presents another, connections to it are refused until you review and trust the new one (Changed certificates).',
           'Host exception: a certificate accepted at an address it does not name (NAT, a tunnel, a load balancer).',
         ],
       },
+      {
+        title: 'On this page',
+        list: [
+          'Directories: what each configured directory\'s server presents now. Review trusts it; Check again asks again.',
+          'Probe a server reads a server\'s certificate to trust it; Upload a certificate trusts a PEM file. Either can be for one directory or for all.',
+          'Changed certificates: a pinned server presented a different one. Connections stay refused until you trust the new one; dismiss an alert only once you know why it changed.',
+          'Certificates people accepted for directories they entered themselves are listed too, and can be removed.',
+        ],
+      },
+      { title: 'Expiry', paragraphs: ['A banner on every page warns admins of trusted certificates that have expired or expire within 30 days.'] },
       { title: 'Changes', paragraphs: ['Adding or removing trust needs a sign-in within the last 10 minutes.'] },
     ],
   },
@@ -624,10 +739,17 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Lab: changes go ahead without that step. Use it for dev and test directories.',
         ],
       },
-      { title: 'Sessions', paragraphs: ['Idle sign-out and the longest session apply to everyone on this directory, at once. People are warned before either ends.'] },
+      { title: 'Sessions', paragraphs: ['Idle sign-out and the longest session apply to everyone on this directory, at once. People are warned two minutes before an idle sign-out, and told when the longest session will end.'] },
       {
         title: 'Service account',
         paragraphs: ['The account the console uses to find people by a short name at sign-in, and for single sign-on. It needs to read the people it finds. Without one, people sign in with their full name (DN).'],
+      },
+      {
+        title: 'Finding people at sign-in',
+        list: [
+          'Search bases are where a short name is looked for; none searches the whole directory. This needs the service account.',
+          'When a name matches several people, they choose their account, or are asked for their full name.',
+        ],
       },
     ],
   },
@@ -651,7 +773,10 @@ export const CONTENT: Record<string, HelpTopic> = {
   'settings.presets': {
     title: 'Task presets',
     summary: 'Narrow, named tasks (such as "reset a password") that people can run without a broader role.',
-    sections: [{ title: 'Fields', list: ['Required: must be filled in.', 'Read-only: shown, not changed.', 'Pattern: the value must match.', 'Fixed value: always set to this.'] }],
+    sections: [
+      { title: 'Fields', list: ['Required: must be filled in.', 'Read-only: shown, not changed.', 'Pattern: the value must match.', 'Fixed value: always set to this.'] },
+      { title: 'Moving presets', paragraphs: ['Export saves every preset as a JSON file; Import adds or replaces presets from one, by id. A preset granted to anyone cannot be removed.'] },
+    ],
   },
   'settings.sso': {
     title: 'Single sign-on',
@@ -664,6 +789,9 @@ export const CONTENT: Record<string, HelpTopic> = {
           'The console then acts as that person, with their own eDirectory rights, through the service account.',
           '"Never act as" lists accounts that must not sign in this way.',
           'A public client uses PKCE and has no secret.',
+          'Provider groups map groups in the provider\'s groups claim to console roles and task presets, as role mappings do for eDirectory groups.',
+          'Under these containers limits who can sign in this way. The service account needs Supervisor over those people, and nobody else.',
+          'Try the mapping shows which account a claim value finds. No match, several matches, or a never-act-as account means the sign-in is refused.',
         ],
       },
     ],
@@ -691,9 +819,14 @@ export const CONTENT: Record<string, HelpTopic> = {
         ],
       },
       {
+        title: 'The warning window',
+        paragraphs: ['Warn this many days ahead (1 to 365) sets when these notices go out, and nothing else. The banner on every page, the alerts on Security > Certificates and the default-certificate check always warn 30 days ahead.'],
+      },
+      {
         title: 'When notices go out',
         paragraphs: ['Once when a certificate enters the warning window, again when it is within a week, and once when it has expired. Each is also written to the audit log. Send a test checks the e-mail and webhooks now.'],
       },
+      { title: 'Webhooks', paragraphs: ['Up to five. Each notice is POSTed as JSON; with a secret, X-Console-Signature carries sha256= and the HMAC-SHA256 of the body.'] },
     ],
     related: ['certificates', 'security.certificates'],
   },
@@ -705,7 +838,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'The format',
         list: [
           'RFC 5424 syslog messages; the text is CEF: CEF:0|Point Blue|Directory Console|version|event|name|severity|...',
-          'suser is who acted, act the event, outcome ok, refused or failed, cs2 the target, cs3 the details (secrets are never included), cn1 the entry\'s number in the audit log.',
+          'suser is who acted, src the person\'s address, cs1 how they signed in, act the event, outcome ok, refused or failed, cs2 the target, cs3 the details (secrets are never included; cs3 is cut at 3000 characters), rt the time, cn1 the entry\'s number in the audit log.',
           'Severity 3 when it went through, 5 when refused, 7 when it failed.',
         ],
       },
@@ -716,6 +849,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'TCP (octet counting) or UDP (port 514) are not encrypted; UDP can lose messages without telling.',
         ],
       },
+      { title: 'Facility', paragraphs: ['The syslog facility the messages carry; authpriv by default. Send a test sends one message now.'] },
       {
         title: 'When the server cannot be reached',
         paragraphs: ['Entries wait in a queue of 2000 and are retried; beyond that they are dropped and counted here. The console\'s own audit log always keeps every entry.'],

@@ -27,13 +27,16 @@ import javax.naming.directory.SearchControls;
 
 /**
  * eDirectory administration: servers, partitions and replicas, indexes,
- * schema changes, background processes. Verified on a lab tree.
+ * schema changes, background processes, LDAP servers and groups, CEF auditing, SNMP, encrypted attribute
+ * policies and replica filters. Verified on a lab tree.
  *
  * <pre>
  * GET    /api/v2/trees/{tree}/edir/servers                         NCP servers
  * GET    /api/v2/trees/{tree}/edir/servers/{guid}                  one server: its replicas and indexes
  * POST   /api/v2/trees/{tree}/edir/servers/{guid}/indexes          {"name", "attributes", "rule": "value|presence|substring"}
  * DELETE /api/v2/trees/{tree}/edir/servers/{guid}/indexes/{name}   a user-defined index
+ * PUT    /api/v2/trees/{tree}/edir/servers/{guid}/indexes/{name}/state {"state": "online|offline"}: user and auto-added indexes
+ * POST   /api/v2/trees/{tree}/edir/servers/{guid}/indexes/{name}/copy  {"servers": [guid]}: a user-defined index, built by limber there
  * GET    /api/v2/trees/{tree}/edir/partitions                      every partition: entry count and replica ring
  * POST   /api/v2/trees/{tree}/edir/partitions                      {"container": guid}: split it from its parent
  * POST   /api/v2/trees/{tree}/edir/partitions/{id}/merge           into its parent
@@ -42,6 +45,22 @@ import javax.naming.directory.SearchControls;
  * DELETE /api/v2/trees/{tree}/edir/partitions/{id}/replicas/{guid}
  * POST   /api/v2/trees/{tree}/edir/servers/{guid}/background       {"process": "limber|janitor|skulker"}
  * POST   /api/v2/trees/{tree}/edir/ldap-refresh                    re-read the connected server's LDAP configuration
+ * GET    /api/v2/trees/{tree}/edir/ldap                            LDAP servers and groups
+ * GET    /api/v2/trees/{tree}/edir/ldap/servers/{guid} | ldap/groups/{guid}
+ * PATCH  /api/v2/trees/{tree}/edir/ldap/servers/{guid} | ldap/groups/{guid}  {"settings": {attribute: value|null}}
+ * POST   /api/v2/trees/{tree}/edir/ldap/servers/{guid}/refresh | reload    on the LDAP server's own host
+ * GET    /api/v2/trees/{tree}/edir/servers/{guid}/audit            the server's CEF audit settings
+ * PUT    /api/v2/trees/{tree}/edir/servers/{guid}/audit            the whole configuration, as GET gives it
+ * DELETE /api/v2/trees/{tree}/edir/servers/{guid}/audit            back to eDirectory's defaults
+ * GET    /api/v2/trees/{tree}/edir/snmp
+ * PATCH  /api/v2/trees/{tree}/edir/snmp/{guid}                     {"trapInterval"?, "trapsDisabled"?, "traps"?: {number: {active?, failure?, interval?}}}
+ * GET    /api/v2/trees/{tree}/edir/encryption                      encrypted attribute policies and replication (read-only)
+ * POST   /api/v2/trees/{tree}/edir/encryption/policies             {"parent", "name", "attributes": [{attribute, scheme?}], "requiresSecureChannel"?}
+ * PATCH  /api/v2/trees/{tree}/edir/encryption/policies/{guid}      {"attributes"?, "requiresSecureChannel"?}
+ * DELETE /api/v2/trees/{tree}/edir/encryption/policies/{guid}      only a policy no server uses
+ * PUT    /api/v2/trees/{tree}/edir/servers/{guid}/encryption-policy {"policy": guid|null}, then limber on that server
+ * GET    /api/v2/trees/{tree}/edir/servers/{guid}/replica-filter
+ * PUT    /api/v2/trees/{tree}/edir/servers/{guid}/replica-filter   {"classes": [{class, attributes}]}; [] clears it
  * POST   /api/v2/trees/{tree}/edir/schema/attributes               {"name", "oid"?, "syntax", "singleValue", "upperBound"?, "description"?}
  * POST   /api/v2/trees/{tree}/edir/schema/classes                  {"name", "oid"?, "kind", "superior", "must", "may", "container", "naming", "containment"}
  * POST   /api/v2/trees/{tree}/edir/schema/classes/{name}/may       {"attributes"}: add optional attributes
@@ -95,7 +114,10 @@ final class Edir {
             if (!s.principal.may(Role.EDITOR, "")) {
                 throw new Http.Problem(403, "forbidden", "eDirectory administration needs an editor role for the whole directory");
             }
-            confirm(ex, s);
+            // refreshing or reloading an LDAP server changes nothing stored (the page asks before a reload)
+            if (!route.endsWith("/refresh") && !route.endsWith("/reload")) {
+                confirm(ex, s);
+            }
         }
         try {
             switch (route) {

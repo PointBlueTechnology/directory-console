@@ -248,7 +248,7 @@ function AlertsSection({ alerts, directories, onReview, onChanged }: {
     () => { setError(null); trust.dismissAlert(a.host, a.port).then(onChanged, setError); });
   return (
     <section className="dc-tab-body" aria-labelledby="certs-alerts">
-      <H id="certs-alerts" className="pf-v6-c-title pf-m-lg">Changed certificates</H>
+      <H id="certs-alerts" className="pf-v6-c-title pf-m-lg"><Hint text={explain('pinned')}><span tabIndex={0}>Changed certificates</span></Hint></H>
       <Alert variant="danger" isInline component="h3" title="A pinned server presented a different certificate">
         Connections to these addresses are refused. If the server's certificate was renewed, review it and trust the new one; if you do not know why it changed, find out before you do.
       </Alert>
