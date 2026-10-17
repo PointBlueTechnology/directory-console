@@ -46,7 +46,7 @@ public final class DemoServer {
                 + "\nDirXML-JavaEnvironmentParameters: DHOST_JVM_MAX_HEAP$2G\nDirXML-ServerList: cn=edir1,ou=servers,o=system\nDirXML-LogLimit: 500"
                 + "\nDirXML-ConfigValues:: PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48Y29uZmlndXJhdGlvbi12YWx1ZXM+PGRlZmluaXRpb25zPjxkZWZpbml0aW9uIGRpc3BsYXktbmFtZT0iSWRlbnRpdHkgVmF1bHQgbmFtZSIgbmFtZT0iaWR2Lm5hbWUiIHR5cGU9InN0cmluZyI+PHZhbHVlPkFDTUUtSURWPC92YWx1ZT48L2RlZmluaXRpb24+PGRlZmluaXRpb24gZGlzcGxheS1uYW1lPSJOb3RpZmljYXRpb24gZW1haWwiIG5hbWU9Im5vdGlmeS5mcm9tIiB0eXBlPSJzdHJpbmciPjx2YWx1ZT5pZG1AYWNtZS5leGFtcGxlPC92YWx1ZT48L2RlZmluaXRpb24+PC9kZWZpbml0aW9ucz48L2NvbmZpZ3VyYXRpb24tdmFsdWVzPg==",
             "dn: ou=servers,o=system\nobjectClass: organizationalUnit\nou: servers",
-            "dn: cn=edir1,ou=servers,o=system\nobjectClass: ncpServer\ncn: edir1\nversion: eDirectory for Linux x86_64 v9.2.8.0000 [DS]\nstatus: 2\nDSRevision: 4020900\n"
+            "dn: cn=edir1,ou=servers,o=system\nobjectClass: ncpServer\ncn: edir1\nencryptionPolicyDN: cn=Secrets,o=system\nversion: eDirectory for Linux x86_64 v9.2.8.0000 [DS]\nstatus: 2\nDSRevision: 4020900\n"
                 + "indexDefinition: 0$CN$0$0$1$1$CN\nindexDefinition: 0$CN_SS$0$2$1$1$CN\nindexDefinition: 0$Surname$0$0$1$1$Surname\n"
                 + "indexDefinition: 0$GUID$0$0$2$1$GUID\nindexDefinition: 0$GnSnIndex$0$0$0$1$Given Name$Surname\nindexDefinition: 0$mailIdx$0$0$0$1$Internet EMail Address",
             "dn: cn=edir2,ou=servers,o=system\nobjectClass: ncpServer\ncn: edir2\nversion: eDirectory for Linux x86_64 v9.3.2.0000 [DS]\nstatus: 2\nDSRevision: 4030300\n"
@@ -55,6 +55,9 @@ public final class DemoServer {
                 + "\nldapGroupDN: cn=LDAP Group - edir1,ou=servers,o=system\nldapKeyMaterialName: SSL CertificateDNS\nldapTLSRequired: FALSE\nldapBindRestrictions: 48"
                 + "\nldapTLSVerifyClientCertificate: 0\nsearchSizeLimit: 0\nsearchTimeLimit: 0\nldapEnablePSearch: TRUE\nldapTraceLevel: 12288\nldapNonStdAllUserAttrsMode: TRUE"
                 + "\nldapSSLConfig: {\"Version\":1,\"Info\":{\"Protocol\":\"\",\"Ciphers\":\"\"}}",
+            "dn: cn=SNMP Group - edir1,ou=servers,o=system\nobjectClass: snmpGroup\ncn: SNMP Group - edir1\nsnmpServerList: cn=edir1,ou=servers,o=system"
+                + "\nsnmpTrapInterval: 5\nsnmpTrapDisable: FALSE\nsnmpTrapConfig:: MS4zLjYuMS40LjEuMjMuMi45OAABAAAAAAAAAAAAAAAFAAAAMS4zLjYuMS40LjEuMjMuMi45OAACAAAAAQAAAAEAAAAAAAAAMS4zLjYuMS40LjEuMjMuMi45OAADAAAAAQAAAAAAAAAsAQAA\nsnmpTrapDescription:: bmRzQ3JlYXRlRW50cnkAbmRzRGVsZXRlRW50cnkAbmRzUmVuYW1lRW50cnkA",
+            "dn: cn=Secrets,o=system\nobjectClass: encryptionPolicy\ncn: Secrets\nattrEncryptionDefinition: aes256$acmeBadge\nattrEncryptionRequiresSecure: 1",
             "dn: cn=LDAP Group - edir1,ou=servers,o=system\nobjectClass: ldapGroup\ncn: LDAP Group - edir1\nldapServerList: cn=LDAP Server - edir1,ou=servers,o=system"
                 + "\nldapAllowClearTextPassword: FALSE\nldapSearchReferralUsage: 1\nlDAPOtherReferralUsage: 1\nldapDefaultReferralBehavior: 2"
                 + "\nldapClassList: NDSName=User$LDAPNames=inetOrgPerson\nldapClassList: NDSName=Group$LDAPNames=groupOfNames\\24groupOfUniqueNames\\24group"

@@ -201,8 +201,8 @@ function route(path: string) {
   if (path === '/edir/servers') {
     return <EdirPage tab="servers" />;
   }
-  if (path === '/edir/ldap') {
-    return <EdirPage tab="ldap" />;
+  if (path === '/edir/ldap' || path === '/edir/audit' || path === '/edir/snmp' || path === '/edir/encryption') {
+    return <EdirPage tab={path.slice('/edir/'.length) as 'ldap' | 'audit' | 'snmp' | 'encryption'} />;
   }
   m = match('/edir/ldap-servers/:guid', path);
   if (m) {

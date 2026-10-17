@@ -15,6 +15,7 @@ import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -158,6 +159,45 @@ public final class LivePkiStep {
                     d.put("If-Match", "*");
                     show(call("DELETE", t + "/objects/" + ou + "?subtree=true", null, d));
                 }
+                // READ-ONLY: any GET under the tree's API, such as schema/attributes/cefConfiguration
+                case "get" -> show(call("GET", t + "/" + args[3], null, h));
+                // WRITE then RESTORE: a CEF configuration on one server, read back, then removed (eDirectory's defaults again)
+                case "audit-try" -> {
+                    String a = t + "/edir/servers/" + args[3] + "/audit";
+                    Map<String, Object> settings = new HashMap<>(Json.asMap(call("GET", a, null, h).body().get("settings")));
+                    List<Object> events = new ArrayList<>((List<?>) settings.get("events"));
+                    events.add("LDAP_PASSWORD_MODIFY");
+                    settings.put("events", events);
+                    settings.put("exclude", Map.of("classes", List.of(), "attributes", List.of("Last Login Time", "Login Time")));
+                    LiveSetupCheck.Reply put = call("PUT", a, settings, h);
+                    System.out.println("[" + put.status() + "] raw after write: " + put.body().get("raw"));
+                    LiveSetupCheck.Reply back = call("GET", a, null, h);
+                    System.out.println("read back: events " + ((List<?>) Json.asMap(back.body().get("settings")).get("events")).size()
+                        + ", exclude " + Json.asMap(back.body().get("settings")).get("exclude") + ", unknown " + Json.asMap(back.body().get("settings")).get("unknown"));
+                    LiveSetupCheck.Reply reset = call("DELETE", a, null, h);
+                    System.out.println("[" + reset.status() + "] after reset: configured=" + reset.body().get("configured") + " raw=" + reset.body().get("raw"));
+                }
+                // WRITE then RESTORE: one trap's interval in an SNMP group, then back; the stored bytes must match the original
+                case "snmp-try" -> {
+                    Map<String, Object> g = null;
+                    for (Object o : (List<?>) call("GET", t + "/edir/snmp", null, h).body().get("groups")) {
+                        if (String.valueOf(Json.asMap(o).get("name")).equals(args[3])) {
+                            g = Json.asMap(o);
+                        }
+                    }
+                    Map<String, Object> first = Json.asMap(((List<?>) g.get("traps")).get(0));
+                    long was = ((Number) first.get("interval")).longValue();
+                    String n = String.valueOf(first.get("number"));
+                    String path = t + "/edir/snmp/" + g.get("guid");
+                    LiveSetupCheck.Reply changed = call("PATCH", path, Map.of("traps", Map.of(n, Map.of("interval", was + 2))), h);
+                    Map<String, Object> now = Json.asMap(((List<?>) changed.body().get("traps")).get(0));
+                    System.out.println("[" + changed.status() + "] trap " + n + " interval " + was + " -> " + now.get("interval"));
+                    LiveSetupCheck.Reply back = call("PATCH", path, Map.of("traps", Map.of(n, Map.of("interval", was))), h);
+                    System.out.println("[" + back.status() + "] restored; traps identical to before: " + String.valueOf(back.body().get("traps")).equals(String.valueOf(g.get("traps"))));
+                }
+                // READ-ONLY: encryption policies and encrypted replication; a server's replica filter
+                case "encryption" -> show(call("GET", t + "/edir/encryption", null, h));
+                case "replica-filter" -> show(call("GET", t + "/edir/servers/" + serverNamed(call("GET", t + "/edir/servers", null, h), args[3]) + "/replica-filter", null, h));
                 // READ-ONLY: the LDAP Server and Group objects
                 case "ldap" -> show(call("GET", t + "/edir/ldap", null, h));
                 // READ-ONLY: one LDAP Server or Group object's settings, by name

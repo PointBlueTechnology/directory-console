@@ -887,6 +887,55 @@ export interface LdapServerSummary {
   certificate: string | null;
 }
 
+export interface CefSettings {
+  noReplicatedEvents: boolean;
+  logLargeValues: boolean;
+  logAttributeValues: boolean;
+  logEncryptedAttributeValues: boolean;
+  events: string[];
+  objectClasses: string[];
+  attributeFilter: { classes: string[]; attributes: string[] };
+  exclude: { classes: string[]; attributes: string[] };
+  /** Stored values the console does not understand; kept on save. */
+  unknown?: string[];
+}
+
+export interface AuditConfig {
+  server: Reference & { guid: string };
+  /** eDirectory new enough for CEF. */
+  supported: boolean;
+  /** False: nothing stored, eDirectory's defaults apply. */
+  configured: boolean;
+  settings: CefSettings;
+  /** Every event by category: security, object, attribute, ldap. */
+  events: Record<string, string[]>;
+  raw: string[];
+}
+
+export interface SnmpTrap { number: number; name: string; active: boolean; failure: boolean; interval: number }
+
+export interface SnmpGroup {
+  guid: string;
+  dn: string;
+  name: string;
+  servers: (Reference & { guid: string | null })[];
+  trapInterval: number | null;
+  trapsDisabled: boolean;
+  traps: SnmpTrap[];
+}
+
+export interface EncryptionOverview {
+  policies: { guid: string; dn: string; name: string; attributes: { scheme: string; attribute: string }[]; requiresSecureChannel: boolean; servers: (Reference & { guid: string })[] }[];
+  servers: (Reference & { guid: string; policy: string | null })[];
+  replication: { partition: Reference & { id?: string | null }; values: { raw: string; on: boolean; wholePartition: boolean }[] }[];
+}
+
+export interface ReplicaFilter {
+  server: Reference & { guid: string };
+  classes: { class: string; attributes: string[] }[];
+  sparseReplicas: (Reference & { type: string })[];
+}
+
 /** A mapping between an eDirectory name and its LDAP names; obsolete and description are Identity Console's own fields. */
 export interface LdapMapping {
   eDirectory: string;
@@ -979,6 +1028,18 @@ export function edir(id: string) {
       request<LdapObject>('PATCH', `${base}/ldap/servers/${guidPath(guid)}`, { settings }, h(confirm)).then((r) => r.data),
     changeLdapGroup: (guid: string, settings: LdapSettings, confirm?: string) =>
       request<LdapObject>('PATCH', `${base}/ldap/groups/${guidPath(guid)}`, { settings }, h(confirm)).then((r) => r.data),
+    /** A server's CEF audit settings (eDirectory's defaults when it has none). */
+    audit: (server: string) => request<AuditConfig>('GET', `${base}/servers/${guidPath(server)}/audit`).then((r) => r.data),
+    changeAudit: (server: string, settings: CefSettings, confirm?: string) =>
+      request<AuditConfig>('PUT', `${base}/servers/${guidPath(server)}/audit`, settings, h(confirm)).then((r) => r.data),
+    /** Remove the server's CEF configuration, so eDirectory's defaults apply. */
+    resetAudit: (server: string, confirm?: string) =>
+      request<AuditConfig>('DELETE', `${base}/servers/${guidPath(server)}/audit`, undefined, h(confirm)).then((r) => r.data),
+    snmp: () => request<{ groups: SnmpGroup[] }>('GET', `${base}/snmp`).then((r) => r.data.groups),
+    changeSnmp: (group: string, body: { trapInterval?: number; trapsDisabled?: boolean; traps?: Record<number, Partial<Pick<SnmpTrap, 'active' | 'failure' | 'interval'>>> }, confirm?: string) =>
+      request<SnmpGroup>('PATCH', `${base}/snmp/${guidPath(group)}`, body, h(confirm)).then((r) => r.data),
+    encryption: () => request<EncryptionOverview>('GET', `${base}/encryption`).then((r) => r.data),
+    replicaFilter: (server: string) => request<ReplicaFilter>('GET', `${base}/servers/${guidPath(server)}/replica-filter`).then((r) => r.data),
     ldapRefresh: (confirm?: string) => request<void>('POST', `${base}/ldap-refresh`, {}, h(confirm)),
     addAttribute: (body: { name: string; oid?: string; syntax: string; singleValue: boolean; upperBound?: number; description?: string; flags?: AttributeFlag[] }, confirm?: string) =>
       request<unknown>('POST', `${base}/schema/attributes`, body, h(confirm)),

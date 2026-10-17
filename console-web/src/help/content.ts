@@ -294,6 +294,52 @@ export const CONTENT: Record<string, HelpTopic> = {
       },
     ],
   },
+  'edir.audit': {
+    title: 'Auditing',
+    summary: 'Which events each server sends as CEF (Common Event Format), and what they include.',
+    sections: [
+      {
+        title: 'What is set here, and what on the server',
+        list: [
+          'Here: the events, whether replicated events are skipped, whether values are logged, and filters by class and attribute. Stored on the server\'s object.',
+          'On the server: where events go (syslog over UDP, TCP or TLS, or a file), caching, and loading the cefauditds module. These are in auditlogconfig.properties.',
+          'eDirectory applies a change here within three minutes, or at once when cefauditds is reloaded.',
+        ],
+      },
+      {
+        title: 'Losing events',
+        caution: true,
+        list: [
+          'Without caching, events are lost while the syslog server cannot be reached. Caching does not work over UDP.',
+          'Read, search and LDAP search events are numerous on a busy server.',
+        ],
+      },
+    ],
+  },
+  'edir.snmp': {
+    title: 'SNMP',
+    summary: 'The eDirectory traps each server\'s SNMP subagent sends, and how often.',
+    sections: [
+      {
+        title: 'Traps',
+        paragraphs: ['A trap is sent when its event happens, at most once per interval (0 uses the group\'s default). Failure traps report the event failing. Where traps go, and community strings, are set in the server\'s SNMP agent; the subagent may need restarting to pick up a change made here.'],
+      },
+    ],
+  },
+  'edir.encryption': {
+    title: 'Encryption',
+    summary: 'Encrypted attribute policies and encrypted replication, shown read-only, and where FIPS mode is set.',
+    sections: [
+      {
+        title: 'Encrypted attributes',
+        paragraphs: ['A policy names attributes a server keeps encrypted in its database. Encrypting cannot be undone securely: values written before stay on disk in clear text. Changing policies is left to Identity Console for now.'],
+      },
+      {
+        title: 'Encrypted replication',
+        paragraphs: ['Deprecated from eDirectory 9.2.7; Enhanced Background Authentication secures traffic between servers instead.'],
+      },
+    ],
+  },
   'edir.ldap': {
     title: 'LDAP',
     summary: 'Each eDirectory server has an LDAP Server object (ports, TLS, limits) in an LDAP Group (name mappings, referrals, TLS for simple binds).',

@@ -87,7 +87,8 @@ final class Edir {
             .replaceAll("indexes/[^/]+$", "indexes/{name}")
             .replaceAll("indexes/[^/]+/(state|copy)$", "indexes/{name}/$1")
             .replaceAll("^schema/(attributes|classes)/[^/]+", "schema/$1/{name}")
-            .replaceAll("^ldap/(servers|groups)/[0-9a-f]{32}", "ldap/$1/{id}");
+            .replaceAll("^ldap/(servers|groups)/[0-9a-f]{32}", "ldap/$1/{id}")
+            .replaceAll("^snmp/[0-9a-f]{32}$", "snmp/{id}");
         String id = p.length > 3 && p[2].equals("ldap") ? (p.length > 4 ? p[4] : null) : p.length > 3 ? p[3] : null;
         if (!method.equals("GET")) {
             if (!s.principal.may(Role.EDITOR, "")) {
@@ -129,6 +130,13 @@ final class Edir {
                     Http.json(ex, 204, Map.of());
                 }
                 case "GET ldap" -> Http.json(ex, 200, ldapConfigs(l));
+                case "GET encryption" -> Http.json(ex, 200, encryption(l));
+                case "GET servers/{id}/audit" -> Http.json(ex, 200, audit(l, id));
+                case "PUT servers/{id}/audit" -> changeAudit(ex, l, s, id);
+                case "DELETE servers/{id}/audit" -> resetAudit(ex, l, s, id);
+                case "GET snmp" -> Http.json(ex, 200, snmp(l));
+                case "PATCH snmp/{id}" -> changeSnmp(ex, l, s, id);
+                case "GET servers/{id}/replica-filter" -> Http.json(ex, 200, replicaFilter(l, id));
                 case "POST ldap/servers/{id}/refresh" -> refreshLdap(ex, s, id, false);
                 case "POST ldap/servers/{id}/reload" -> refreshLdap(ex, s, id, true);
                 case "GET ldap/servers/{id}" -> Http.json(ex, 200, ldapObject(l, id, "ldapServer"));
@@ -415,6 +423,249 @@ final class Edir {
         }
         audit(s, "index.state", guid, detail, null);
         Http.json(ex, 200, serverDetail(l, guid));
+    }
+
+    // ---- CEF auditing and SNMP -------------------------------------------------------------------------
+
+    /** {@code GET servers/{id}/audit}: the server's CEF audit settings, or eDirectory's defaults when it has none. */
+    private Map<String, Object> audit(Ldap l, String guid) throws NamingException {
+        Ldap.Entry e = server.objects.byGuid(l, guid, "cn", "objectClass", "dsRevision", "cefConfiguration");
+        if (e == null || e.attributes().getOrDefault("objectclass", List.of()).stream().noneMatch(o -> String.valueOf(o).equalsIgnoreCase("ncpServer"))) {
+            throw new Http.Problem(404, "not-found", "no server has GUID " + guid);
+        }
+        long revision = e.first("dsRevision") == null ? 0 : Long.parseLong(String.valueOf(e.first("dsRevision")).trim());
+        List<String> raw = e.attributes().getOrDefault("cefconfiguration", List.of()).stream().map(String::valueOf).toList();
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("server", Map.of("guid", guid, "dn", e.dn(), "name", String.valueOf(e.first("cn"))));
+        m.put("supported", revision > Monitoring.CEF_REVISION);
+        m.put("configured", !raw.isEmpty());
+        m.put("settings", raw.isEmpty() ? Monitoring.cefDefaults() : Monitoring.parseCef(raw));
+        m.put("events", Monitoring.EVENTS);
+        m.put("raw", raw);
+        return m;
+    }
+
+    /**
+     * {@code PUT servers/{id}/audit}: the whole CEF configuration (as GET gives it). Values the console does not
+     * understand are kept. eDirectory applies it within three minutes, or at once when cefauditds is reloaded.
+     */
+    private void changeAudit(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Map<String, Object> b = Http.body(ex);
+        Map<String, Object> before = audit(l, guid);
+        if (!Boolean.TRUE.equals(before.get("supported"))) {
+            throw new Http.Problem(409, "not-supported", "this server's eDirectory is too old for CEF auditing");
+        }
+        @SuppressWarnings("unchecked")
+        List<String> keep = (List<String>) Json.asMap(before.get("settings")).getOrDefault("unknown", List.of());
+        List<String> values = Monitoring.cefValues(b, keep);
+        String dn = (String) Json.asMap(before.get("server")).get("dn");
+        BasicAttribute a = new BasicAttribute("cefConfiguration");
+        values.forEach(a::add);
+        Map<String, Object> detail = Map.of("server", dn, "values", values);
+        try {
+            l.modify(dn, List.of(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, a)));
+        } catch (NamingException x) {
+            audit(s, "edir.cef.change", guid, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "edir.cef.change", guid, detail, null);
+        Http.json(ex, 200, audit(l, guid));
+    }
+
+    /** A binary attribute's first value (the name in lower case), or null. */
+    private static byte[] bin(Ldap.Entry e, String attribute) {
+        List<Object> vs = e.attributes().getOrDefault(attribute, List.of());
+        return vs.isEmpty() ? null : vs.get(0) instanceof byte[] b ? b : String.valueOf(vs.get(0)).getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+    }
+
+    /** {@code DELETE servers/{id}/audit}: remove the server's CEF configuration, so eDirectory's defaults apply. */
+    private void resetAudit(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Map<String, Object> before = audit(l, guid);
+        String dn = (String) Json.asMap(before.get("server")).get("dn");
+        if (Boolean.TRUE.equals(before.get("configured"))) {
+            Map<String, Object> detail = Map.of("server", dn, "was", before.get("raw"));
+            try {
+                l.modify(dn, List.of(new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute("cefConfiguration"))));
+            } catch (NamingException x) {
+                audit(s, "edir.cef.reset", guid, detail, Ldap.Failure.of(x));
+                throw x;
+            }
+            audit(s, "edir.cef.reset", guid, detail, null);
+        }
+        Http.json(ex, 200, audit(l, guid));
+    }
+
+    private static final String[] SNMP_ATTRS = {"GUID", "cn", "snmpServerList", "snmpTrapInterval", "snmpTrapDisable", "snmpTrapConfig", "snmpTrapDescription"};
+
+    private Map<String, Object> snmpGroup(Ldap l, Ldap.Entry e) throws NamingException {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("guid", Names.guidHex(e.attributes().get("guid").get(0)));
+        m.put("dn", e.dn());
+        m.put("name", String.valueOf(e.first("cn")));
+        List<Map<String, Object>> members = new ArrayList<>();
+        for (Object d : e.attributes().getOrDefault("snmpserverlist", List.of())) {
+            members.add(ref(l, String.valueOf(d)));
+        }
+        m.put("servers", members);
+        m.put("trapInterval", e.first("snmpTrapInterval") == null ? null : Long.parseLong(String.valueOf(e.first("snmpTrapInterval")).trim()));
+        m.put("trapsDisabled", "TRUE".equalsIgnoreCase(String.valueOf(e.first("snmpTrapDisable"))));
+        List<Map<String, Object>> traps = new ArrayList<>();
+        for (Monitoring.Trap t : Monitoring.traps(bin(e, "snmptrapconfig"), bin(e, "snmptrapdescription"))) {
+            traps.add(Map.of("number", t.number(), "name", t.name(), "active", t.active(), "failure", t.failure(), "interval", t.interval()));
+        }
+        m.put("traps", traps);
+        return m;
+    }
+
+    /** {@code GET snmp}: each SNMP Group with its servers, default interval, whether traps are off, and each trap. */
+    private Map<String, Object> snmp(Ldap l) throws NamingException {
+        l.binaryAttributes(List.of("snmpTrapConfig", "snmpTrapDescription"));
+        List<Map<String, Object>> groups = new ArrayList<>();
+        for (Ldap.Entry e : l.search("", "(objectClass=snmpGroup)", null, javax.naming.directory.SearchControls.SUBTREE_SCOPE, SNMP_ATTRS, 500)) {
+            groups.add(snmpGroup(l, e));
+        }
+        return Map.of("groups", groups);
+    }
+
+    /**
+     * {@code PATCH snmp/{id}}: {trapInterval?, trapsDisabled?, traps?: {number: {active?, failure?, interval?}}}. Only
+     * the fields named change; in snmpTrapConfig only those records' fields, every other byte as it was.
+     */
+    private void changeSnmp(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        Map<String, Object> b = Http.body(ex);
+        l.binaryAttributes(List.of("snmpTrapConfig", "snmpTrapDescription"));
+        Ldap.Entry e = server.objects.byGuid(l, guid, SNMP_ATTRS);
+        if (e == null || bin(e, "snmptrapconfig") == null && b.get("traps") != null) {
+            throw new Http.Problem(404, "not-found", "no SNMP Group with traps has GUID " + guid);
+        }
+        List<ModificationItem> mods = new ArrayList<>();
+        if (b.containsKey("trapInterval")) {
+            long iv = b.get("trapInterval") instanceof Number n ? n.longValue() : -1;
+            if (iv < 0 || iv > 2_592_000) {
+                throw new Http.Problem(400, "bad-field", "trapInterval is 0 to 2592000 seconds");
+            }
+            mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute("snmpTrapInterval", String.valueOf(iv))));
+        }
+        if (b.get("trapsDisabled") instanceof Boolean off) {
+            mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute("snmpTrapDisable", off ? "TRUE" : "FALSE")));
+        }
+        if (b.get("traps") != null) {
+            Map<Integer, Map<String, Object>> changes = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> c : Json.asMap(b.get("traps")).entrySet()) {
+                try {
+                    changes.put(Integer.parseInt(c.getKey()), Json.asMap(c.getValue()));
+                } catch (NumberFormatException x) {
+                    throw new Http.Problem(400, "bad-field", "traps is keyed by trap number");
+                }
+            }
+            mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE,
+                new BasicAttribute("snmpTrapConfig", Monitoring.withTraps(bin(e, "snmptrapconfig"), changes))));
+        }
+        if (mods.isEmpty()) {
+            throw new Http.Problem(400, "bad-request", "name trapInterval, trapsDisabled or traps");
+        }
+        Map<String, Object> detail = Map.of("group", e.dn(), "changes", new ArrayList<>(b.keySet()));
+        try {
+            l.modify(e.dn(), mods);
+        } catch (NamingException x) {
+            audit(s, "edir.snmp.change", guid, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        audit(s, "edir.snmp.change", guid, detail, null);
+        Http.json(ex, 200, snmpGroup(l, server.objects.byGuid(l, guid, SNMP_ATTRS)));
+    }
+
+    // ---- encrypted attributes, encrypted replication, replica filters --------------------------------
+
+    /**
+     * {@code GET encryption}: encrypted attribute policies (encryptionPolicy objects: each attrEncryptionDefinition
+     * value is {@code scheme$attribute}), which server uses which (encryptionPolicyDN on the NCP Server), and
+     * encrypted replication on each partition root (dsEncryptedReplicationConfig, {@code flag#destination#source};
+     * 1#0#0 is the whole partition). Encrypted replication is deprecated from 9.2.7: EBA replaces it.
+     */
+    private Map<String, Object> encryption(Ldap l) throws NamingException {
+        List<Map<String, Object>> servers = new ArrayList<>();
+        Map<String, List<Map<String, Object>>> byPolicy = new LinkedHashMap<>();
+        for (Ldap.Entry e : l.search("", "(objectClass=ncpServer)", null, javax.naming.directory.SearchControls.SUBTREE_SCOPE,
+                new String[] {"GUID", "cn", "encryptionPolicyDN"}, 500)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("guid", Names.guidHex(e.attributes().get("guid").get(0)));
+            m.put("dn", e.dn());
+            m.put("name", String.valueOf(e.first("cn")));
+            String policy = e.first("encryptionPolicyDN") == null ? null : String.valueOf(e.first("encryptionPolicyDN"));
+            m.put("policy", policy);
+            servers.add(m);
+            if (policy != null) {
+                byPolicy.computeIfAbsent(policy.toLowerCase(Locale.ROOT), k -> new ArrayList<>()).add(Map.of("guid", m.get("guid"), "dn", e.dn(), "name", m.get("name")));
+            }
+        }
+        List<Map<String, Object>> policies = new ArrayList<>();
+        for (Ldap.Entry e : l.search("", "(objectClass=encryptionPolicy)", null, javax.naming.directory.SearchControls.SUBTREE_SCOPE,
+                new String[] {"GUID", "cn", "attrEncryptionDefinition", "attrEncryptionRequiresSecure"}, 500)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("guid", Names.guidHex(e.attributes().get("guid").get(0)));
+            m.put("dn", e.dn());
+            m.put("name", String.valueOf(e.first("cn")));
+            List<Map<String, Object>> attrs = new ArrayList<>();
+            for (Object v : e.attributes().getOrDefault("attrencryptiondefinition", List.of())) {
+                String d = String.valueOf(v);
+                int dollar = d.indexOf('$');
+                attrs.add(Map.of("scheme", dollar < 0 ? "" : d.substring(0, dollar), "attribute", dollar < 0 ? d : d.substring(dollar + 1)));
+            }
+            m.put("attributes", attrs);
+            Object secure = e.first("attrEncryptionRequiresSecure");
+            m.put("requiresSecureChannel", secure == null || !"0".equals(String.valueOf(secure)));
+            m.put("servers", byPolicy.getOrDefault(e.dn().toLowerCase(Locale.ROOT), List.of()));
+            policies.add(m);
+        }
+        List<Map<String, Object>> replication = new ArrayList<>();
+        for (String part : Partitions.list(l, dsaName(l))) {
+            Ldap.Entry root = l.read(part.isEmpty() ? "" : part, "dsEncryptedReplicationConfig");
+            List<Object> vs = root == null ? List.of() : root.attributes().getOrDefault("dsencryptedreplicationconfig", List.of());
+            if (vs.isEmpty()) {
+                continue;
+            }
+            List<Map<String, Object>> values = new ArrayList<>();
+            for (Object v : vs) {
+                String[] f = String.valueOf(v).split("#");
+                Map<String, Object> d = new LinkedHashMap<>();
+                d.put("raw", String.valueOf(v));
+                d.put("on", f.length > 0 && "1".equals(f[0]));
+                d.put("wholePartition", f.length >= 3 && "0".equals(f[1]) && "0".equals(f[2]));
+                values.add(d);
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("partition", part.isEmpty() ? Map.of("dn", "", "name", "[Root]") : partitionRef(l, part));
+            m.put("values", values);
+            replication.add(m);
+        }
+        return Map.of("policies", policies, "servers", servers, "replication", replication);
+    }
+
+    /** {@code GET servers/{id}/replica-filter}: what the server's filtered (sparse) replicas hold, and those replicas. */
+    private Map<String, Object> replicaFilter(Ldap l, String guid) throws NamingException {
+        Ldap.Entry e = server.objects.byGuid(l, guid, "cn");
+        if (e == null) {
+            throw new Http.Problem(404, "not-found", "no server has GUID " + guid);
+        }
+        List<Map<String, Object>> classes = new ArrayList<>();
+        for (Partitions.FilterClass c : Partitions.replicaFilter(l, e.dn())) {
+            classes.add(Map.of("class", c.className(), "attributes", c.attributes()));
+        }
+        List<Map<String, Object>> sparse = new ArrayList<>();
+        for (String part : Partitions.list(l, e.dn())) {
+            try {
+                Partitions.Type t = Partitions.Type.of(Partitions.info(l, e.dn(), part).type());
+                if (t != null && (t.id().startsWith("sparse"))) {
+                    Map<String, Object> r = new LinkedHashMap<>(part.isEmpty() ? Map.of("dn", "", "name", "[Root]") : partitionRef(l, part));
+                    r.put("type", t.id());
+                    sparse.add(r);
+                }
+            } catch (NamingException x) {
+                // a replica whose details cannot be read is left out here; the server page shows it
+            }
+        }
+        return Map.of("server", Map.of("guid", guid, "dn", e.dn(), "name", String.valueOf(e.first("cn"))), "classes", classes, "sparseReplicas", sparse);
     }
 
     // ---- LDAP Server and LDAP Group objects ------------------------------------------------------------

@@ -50,14 +50,15 @@ public class EdirTest {
             "dn: cn=admin,o=system\nobjectClass: inetOrgPerson\ncn: admin\nsn: a\nuserPassword: admin-pw",
             "dn: cn=console,o=system\nobjectClass: inetOrgPerson\ncn: console\nsn: c\nuserPassword: console-pw",
             "dn: ou=servers,o=system\nobjectClass: organizationalUnit\nou: servers",
-            "dn: " + S1 + "\nobjectClass: ncpServer\ncn: edir1\nversion: eDirectory for Linux x86_64 v9.2.8.0000 [DS]\nstatus: 2\n"
+            "dn: " + S1 + "\nobjectClass: ncpServer\ncn: edir1\nversion: eDirectory for Linux x86_64 v9.2.8.0000 [DS]\nstatus: 2\nDSRevision: 4020900\n"
                 + "indexDefinition: 0$CN$0$0$1$1$CN\nindexDefinition: 0$GnSnIndex$0$0$0$1$Given Name$Surname\nindexDefinition: 0$GUID$0$0$2$1$GUID",
             "dn: " + S2 + "\nobjectClass: ncpServer\ncn: edir2\nversion: eDirectory for Linux x86_64 v9.3.2.0000 [DS]\nstatus: 2",
             "dn: cn=LDAP Server - edir1,ou=servers,o=system\nobjectClass: ldapServer\ncn: LDAP Server - edir1\nldapHostServer: " + S1
                 + "\nldapGroupDN: cn=LDAP Group - edir1,ou=servers,o=system\nldapInterfaces: ldap://:389\nldapInterfaces: ldaps://:636\nldapTLSRequired: FALSE\nsearchSizeLimit: 0",
             "dn: cn=LDAP Group - edir1,ou=servers,o=system\nobjectClass: ldapGroup\ncn: LDAP Group - edir1\nldapServerList: cn=LDAP Server - edir1,ou=servers,o=system"
                 + "\nldapClassList: NDSName=Group$LDAPNames=groupOfNames\\24group\nldapAllowClearTextPassword: FALSE",
-            "dn: ou=Sales,o=acme\nobjectClass: organizationalUnit\nou: Sales");
+            "dn: ou=Sales,o=acme\nobjectClass: organizationalUnit\nou: Sales",
+            "dn: cn=Badges,o=acme\nobjectClass: encryptionPolicy\ncn: Badges\nattrEncryptionDefinition: aes256$acmeSecret\nattrEncryptionRequiresSecure: 1");
         edir.server.modify(S1, new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD, "networkAddress",
             concat("9#".getBytes(), java.util.HexFormat.of().parseHex("020c7f000001"))));
         edir.partitions.partition("", Map.of(S1, 0, S2, 1)).partition("o=acme", Map.of(S1, 0, S2, 1));
@@ -322,5 +323,27 @@ public class EdirTest {
         assertEquals(204, call("POST", t + "/servers/" + sg + "/reload", Map.of(), h).status());
         assertEquals(List.of("2.16.840.1.113719.1.27.100.127 reloadModule"), edir.partitions.triggered);
         assertEquals(404, call("POST", t + "/servers/" + gg + "/refresh", Map.of(), h).status());
+    }
+
+    @Test
+    public void encryptionPoliciesAndTheirServersAndAuditSettings() throws Exception {
+        edir.server.modify(S1, new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD, "encryptionPolicyDN", "cn=Badges,o=acme"));
+        Map<String, Object> enc = call("GET", "/api/v2/trees/acme/edir/encryption", null, h).body();
+        Map<String, Object> policy = Json.asMap(((List<?>) enc.get("policies")).get(0));
+        assertEquals(List.of(Map.of("scheme", "aes256", "attribute", "acmeSecret")), policy.get("attributes"));
+        assertEquals(true, policy.get("requiresSecureChannel"));
+        assertEquals("edir1", Json.asMap(((List<?>) policy.get("servers")).get(0)).get("name"));
+
+        String g1 = (String) list(call("GET", "/api/v2/trees/acme/edir/servers", null, h)).get(0).get("guid");
+        Map<String, Object> audit = call("GET", "/api/v2/trees/acme/edir/servers/" + g1 + "/audit", null, h).body();
+        assertEquals(false, audit.get("configured"));
+        Map<String, Object> settings = new java.util.HashMap<>(Json.asMap(audit.get("settings")));
+        settings.put("events", List.of("LOGIN"));
+        Reply put = call("PUT", "/api/v2/trees/acme/edir/servers/" + g1 + "/audit", settings, h);
+        assertEquals(String.valueOf(put.body()), 200, put.status());
+        assertTrue(edir.server.getEntry(S1).hasAttributeValue("cefConfiguration", "cefEvents=LOGIN"));
+        assertEquals(400, call("PUT", "/api/v2/trees/acme/edir/servers/" + g1 + "/audit", Map.of("events", List.of("NOPE")), h).status());
+        assertEquals(false, call("DELETE", "/api/v2/trees/acme/edir/servers/" + g1 + "/audit", null, h).body().get("configured"));
+        assertEquals(false, edir.server.getEntry(S1).hasAttribute("cefConfiguration"));
     }
 }

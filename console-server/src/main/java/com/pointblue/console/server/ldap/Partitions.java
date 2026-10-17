@@ -26,6 +26,7 @@ public final class Partitions {
     static final String ADD_REPLICA = BASE + "7";
     static final String REFRESH_LDAP = BASE + "9";
     static final String RELOAD_MODULE = BASE + "127";
+    static final String GET_REPLICA_FILTER = BASE + "37";
     static final String REMOVE_REPLICA = BASE + "11";
     static final String ENTRY_COUNT = BASE + "13";
     static final String CHANGE_TYPE = BASE + "15";
@@ -215,6 +216,42 @@ public final class Partitions {
         o.writeBytes(octets("reloadModule"));
         o.writeBytes(octets("{\"hostserver\":\"" + hostDn.replace("\\", "\\\\").replace("\"", "\\\"") + "\",\"module\":\"nldap\"}"));
         l.extended(RELOAD_MODULE, o.toByteArray());
+    }
+
+    /** One class in a server's replica filter, and the attributes of it that filtered replicas keep. */
+    public record FilterClass(String className, List<String> attributes) {
+    }
+
+    /**
+     * The replica filter of {@code serverDn}: what its filtered (sparse) replicas hold. One per server.
+     * Get Replication Filter (.37, as JLDAP's GetReplicationFilterRequest): the server's DN; the answer is
+     * SEQUENCE OF SEQUENCE { class name, SEQUENCE OF attribute name }. Empty when the server has none.
+     */
+    public static List<FilterClass> replicaFilter(Ldap l, String serverDn) throws NamingException {
+        byte[] r = l.extended(GET_REPLICA_FILTER, octets(serverDn));
+        List<FilterClass> out = new ArrayList<>();
+        if (r != null && r.length > 0) {
+            collectFilter(Ber.read(r), out);
+        }
+        return out;
+    }
+
+    private static void collectFilter(List<Ber.Element> elements, List<FilterClass> out) {
+        for (Ber.Element e : elements) {
+            if (e.tag() != 0x30) {
+                continue;
+            }
+            List<Ber.Element> c = Ber.read(e.value());
+            if (c.size() == 2 && c.get(0).tag() == 0x04 && c.get(1).tag() == 0x30) {
+                List<String> attrs = new ArrayList<>();
+                for (Ber.Element a : Ber.read(c.get(1).value())) {
+                    attrs.add(new String(a.value(), StandardCharsets.UTF_8));
+                }
+                out.add(new FilterClass(new String(c.get(0).value(), StandardCharsets.UTF_8), attrs));
+            } else {
+                collectFilter(c, out);
+            }
+        }
     }
 
     static byte[] octets(String s) {

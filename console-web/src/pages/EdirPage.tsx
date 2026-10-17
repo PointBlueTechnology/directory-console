@@ -13,6 +13,7 @@ import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { Hint, useHelpTopic } from '../help/Help';
 import { LdapView } from '../components/LdapView';
+import { AuditView, EncryptionView, ReplicaFilterCard, SnmpView } from '../components/EdirMonitoring';
 import { REPLICA_TYPE_LABEL, ReplicaTypeLabel, replicaTypeHelp } from '../components/ReplicaType';
 import { explain } from '../help/glossary';
 
@@ -30,15 +31,18 @@ export function ReplicaLabels({ r }: { r: ReplicaState }) {
 }
 
 /** eDirectory administration: partitions and their replicas, and the servers. */
-export function EdirPage({ tab = 'partitions' }: { tab?: 'partitions' | 'servers' | 'ldap' }) {
+export function EdirPage({ tab = 'partitions' }: { tab?: 'partitions' | 'servers' | 'ldap' | 'audit' | 'snmp' | 'encryption' }) {
   useHelpTopic(`edir.${tab}`);
   return (
     <PageSection isFilled>
       <Title headingLevel="h1">eDirectory</Title>
-      <Tabs activeKey={tab} onSelect={(_e, k) => navigate(k === 'servers' ? '/edir/servers' : k === 'ldap' ? '/edir/ldap' : '/edir')} aria-label="eDirectory" mountOnEnter unmountOnExit className="dc-tab-body">
+      <Tabs activeKey={tab} onSelect={(_e, k) => navigate(k === 'partitions' ? '/edir' : `/edir/${String(k)}`)} aria-label="eDirectory" mountOnEnter unmountOnExit className="dc-tab-body">
         <Tab eventKey="partitions" title={<TabTitleText>Partitions and replicas</TabTitleText>}><PartitionsView /></Tab>
         <Tab eventKey="servers" title={<TabTitleText>Servers</TabTitleText>}><ServersView /></Tab>
         <Tab eventKey="ldap" title={<TabTitleText>LDAP</TabTitleText>}><LdapView /></Tab>
+        <Tab eventKey="audit" title={<TabTitleText>Auditing</TabTitleText>}><AuditView /></Tab>
+        <Tab eventKey="snmp" title={<TabTitleText>SNMP</TabTitleText>}><SnmpView /></Tab>
+        <Tab eventKey="encryption" title={<TabTitleText>Encryption</TabTitleText>}><EncryptionView /></Tab>
       </Tabs>
     </PageSection>
   );
@@ -350,6 +354,7 @@ export function ServerPage({ guid }: { guid: string }) {
           </Table>
         </CardBody>
       </Card>
+      <ReplicaFilterCard guid={guid} />
       {copying && (
         <CopyIndexModal name={copying} servers={others} onClose={() => setCopying(null)}
           onCopy={async (targets) => {
