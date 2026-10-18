@@ -507,6 +507,66 @@ public class ServerTest {
         assertEquals(200, call("PUT", "/api/v2/console/syslog", Map.of("enabled", false, "host", "127.0.0.1"), w).status());
     }
 
+    private HttpResponse<byte[]> callBytes(String method, String path, Object body, Map<String, String> headers) throws Exception {
+        HttpRequest.Builder b = ServerClient.request(URI.create(base + path))
+            .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(Json.compact(body)));
+        if (body != null) {
+            b.header("Content-Type", "application/json");
+        }
+        headers.forEach(b::header);
+        return http.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
+    }
+
+    @Test
+    public void theAuditLogConfigurationHistoryAndABackupAreTheAdminsToReadAndRestore() throws Exception {
+        String id = firstSignIn();
+        Map<String, String> w = signedIn(id, "cn=admin,o=system", "admin-pw");
+
+        // the audit log: newest first, filtered, paged, exported
+        call("PUT", "/api/v2/console/updates", Map.of("enabled", false), w);
+        call("PUT", "/api/v2/console/updates", Map.of("enabled", true), w);
+        List<Map<String, Object>> page = ((List<?>) call("GET", "/api/v2/audit?event=settings.update&limit=1", null, w).body().get("entries")).stream().map(Json::asMap).toList();
+        assertEquals(1, page.size());
+        assertEquals("the newest first", true, Json.asMap(page.get(0).get("details")).get("enabled"));
+        Reply older = call("GET", "/api/v2/audit?event=settings.update&limit=1&before=" + page.get(0).get("seq"), null, w);
+        assertEquals(false, Json.asMap(Json.asMap(((List<?>) older.body().get("entries")).get(0)).get("details")).get("enabled"));
+        assertEquals(true, call("GET", "/api/v2/audit?limit=1", null, w).body().get("more"));
+        assertEquals(400, call("GET", "/api/v2/audit?from=yesterday", null, w).status());
+        String csv = new String(callBytes("GET", "/api/v2/audit/export?format=csv&event=settings.update", null, w).body(), StandardCharsets.UTF_8);
+        assertTrue(csv, csv.startsWith("seq,time,event,outcome,actor,via,target,details") && csv.contains("settings.update-check"));
+
+        // configuration history: versions, what changed, and going back to one
+        List<Map<String, Object>> versions = ((List<?>) call("GET", "/api/v2/config/history", null, w).body().get("versions")).stream().map(Json::asMap).toList();
+        assertEquals(true, versions.get(0).get("current"));
+        int last = ((Number) versions.get(0).get("version")).intValue();
+        Map<String, Object> v = call("GET", "/api/v2/config/history/" + last, null, w).body();
+        assertTrue(String.valueOf(v.get("changes")), String.valueOf(v.get("changes")).contains("updateCheck.enabled"));
+        assertEquals("the current one cannot be restored", 409, call("POST", "/api/v2/config/history/" + last + "/restore", Map.of(), w).status());
+        assertEquals(200, call("POST", "/api/v2/config/history/" + (last - 1) + "/restore", Map.of(), w).status());
+        assertEquals("the switch is as it was before the last change", false,
+            Json.asMap(call("GET", "/api/v2/config", null, w).body().get("updateCheck")).get("enabled"));
+        assertEquals(404, call("GET", "/api/v2/config/history/99999", null, w).status());
+
+        // a backup: a passphrase of at least 12, then restored at the next start
+        assertEquals(400, callBytes("POST", "/api/v2/console/backup", Map.of("passphrase", "short"), w).statusCode());
+        HttpResponse<byte[]> backup = callBytes("POST", "/api/v2/console/backup", Map.of("passphrase", "a long passphrase"), w);
+        assertEquals(200, backup.statusCode());
+        assertTrue(backup.headers().firstValue("Content-Disposition").orElse("").contains(".dcbackup"));
+        String file = java.util.Base64.getEncoder().encodeToString(backup.body());
+        call("PUT", "/api/v2/console/updates", Map.of("enabled", true), w);
+        assertEquals("a wrong passphrase", 400, call("POST", "/api/v2/console/restore", Map.of("backup", file, "passphrase", "not the passphrase"), w).status());
+        Reply staged = call("POST", "/api/v2/console/restore", Map.of("backup", file, "passphrase", "a long passphrase"), w);
+        assertEquals(String.valueOf(staged.body()), 200, staged.status());
+        assertTrue(staged.body().get("pending") != null);
+        server.stop();
+        boot();
+        Map<String, String> again = signedIn(id, "cn=admin,o=system", "admin-pw");
+        assertEquals("the backup's setting is back", false, Json.asMap(call("GET", "/api/v2/config", null, again).body().get("updateCheck")).get("enabled"));
+        assertEquals("nothing is staged any more", null, call("GET", "/api/v2/console/restore", null, again).body().get("pending"));
+        assertEquals("the restore is in the audit log", 1, ((List<?>) call("GET", "/api/v2/audit?event=console.restored", null, again).body().get("entries")).size());
+        assertEquals("the audit log was not rewritten", true, ((List<?>) call("GET", "/api/v2/audit?event=console.restore.stage", null, again).body().get("entries")).size() == 1);
+    }
+
     @Test
     public void acmeSettingsAreCheckedAndADnsServerThatCannotBeReachedIsReported() throws Exception {
         String id = firstSignIn();

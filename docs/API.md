@@ -18,6 +18,7 @@ This page covers the conventions they share, and the directory-object routes as 
 - **Sensitive changes:** these need a sign-in within the last 10 minutes; otherwise the answer asks for one:
   - changes to the console's own settings: trust, directories, roles, single sign-on, sign-in to other
     directories, reverse proxies, certificate expiry, syslog, updates, and the console's ACME certificate (settings and getting one now);
+  - restoring an earlier configuration, downloading a backup and staging a restore;
   - exporting a certificate with its private key.
 - **Production directories:** changes need the `X-Confirm-Directory` header with the directory's name. Exports
   with a private key need a recent sign-in instead.
@@ -125,6 +126,15 @@ GET  /api/v2/console/acme             settings (the TSIG secret shown only as se
 PUT  /api/v2/console/acme             {enabled, directoryUrl (https), email?, names: [...], dns: {host, port?, zone, keyName, algorithm: hmac-sha256|hmac-sha512, secret?}}
 POST /api/v2/console/acme/dns-test    add a test TXT record, read it back from the server, remove it
 POST /api/v2/console/acme/issue       get a certificate now and install it
+GET  /api/v2/audit                    ?event (prefix)&actor&outcome&text&from&to&before (seq)&limit (≤500): {entries, more}, newest first
+GET  /api/v2/audit/export             the same filters, every match, oldest first: ?format=csv|jsonl
+GET  /api/v2/audit/verify             the hash chain checked end to end
+GET  /api/v2/config/history           the configuration's versions, the current one first
+GET  /api/v2/config/history/{v}       that version (secrets redacted) and what changed from the one before
+POST /api/v2/config/history/{v}/restore   make it current again, as a new version
+POST /api/v2/console/backup           {passphrase (12+), audit?}: the .dcbackup file
+POST /api/v2/console/restore          {backup: base64, passphrase}: checked and staged for the next start
+GET  /api/v2/console/restore          {pending}: what is staged, or null; DELETE cancels it
 ```
 
 **Webhooks** receive a JSON `POST` with these fields: `event` (`certificates.expiring` or `test`), `subject`, `text`,
@@ -145,6 +155,7 @@ secret. A webhook URL is `https://`; `http://` is accepted only for this host.
 | `/api/v2/console/expiry` | `Expiry.java` |
 | `/api/v2/console/syslog` | `Syslog.java` |
 | `/api/v2/console/acme` | `AcmeService.java`: the console's own certificate by ACME (DNS-01) |
+| `/api/v2/audit`, `/api/v2/config/history`, `/api/v2/console/backup`, `/restore` | `Records.java`: the audit log, configuration history, backup and restore |
 | `/api/v2/console/settings`, `/api/v2/sign-in/options`, `/api/v2/session/other` | `OtherDirectory.java`: sign-in to other directories, trusted proxies |
 | `/api/v2/session…`, `/api/v2/oidc/…`, `/api/v2/config`, `/api/v2/audit/verify`, `/api/v2/health/live` and `/ready` | `Server.java` |
 | `/api/v2/trust/…` | `Server.java`: the console's trust store |

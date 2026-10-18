@@ -30,6 +30,7 @@ const EdirPage = lazy(() => import('../pages/EdirPage').then((m) => ({ default: 
 const ServerPage = lazy(() => import('../pages/EdirPage').then((m) => ({ default: m.ServerPage })));
 const SecurityPage = lazy(() => import('../pages/SecurityPage').then((m) => ({ default: m.SecurityPage })));
 const PasswordPolicyPage = lazy(() => import('../pages/PolicyPages').then((m) => ({ default: m.PasswordPolicyPage })));
+const AuditPage = lazy(() => import('../pages/AuditPage').then((m) => ({ default: m.AuditPage })));
 const ChallengeSetPage = lazy(() => import('../pages/PolicyPages').then((m) => ({ default: m.ChallengeSetPage })));
 
 const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>) => boolean }[] = [
@@ -42,6 +43,7 @@ const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>
   // Identity Manager needs a configured directory: not for one the person entered themselves
   { to: '/idm', label: 'Identity Manager', show: (s) => s.me.roles.length > 0 && s.me.via !== 'user-directory' },
   { to: '/certificates', label: 'Certificates', show: (s) => s.can('admin') },
+  { to: '/audit', label: 'Audit log', show: (s) => s.can('admin') },
   { to: '/settings', label: 'Settings', show: (s) => s.can('admin') },
 ];
 
@@ -219,6 +221,9 @@ function route(path: string) {
   }
   if (path === '/settings') {
     return <SettingsPage />;
+  }
+  if (path === '/audit') {
+    return <AuditPage />;
   }
   if (path === '/certificates') {
     return <CertificatesPage />;

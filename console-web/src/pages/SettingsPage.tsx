@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActionGroup, Alert, Button, Card, CardBody, Checkbox, ClipboardCopy, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, EmptyState, EmptyStateBody, Form, FormGroup, FormHelperText, FormSection, FormSelect, FormSelectOption, Flex, FlexItem, HelperText,
+  ActionGroup, Alert, Button, Card, CardBody, Checkbox, ClipboardCopy, FileUpload, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, EmptyState, EmptyStateBody, Form, FormGroup, FormHelperText, FormSection, FormSelect, FormSelectOption, Flex, FlexItem, HelperText,
   HelperTextItem, Label, LabelGroup, List, ListItem, PageSection, Radio, Spinner, Tab, Tabs, TabTitleText, TextArea, TextInput, Title, Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
 import { DownloadIcon, PlusIcon, UploadIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type AcmeState, type DirectorySettings, type ExpirySettings, type ExpiryState, type SyslogState, acme, expiry, syslog, type OidcSettings, type Preset, type RoleMappingJson, type UpdateState, UPGRADING_URL, consoleSettings, settings, updates } from '../api';
+import { type AcmeState, type ConfigVersion, type RestorePending, records, type DirectorySettings, type ExpirySettings, type ExpiryState, type SyslogState, acme, expiry, syslog, type OidcSettings, type Preset, type RoleMappingJson, type UpdateState, UPGRADING_URL, consoleSettings, settings, updates } from '../api';
 import { useSession } from '../session';
 import { HeadingLevel, useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
@@ -77,6 +77,9 @@ export function SettingsPage() {
             </Tab>
             <Tab eventKey="syslog" title={<TabTitleText>Syslog</TabTitleText>}>
               <SyslogSection />
+            </Tab>
+            <Tab eventKey="backup" title={<TabTitleText>History and backup</TabTitleText>}>
+              <HistoryAndBackupSection />
             </Tab>
             <Tab eventKey="updates" title={<TabTitleText>Updates</TabTitleText>}>
               <UpdatesSection />
@@ -231,6 +234,118 @@ function UpdatesSection() {
       )}
       <ProblemAlert error={error} />
       {dialog}
+    </div>
+  );
+}
+
+/** Console-wide: earlier versions of the configuration, and backups of the whole data volume. */
+function HistoryAndBackupSection() {
+  const { run, dialog } = useStepUp();
+  const sure = useAreYouSure();
+  const [versions, setVersions] = useState<ConfigVersion[] | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
+  const [changes, setChanges] = useState<Record<number, { path: string; before: unknown; after: unknown }[]>>({});
+  const [pending, setPending] = useState<RestorePending | null>(null);
+  const [pass, setPass] = useState('');
+  const [pass2, setPass2] = useState('');
+  const [withAudit, setWithAudit] = useState(true);
+  const [file, setFile] = useState('');
+  const [data, setData] = useState('');
+  const [restorePass, setRestorePass] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => { records.history().then(setVersions, setError); records.pending().then(setPending, () => {}); }, []);
+  const show = (v: number) => {
+    setOpen(open === v ? null : v);
+    if (!changes[v]) {
+      records.version(v).then((x) => setChanges((c) => ({ ...c, [v]: x.changes })), setError);
+    }
+  };
+  const act = (what: string, call: () => Promise<unknown>, after: (x: never) => void) => {
+    setBusy(what);
+    setError(null);
+    setNotice(null);
+    call().then((x) => after(x as never), setError).finally(() => setBusy(null));
+  };
+  const val = (v: unknown) => (v === undefined ? '—' : typeof v === 'object' && v !== null && 'set' in (v as object) ? '(a secret)' : String(v));
+  const passOk = pass.length >= 12 && pass === pass2;
+  return (
+    <div className="dc-tab-body">
+      <p>This applies to the whole console.</p>
+      {notice && <Alert variant="success" isInline isPlain title={notice} className="dc-tab-body" />}
+      <ProblemAlert error={error} />
+      {pending && (
+        <Alert variant="warning" isInline className="dc-tab-body" title="A restore is waiting: restart the console to apply it"
+          actionLinks={<Button variant="link" isInline onClick={() => act('cancel', records.cancel, () => { setPending(null); setNotice('The restore was cancelled.'); })}>Cancel it</Button>}>
+          From a backup made {pending.createdAt ? new Date(pending.createdAt).toLocaleString() : '(unknown)'}{pending.consoleVersion ? ` by version ${pending.consoleVersion}` : ''}.
+          At the next start the configuration, trust store, the console's certificate and the configuration key are replaced; everyone signs in again.
+        </Alert>
+      )}
+      <Title headingLevel="h3" size="md" className="dc-tab-body">Configuration history</Title>
+      <p className="dc-subtle">Every change to the console's settings is kept. Restoring a version makes it current again, as a new version; secrets come back with it.
+        The trust store and the console's certificate are not part of it.</p>
+      {!versions ? <Spinner size="md" aria-label="Loading" /> : (
+        <Table aria-label="Configuration versions" variant="compact">
+          <Thead><Tr><Th>Version</Th><Th>Saved</Th><Th>By</Th><Th>Change</Th><Th screenReaderText="Actions" /></Tr></Thead>
+          <Tbody>
+            {versions.slice(0, 50).map((v) => (
+              <Tr key={v.version}>
+                <Td dataLabel="Version">{v.version}{v.current && <> <Label isCompact color="green">current</Label></>}</Td>
+                <Td dataLabel="Saved">{v.savedAt ? new Date(v.savedAt).toLocaleString() : '—'}</Td>
+                <Td dataLabel="By" className="dc-mono">{v.savedBy}</Td>
+                <Td dataLabel="Change">
+                  <Button variant="link" isInline onClick={() => show(v.version)}>{v.reason || 'change'}</Button>
+                  {open === v.version && (changes[v.version] ? (
+                    <ul className="dc-mono dc-subtle">
+                      {changes[v.version].length === 0 ? <li>no setting changed</li> : changes[v.version].map((c) => <li key={c.path}>{c.path}: {val(c.before)} → {val(c.after)}</li>)}
+                    </ul>
+                  ) : <Spinner size="sm" aria-label="Loading" />)}
+                </Td>
+                <Td isActionCell>
+                  {!v.current && <Button variant="link" isInline onClick={() => sure.ask(`Go back to version ${v.version}?`,
+                    'The console\'s settings become what they were then, as a new version. Changes made since are undone (they stay in the history).', 'Go back',
+                    () => act('restore', () => run(() => records.restoreVersion(v.version)), (x: ConfigVersion[]) => { setVersions(x); setNotice(`Version ${v.version} is current again.`); }))}>Restore</Button>}
+                </Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
+      <Title headingLevel="h3" size="md" className="dc-tab-body">Back up</Title>
+      <p className="dc-subtle">A file with the configuration and its history, the trust store, the console's key and certificate, and the configuration key, encrypted
+        with your passphrase. Keep the file and the passphrase apart: with both, anyone can read the console's secrets.</p>
+      <Form isWidthLimited onSubmit={(e) => { e.preventDefault(); if (passOk) act('backup', () => run(() => records.backup(pass, withAudit)), () => { setPass(''); setPass2(''); setNotice('The backup was downloaded.'); }); }}>
+        <FormGroup label="Passphrase" fieldId="backup-pass">
+          <TextInput id="backup-pass" type="password" autoComplete="new-password" value={pass} onChange={(_e, v) => setPass(v)} validated={pass && pass.length < 12 ? 'error' : 'default'} />
+          <FormHelperText><HelperText><HelperTextItem>At least 12 characters. It is not kept anywhere: without it the backup cannot be restored.</HelperTextItem></HelperText></FormHelperText>
+        </FormGroup>
+        <FormGroup label="Passphrase again" fieldId="backup-pass2">
+          <TextInput id="backup-pass2" type="password" autoComplete="new-password" value={pass2} onChange={(_e, v) => setPass2(v)} validated={pass2 && pass2 !== pass ? 'error' : 'default'} />
+        </FormGroup>
+        <Checkbox id="backup-audit" label="Include the audit log" isChecked={withAudit} onChange={(_e, v) => setWithAudit(v)}
+          description="It is restored only onto a console whose audit log is empty (a new volume)." />
+        <ActionGroup><Button type="submit" isLoading={busy === 'backup'} isDisabled={busy !== null || !passOk}>Download a backup</Button></ActionGroup>
+      </Form>
+      <Title headingLevel="h3" size="md" className="dc-tab-body">Restore</Title>
+      <p className="dc-subtle">The backup is checked now and applied when the console next starts (restart the container). Until then nothing changes, and you can cancel it.</p>
+      <Form isWidthLimited onSubmit={(e) => { e.preventDefault(); act('stage', () => run(() => records.stage(data, restorePass)), (x: RestorePending) => { setPending(x); setRestorePass(''); setNotice('The backup is checked and waiting: restart the console to apply it.'); }); }}>
+        <FormGroup label="Backup file" fieldId="restore-file">
+          <FileUpload id="restore-file" filename={file} filenamePlaceholder="Choose a .dcbackup file" browseButtonText="Choose" hideDefaultPreview value={data ? '(read)' : ''}
+            onFileInputChange={(_e, f) => {
+              setFile(f.name);
+              const r = new FileReader();
+              r.onload = () => setData(String(r.result).replace(/^data:[^,]*,/, ''));
+              r.readAsDataURL(f);
+            }} onClearClick={() => { setFile(''); setData(''); }} />
+        </FormGroup>
+        <FormGroup label="Its passphrase" fieldId="restore-pass">
+          <TextInput id="restore-pass" type="password" autoComplete="off" value={restorePass} onChange={(_e, v) => setRestorePass(v)} />
+        </FormGroup>
+        <ActionGroup><Button type="submit" variant="secondary" isLoading={busy === 'stage'} isDisabled={busy !== null || !data || !restorePass}>Check and restore at the next start</Button></ActionGroup>
+      </Form>
+      {dialog}
+      {sure.dialog}
     </div>
   );
 }

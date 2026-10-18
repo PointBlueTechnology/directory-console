@@ -63,6 +63,7 @@ public final class Server {
     final Expiry expiry = new Expiry(this);
     final Syslog syslog = new Syslog(this);
     final AcmeService acme = new AcmeService(this);
+    final Records records = new Records(this);
     final Sessions sessions = new Sessions(Duration.ofMinutes(30), Duration.ofHours(12));
     final DirectLogin login;
     final com.pointblue.console.server.auth.OidcLogin oidc;
@@ -92,9 +93,15 @@ public final class Server {
     public Server(DataDir data, InetSocketAddress bind, String publicUrl, PrintStream out) throws IOException, GeneralSecurityException {
         this.log = out;
         this.data = data;
+        // a restore staged from a backup is applied before anything is loaded
+        Map<String, Object> restored = com.pointblue.console.server.data.Backup.applyPending(data);
         this.config = new ConfigStore(data, SecretBox.open(data.keys().resolve("config.key")));
         this.sessions.limits(this::sessionLimits);
         this.audit = new AuditLog(data);
+        if (restored != null) {
+            audit.log(AuditLog.Actor.SYSTEM, "console.restored", "console", restored, "ok");
+            out.println(java.time.Instant.now() + " restored from a backup made " + restored.get("createdAt"));
+        }
         this.trust = new TrustStore(data);
         // a pinned address that presents another certificate: kept as an alert for admins, and audited once
         this.trust.onAlert(a -> {
@@ -323,6 +330,10 @@ public final class Server {
         }
         if (syslog.handles(path)) {
             syslog.handle(ex, method, path);
+            return;
+        }
+        if (records.handles(path)) {
+            records.handle(ex, method, path);
             return;
         }
         if (acme.handles(path)) {

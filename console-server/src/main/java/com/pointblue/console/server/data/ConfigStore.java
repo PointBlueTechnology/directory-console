@@ -136,6 +136,11 @@ public final class ConfigStore {
         return Json.asMap(redact(read()));
     }
 
+    /** A copy of {@code doc} with every sealed value replaced by {@code {"set": true}}. */
+    public static Map<String, Object> redacted(Map<String, Object> doc) {
+        return Json.asMap(redact(doc));
+    }
+
     private static Object redact(Object o) {
         if (o instanceof Map<?, ?> m) {
             if (m.containsKey("sealed")) {

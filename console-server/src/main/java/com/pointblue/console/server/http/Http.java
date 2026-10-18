@@ -115,6 +115,16 @@ public final class Http {
         ex.close();
     }
 
+    /** A file to save: its bytes, type and name. */
+    public static void file(HttpExchange ex, byte[] body, String contentType, String fileName) throws IOException {
+        finishReading(ex);
+        ex.getResponseHeaders().set("Content-Type", contentType);
+        ex.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + fileName.replaceAll("[^A-Za-z0-9._-]", "_") + "\"");
+        ex.sendResponseHeaders(200, body.length);
+        ex.getResponseBody().write(body);
+        ex.close();
+    }
+
     public static void problem(HttpExchange ex, Problem p) throws IOException {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("type", "urn:directory-console:problem:" + p.type);

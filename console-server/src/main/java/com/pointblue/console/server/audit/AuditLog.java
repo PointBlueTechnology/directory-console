@@ -140,6 +140,46 @@ public final class AuditLog {
         return new Verification(true, n, null);
     }
 
+    /**
+     * Entries, newest first: those {@code keep} accepts, with a sequence number below {@code before} (null: from the
+     * newest), at most {@code limit}. The log is read month by month from the newest file, so recent pages are cheap.
+     */
+    public synchronized List<Map<String, Object>> entries(java.util.function.Predicate<Map<String, Object>> keep, Long before, int limit) throws IOException {
+        List<Map<String, Object>> out = new ArrayList<>();
+        List<Path> fs = files();
+        for (int i = fs.size() - 1; i >= 0 && out.size() < limit; i--) {
+            List<String> lines = Files.readAllLines(fs.get(i), StandardCharsets.UTF_8);
+            for (int j = lines.size() - 1; j >= 0 && out.size() < limit; j--) {
+                if (lines.get(j).isBlank()) {
+                    continue;
+                }
+                Map<String, Object> e = Json.asMap(Json.parse(lines.get(j)));
+                long seq = e.get("seq") instanceof Number n ? n.longValue() : 0;
+                if (before != null && seq >= before) {
+                    continue;
+                }
+                if (keep.test(e)) {
+                    out.add(e);
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Every entry {@code keep} accepts, oldest first, to {@code sink} (an export). */
+    public synchronized void each(java.util.function.Predicate<Map<String, Object>> keep, java.util.function.Consumer<Map<String, Object>> sink) throws IOException {
+        for (Path f : files()) {
+            for (String line : Files.readAllLines(f, StandardCharsets.UTF_8)) {
+                if (!line.isBlank()) {
+                    Map<String, Object> e = Json.asMap(Json.parse(line));
+                    if (keep.test(e)) {
+                        sink.accept(e);
+                    }
+                }
+            }
+        }
+    }
+
     private List<Path> files() throws IOException {
         List<Path> out = new ArrayList<>();
         try (Stream<Path> s = Files.list(dir)) {

@@ -43,6 +43,13 @@ docker compose start
 Use your own volume name if it differs. Keep the backup somewhere safe: it holds the console's private keys and
 its encrypted configuration.
 
+**From inside the console** (0.3.9 and later): an administrator can download a backup under **Settings > History
+and backup**, encrypted with a passphrase of their choosing. It holds the configuration and its history, the trust
+store, the console's TLS key and certificate, the configuration key and, optionally, the audit log. To restore one,
+choose the file there and give its passphrase: it is checked, then applied when the console next starts
+(`docker compose restart`). A backup's audit log is restored only onto a console whose audit log is empty, such as a
+new volume. A volume backup, as above, is still the one to take before an upgrade.
+
 ## Upgrade with compose
 
 In the folder with `compose.yaml`:

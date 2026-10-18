@@ -1581,6 +1581,59 @@ export const acme = {
   issue: () => request<AcmeState>('POST', '/api/v2/console/acme/issue', {}).then((r) => r.data),
 };
 
+export interface AuditEntry {
+  seq: number;
+  time: string;
+  actor: { subject: string; dn?: string; via: string };
+  event: string;
+  target?: string;
+  details: Record<string, unknown>;
+  outcome: string;
+}
+
+export interface AuditFilter { event?: string; actor?: string; outcome?: string; text?: string; from?: string; to?: string }
+
+export interface ConfigVersion { version: number; savedAt: string; savedBy: string; reason: string; current: boolean }
+
+export interface RestorePending { createdAt?: string; consoleVersion?: string; audit?: boolean }
+
+const auditQuery = (f: AuditFilter) => Object.entries(f).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&');
+
+/** Download what a POST answers as a file (the browser keeps the session's cookie and CSRF header). */
+async function download(method: string, path: string, body?: unknown): Promise<void> {
+  const r = await fetch(path, {
+    method,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const p = await r.json().catch(() => ({ title: 'error', detail: `HTTP ${r.status}` }));
+    throw new ApiError(r.status, p as Problem);
+  }
+  const name = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') ?? '')?.[1] ?? 'download';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(await r.blob());
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/** The console's own records: the audit log, the configuration's history, backups. */
+export const records = {
+  audit: (f: AuditFilter, before?: number, limit = 100) =>
+    request<{ entries: AuditEntry[]; more: boolean }>('GET', `/api/v2/audit?${auditQuery(f)}&limit=${limit}${before ? `&before=${before}` : ''}`).then((r) => r.data),
+  exportAudit: (f: AuditFilter, format: 'csv' | 'jsonl') => download('GET', `/api/v2/audit/export?${auditQuery(f)}&format=${format}`),
+  verify: () => request<{ intact: boolean; lines: number; problem: string }>('GET', '/api/v2/audit/verify').then((r) => r.data),
+  history: () => request<{ versions: ConfigVersion[] }>('GET', '/api/v2/config/history').then((r) => r.data.versions),
+  version: (v: number) => request<ConfigVersion & { changes: { path: string; before: unknown; after: unknown }[] }>('GET', `/api/v2/config/history/${v}`).then((r) => r.data),
+  restoreVersion: (v: number) => request<{ versions: ConfigVersion[] }>('POST', `/api/v2/config/history/${v}/restore`, {}).then((r) => r.data.versions),
+  backup: (passphrase: string, audit: boolean) => download('POST', '/api/v2/console/backup', { passphrase, audit }),
+  pending: () => request<{ pending: RestorePending | null }>('GET', '/api/v2/console/restore').then((r) => r.data.pending),
+  stage: (backup: string, passphrase: string) => request<{ pending: RestorePending | null }>('POST', '/api/v2/console/restore', { backup, passphrase }).then((r) => r.data.pending),
+  cancel: () => request<{ pending: null }>('DELETE', '/api/v2/console/restore').then(() => null),
+};
+
 export const consoleSettings = {
   get: () => request<ConsoleSettings>('GET', '/api/v2/console/settings').then((r) => r.data),
   /** Either setting, or both; what is left out stays as it is. */

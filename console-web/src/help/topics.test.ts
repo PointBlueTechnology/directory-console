@@ -3,14 +3,14 @@ import { TOPICS, topicFor, topicForPath } from './topics';
 
 /** Every page and tab of the console, as the shell and the tabbed pages name them. */
 const PAGES = [
-  'browse', 'object', 'search', 'schema', 'certificates', 'settings',
+  'browse', 'object', 'search', 'schema', 'certificates', 'settings', 'audit',
   'edir.partitions', 'edir.servers', 'edir.server', 'edir.ldap', 'edir.ldap-server', 'edir.ldap-group', 'edir.audit', 'edir.snmp', 'edir.encryption',
   'security.certificates', 'security.password-policies', 'security.challenge-sets', 'security.login-methods', 'security.eba',
   'security.password-policy', 'security.challenge-set',
   ...['attributes', 'account', 'certificates', 'groups', 'members', 'associations', 'rights', 'replicas', 'identity'].map((t) => `object.${t}`),
   ...['drivers', 'jobs', 'servers', 'properties', 'statistics', 'versions', 'trace', 'mapping-tables', 'log', 'passwords'].map((t) => `idm.${t}`),
   ...['overview', 'jobs', 'associations', 'cache', 'health', 'properties', 'trace', 'mapping-tables', 'log', 'passwords', 'password-sync'].map((t) => `idm.driver.${t}`),
-  ...['directory', 'roles', 'presets', 'sso', 'trees', 'other', 'certificate', 'expiry', 'syslog', 'updates', 'proxy'].map((t) => `settings.${t}`),
+  ...['directory', 'roles', 'presets', 'sso', 'trees', 'other', 'certificate', 'expiry', 'syslog', 'backup', 'updates', 'proxy'].map((t) => `settings.${t}`),
 ];
 
 describe('help topics', () => {
@@ -42,5 +42,6 @@ describe('help topics', () => {
     expect(topicForPath('/security/password-policies/0123456789abcdef0123456789abcdef')).toBe('security.password-policy');
     expect(topicForPath('/idm/drivers/0123456789abcdef0123456789abcdef')).toBe('idm.driver');
     expect(topicForPath('/settings')).toBe('settings');
+    expect(topicForPath('/audit')).toBe('audit');
   });
 });

@@ -903,6 +903,61 @@ export const CONTENT: Record<string, HelpTopic> = {
     ],
     related: ['settings.expiry'],
   },
+  'settings.backup': {
+    title: 'History and backup',
+    summary: 'Earlier versions of the console\'s settings, and a passphrase-protected backup of everything in its data volume that a restore needs.',
+    sections: [
+      {
+        title: 'Configuration history',
+        list: [
+          'Every change to the console\'s settings is saved as a new version, with who made it and why. Select the change to see which settings it touched (secrets show only as a secret).',
+          'Restore makes an earlier version current again, as a new version; nothing is lost from the history. Secrets come back with it.',
+          'The trust store and the console\'s own certificate are not part of a version: they are files beside it.',
+        ],
+      },
+      {
+        title: 'Backups',
+        list: [
+          'A backup holds the configuration and its history, the trust store, the console\'s TLS key and certificate, the configuration key, and (if you choose) the audit log.',
+          'It is encrypted with AES-256-GCM under your passphrase (at least 12 characters). The passphrase is not kept: without it the backup cannot be restored.',
+          'Keep the file and its passphrase apart: together they unlock every secret the console holds.',
+        ],
+      },
+      {
+        title: 'Restoring',
+        list: [
+          'The file is checked when you choose it, then waits until the console next starts; restart the container to apply it. Until then you can cancel it.',
+          'At the start the configuration, its history, the trust store, the TLS identity and the configuration key are replaced, and everyone signs in again. The restore is written to the audit log.',
+          'The audit log in a backup is restored only onto a console whose audit log is empty (a new volume), so the record of what happened since is never rewritten.',
+        ],
+        caution: true,
+      },
+    ],
+    related: ['audit'],
+  },
+  audit: {
+    title: 'Audit log',
+    summary: 'Everything done through the console, by whom, and whether it went through: sign-ins, changes to the directory, Identity Manager operations and the console\'s own settings.',
+    sections: [
+      {
+        title: 'Reading it',
+        list: [
+          'Newest first. Filter by event (a prefix such as object. or idm. works), by who acted, by outcome, by date, or by any text in the entry.',
+          'Expand an entry for its details. Attribute names are recorded, never values; secrets never appear.',
+          'Older entries loads the next page.',
+        ],
+      },
+      {
+        title: 'Exports',
+        paragraphs: ['CSV for a spreadsheet, or JSON Lines exactly as stored. Exports follow the filters. In CSV, a cell starting with =, +, - or @ is prefixed with a quote so a spreadsheet does not run it.'],
+      },
+      {
+        title: 'Check the chain',
+        paragraphs: ['Each entry carries a hash of the one before it, so an edited or removed entry breaks the chain. The check reads every entry and says where a break is, if there is one.'],
+      },
+    ],
+    related: ['settings.syslog', 'settings.backup'],
+  },
   'settings.updates': {
     title: 'Updates',
     summary: 'This console\'s version, and the daily check for a newer release.',
