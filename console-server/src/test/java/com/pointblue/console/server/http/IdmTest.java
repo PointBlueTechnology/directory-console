@@ -200,6 +200,15 @@ public class IdmTest {
         Map<String, Object> method = ((List<Map<String, Object>>) read.get("parameters")).stream().filter(p -> "submit-method".equals(p.get("name"))).findFirst().orElseThrow();
         assertEquals("submit-direct", method.get("value"));
 
+        // the job's named password, on the job object through the engine; a job has no other kind
+        String pw = "/api/v2/trees/acme/idm/jobs/" + guid + "/passwords";
+        assertEquals(204, call("POST", pw, Map.of("name", "pw", "displayName", "Password", "value", "s3cret"), h).status());
+        assertEquals(List.of("pw"), call("GET", pw, null, h).body().get("named"));
+        assertEquals(400, call("POST", pw, Map.of("kind", "remote-loader", "value", "x"), h).status());
+        assertEquals(204, call("DELETE", pw, Map.of("name", "pw"), h).status());
+        assertEquals(List.of(), call("GET", pw, null, h).body().get("named"));
+        assertEquals("a driver is not a job", 404, call("GET", "/api/v2/trees/acme/idm/jobs/" + ad + "/passwords", null, h).status());
+
         assertEquals("the name is taken", 409, call("POST", "/api/v2/trees/acme/idm/drivers/" + ad + "/jobs", job, h).status());
         job.put("name", "Another");
         job.put("parameters", Map.of("submit-method", "sideways"));

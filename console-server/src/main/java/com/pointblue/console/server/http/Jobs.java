@@ -40,13 +40,15 @@ import org.w3c.dom.NodeList;
  * POST   /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/jobs   a new job of a type the engine offers (see Idm, JobTypes)
  *        {"type", "name", "disabled"?, "schedule"? (cron, or null for none; the type's own when absent),
  *         "servers" [server DN…], "scope"? [{"dn", "scope": entry|subordinates|subtree|members}], "parameters"? {name: value}}
- * PATCH  same   {"version", "disabled"?, "schedule"? (cron, or null for none), "servers"? [server DN…]}
+ * PATCH  same   {"version", "disabled"?, "schedule"? (cron, or null for none), "servers"? [server DN…],
+ *                "parameters"? {name: value}, "scope"? [{"dn", "scope"}] ([] removes it, unless the type needs one)}
  * DELETE /api/v2/trees/{tree}/idm/jobs/{guid}               {"name"}: the job's name, typed
  * </pre>
  *
  * A change carries the version it was read at (a hash of {@code XmlData}) and is refused (409) when the
- * job changed meanwhile. The XML is edited in place (the job-definition start tag's attributes only), so
- * everything else in it is kept byte for byte.
+ * job changed meanwhile. The XML is edited in place (the job-definition start tag's attributes, and the
+ * {@code <value>} of each parameter changed), so everything else in it is kept byte for byte. A job's named
+ * passwords (its password-ref parameters name them) are set through the engine: see Idm.
  */
 final class Jobs {
 
@@ -122,7 +124,7 @@ final class Jobs {
             out.put("scopeRequired", "true".equalsIgnoreCase(def.getAttribute("scope-required")));
             out.put("description", strip(text(def, "description")));
             out.put("javaClass", text(def, "java-class"));
-            out.put("parameters", parameters(def));
+            out.put("parameters", JobTypes.parameters(def));
         }
         List<Map<String, Object>> servers = new ArrayList<>();
         for (Object v : e.attributes().getOrDefault("dirxml-serverlist", List.of())) {
@@ -156,39 +158,6 @@ final class Jobs {
     private static String text(Element parent, String child) {
         NodeList n = parent.getElementsByTagName(child);
         return n.getLength() == 0 ? null : n.item(0).getTextContent().trim();
-    }
-
-    /** The job's configuration values: each definition's name, label, type and value (lists as their items). */
-    private static List<Map<String, Object>> parameters(Element def) {
-        List<Map<String, Object>> out = new ArrayList<>();
-        NodeList defs = def.getElementsByTagName("definition");
-        for (int i = 0; i < defs.getLength(); i++) {
-            Element d = (Element) defs.item(i);
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("name", d.getAttribute("name"));
-            m.put("label", strip(d.getAttribute("display-name")));
-            m.put("type", d.getAttribute("type"));
-            Element value = null;
-            for (Node c = d.getFirstChild(); c != null; c = c.getNextSibling()) {
-                if (c instanceof Element ce && ce.getTagName().equals("value")) {
-                    value = ce;
-                }
-            }
-            if (value != null) {
-                NodeList items = value.getElementsByTagName("item");
-                if (items.getLength() > 0) {
-                    List<String> l = new ArrayList<>();
-                    for (int j = 0; j < items.getLength(); j++) {
-                        l.add(items.item(j).getTextContent());
-                    }
-                    m.put("value", String.join("; ", l));
-                } else {
-                    m.put("value", value.getTextContent().trim());
-                }
-            }
-            out.add(m);
-        }
-        return out;
     }
 
     private static Element definition(byte[] xml) {
@@ -242,7 +211,7 @@ final class Jobs {
         List<ModificationItem> mods = new ArrayList<>();
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("dn", e.dn());
-        if (b.containsKey("disabled") || b.containsKey("schedule")) {
+        if (b.containsKey("disabled") || b.containsKey("schedule") || b.containsKey("parameters")) {
             if (xml == null) {
                 throw new IllegalArgumentException("the job has no definition (XmlData) to change");
             }
@@ -263,6 +232,16 @@ final class Jobs {
                 text = withAttribute(text, "schedule", cron);
                 detail.put("schedule", cron);
             }
+            if (b.get("parameters") != null) {
+                Map<String, Object> values = Json.asMap(b.get("parameters"));
+                Element def = definition(xml);
+                if (def == null) {
+                    throw new IllegalArgumentException("the job's definition could not be read");
+                }
+                text = JobTypes.withValues(text, def, values);
+                // names only: a value can be a DN or other detail that does not belong in the audit log
+                detail.put("parameters", new ArrayList<>(values.keySet()));
+            }
             mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute("XmlData", text.getBytes(StandardCharsets.UTF_8))));
         }
         if (b.containsKey("servers")) {
@@ -280,6 +259,20 @@ final class Jobs {
             }
             mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, a));
             detail.put("servers", list);
+        }
+        if (b.containsKey("scope")) {
+            if (!(b.get("scope") instanceof List<?> list)) {
+                throw new IllegalArgumentException("scope is a list of {dn, scope}");
+            }
+            List<Object> scope = scope(l, list);
+            Element def = definition(xml);
+            if (scope.isEmpty() && def != null && "true".equalsIgnoreCase(def.getAttribute("scope-required"))) {
+                throw new IllegalArgumentException("this type of job needs a scope: the objects it works on");
+            }
+            BasicAttribute a = new BasicAttribute("DirXML-Scope");
+            scope.forEach(a::add);
+            mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, a));
+            detail.put("scope", scope);
         }
         if (mods.isEmpty()) {
             return;
@@ -327,21 +320,7 @@ final class Jobs {
             }
             servers.add(dn);
         }
-        List<Object> scope = new ArrayList<>();
-        if (b.get("scope") instanceof List<?> list) {
-            for (Object o : list) {
-                Map<String, Object> sc = Json.asMap(o);
-                String dn = Http.string(sc, "dn", true);
-                String kind = Http.string(sc, "scope", true);
-                if (!SCOPES.contains(kind)) {
-                    throw new IllegalArgumentException("a scope is entry, subordinates, subtree or members");
-                }
-                if (l.read(dn, "objectClass") == null) {
-                    throw new IllegalArgumentException("no object " + dn);
-                }
-                scope.add(dn + "#0#<scope-def scope=\"" + kind + "\"/>");
-            }
-        }
+        List<Object> scope = b.get("scope") instanceof List<?> list ? scope(l, list) : new ArrayList<>();
         if (scopeRequired && scope.isEmpty()) {
             throw new IllegalArgumentException("this type of job needs a scope: the objects it works on");
         }
@@ -380,6 +359,24 @@ final class Jobs {
         Map<String, Object> out = made == null ? new LinkedHashMap<>(Map.of("dn", dn)) : read(l, made);
         out.put("guid", guid);
         return out;
+    }
+
+    /** DirXML-Scope values ({@code <dn>#0#<scope-def scope="…"/>}) for {@code [{dn, scope}]}, each object checked. */
+    private static List<Object> scope(Ldap l, List<?> list) throws NamingException {
+        List<Object> scope = new ArrayList<>();
+        for (Object o : list) {
+            Map<String, Object> sc = Json.asMap(o);
+            String dn = Http.string(sc, "dn", true).trim();
+            String kind = Http.string(sc, "scope", true);
+            if (!SCOPES.contains(kind)) {
+                throw new IllegalArgumentException("a scope is entry, subordinates, subtree or members");
+            }
+            if (l.read(dn, "objectClass") == null) {
+                throw new IllegalArgumentException("no object " + dn);
+            }
+            scope.add(dn + "#0#<scope-def scope=\"" + kind + "\"/>");
+        }
+        return scope;
     }
 
     private static Element child(Element parent, String tag) {

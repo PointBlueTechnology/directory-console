@@ -585,7 +585,7 @@ export interface JobDefinition extends Identity {
   /** Cron: minute hour day-of-month month day-of-week; null when it has none. */
   schedule?: string | null;
   scopeRequired?: boolean;
-  parameters?: { name: string; label: string; type: string; value?: string }[];
+  parameters?: JobParameter[];
   servers: { dn: string; name: string }[];
   scope: { raw: string; dn?: string; scope?: string | null }[];
 }
@@ -682,10 +682,17 @@ export function idm(id: string, server?: string) {
       request<JobDefinition & { guid: string | null; notified: boolean }>('POST', at(`${base}/${kind}/${guidPath(guid)}/jobs`), body, h(confirm)).then((r) => r.data),
     jobDefinition: (guid: string) => request<JobDefinition>('GET', `${base}/jobs/${guidPath(guid)}/definition`).then((r) => r.data),
     /** Change a job, as read at {@code version}; refused (409) when it changed meanwhile. A null schedule removes it. */
-    changeJob: (guid: string, body: { version: string; disabled?: boolean; schedule?: string | null; servers?: string[] }, confirm?: string) =>
+    changeJob: (guid: string, body: {
+      version: string; disabled?: boolean; schedule?: string | null; servers?: string[];
+      parameters?: Record<string, string | string[]>; scope?: { dn: string; scope: JobScopeKind }[];
+    }, confirm?: string) =>
       request<JobDefinition>('PATCH', `${base}/jobs/${guidPath(guid)}/definition`, body, h(confirm)).then((r) => r.data),
     /** Delete a job; {@code name} is its name, typed. */
     deleteJob: (guid: string, name: string, confirm?: string) => request<void>('DELETE', `${base}/jobs/${guidPath(guid)}`, { name }, h(confirm)),
+    /** A job's named passwords on this server's engine (its password-ref parameters name them). */
+    jobPasswords: (guid: string) => get<{ named: string[] }>(`/jobs/${guidPath(guid)}/passwords`).then((r) => r.named),
+    setJobPassword: (guid: string, body: { name: string; displayName?: string; value: string }, confirm?: string) =>
+      request<void>('POST', at(`${base}/jobs/${guidPath(guid)}/passwords`), body, h(confirm)),
     passwords: (kind: 'drivers' | 'driversets', guid: string) => get<{ named: string[] }>(`/${kind}/${guidPath(guid)}/passwords`),
     setPassword: (kind: 'drivers' | 'driversets', guid: string, body: { kind: PasswordKind; name?: string; displayName?: string; value: string }, confirm?: string) =>
       request<void>('POST', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm)),

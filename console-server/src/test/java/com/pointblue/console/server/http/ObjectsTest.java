@@ -1,5 +1,6 @@
 package com.pointblue.console.server.http;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -256,7 +257,7 @@ public class ObjectsTest {
         assertEquals(null, got.get("schedule"));
         assertEquals("driver", Json.asMap(got.get("owner")).get("kind"));
         assertEquals("subtree", Json.asMap(((List<?>) got.get("scope")).get(0)).get("scope"));
-        assertEquals("Group; Organizational Unit", Json.asMap(((List<?>) got.get("parameters")).get(1)).get("value"));
+        assertEquals(List.of("Group", "Organizational Unit"), Json.asMap(((List<?>) got.get("parameters")).get(1)).get("value"));
         String version = (String) got.get("version");
 
         Reply changed = call("PATCH", t, Map.of("version", version, "disabled", false, "schedule", "0  2 * * 6",
@@ -273,6 +274,27 @@ public class ObjectsTest {
         assertEquals(400, call("PATCH", t, Map.of("version", v2, "servers", List.of("ou=Users,o=acme")), h).status());
         Reply none = call("PATCH", t, Map.of("version", v2, "schedule", ""), h);
         assertEquals(null, none.body().get("schedule"));
+
+        // parameters: only each value's content changes; a value is checked against its definition
+        String v3 = (String) none.body().get("version");
+        String before = new String(edir.entry("cn=refs,cn=AD,cn=Set1,o=system").getAttributeValueBytes("XmlData"), StandardCharsets.UTF_8);
+        Reply params = call("PATCH", t, Map.of("version", v3, "parameters", Map.of("use-job-cn", "false", "objs", List.of("User", "R&D <group>"))), h);
+        assertEquals(String.valueOf(params.body()), 200, params.status());
+        String after = new String(edir.entry("cn=refs,cn=AD,cn=Set1,o=system").getAttributeValueBytes("XmlData"), StandardCharsets.UTF_8);
+        assertEquals(before.replace("type=\"boolean\"><value>true</value>", "type=\"boolean\"><value>false</value>")
+            .replace("<item>Group</item><item>Organizational Unit</item>", "<item>User</item><item>R&amp;D &lt;group&gt;</item>"), after);
+        String v4 = (String) params.body().get("version");
+        assertEquals(400, call("PATCH", t, Map.of("version", v4, "parameters", Map.of("use-job-cn", "perhaps")), h).status());
+        assertEquals(400, call("PATCH", t, Map.of("version", v4, "parameters", Map.of("nonesuch", "x")), h).status());
+
+        // scope: replaced, or removed when the type does not need one
+        edir.add("dn: ou=staff,o=system", "objectClass: organizationalUnit", "ou: staff");
+        Reply scoped = call("PATCH", t, Map.of("version", v4, "scope", List.of(Map.of("dn", "ou=staff,o=system", "scope", "entry"))), h);
+        assertEquals(String.valueOf(scoped.body()), 200, scoped.status());
+        assertArrayEquals(new String[] {"ou=staff,o=system#0#<scope-def scope=\"entry\"/>"}, edir.entry("cn=refs,cn=AD,cn=Set1,o=system").getAttributeValues("DirXML-Scope"));
+        assertEquals("no such object", 400, call("PATCH", t, Map.of("version", v4, "scope", List.of(Map.of("dn", "ou=gone,o=system", "scope", "entry"))), h).status());
+        assertEquals(200, call("PATCH", t, Map.of("version", v4, "scope", List.of()), h).status());
+        assertEquals(null, edir.entry("cn=refs,cn=AD,cn=Set1,o=system").getAttributeValues("DirXML-Scope"));
 
         Map<String, String> v = signIn("cn=viewer,ou=Users,o=acme", "viewer-pw");
         assertEquals(200, call("GET", t, null, v).status());

@@ -3,23 +3,23 @@ import {
   Alert, Button, Checkbox, Flex, FlexItem, Form, FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem,
   Modal, ModalBody, ModalFooter, ModalHeader, Radio, Spinner, Switch, TextArea, TextInput,
 } from '@patternfly/react-core';
-import { type EdirServer, type Idm, type JobParameter, type JobScopeKind, type JobType, edir } from '../api';
+import { type EdirServer, type Idm, type JobParameter, type JobScopeKind, type JobType, edir, idm } from '../api';
 import { describeCron } from '../cron';
 import { useSession } from '../session';
 import { useConfirmed } from './Confirm';
 import { ProblemAlert } from './Problem';
 
-const SCOPES: { value: JobScopeKind; label: string }[] = [
+export const SCOPES: { value: JobScopeKind; label: string }[] = [
   { value: 'subtree', label: 'the object and everything under it' },
   { value: 'subordinates', label: 'the objects directly under it' },
   { value: 'entry', label: 'the object itself' },
   { value: 'members', label: "the group's members" },
 ];
 
-type Values = Record<string, string | string[]>;
+export type Values = Record<string, string | string[]>;
 
 /** Which parameters are in use: those at the top, and those under a parameter that is in use and has their active value. */
-function activeParameters(params: JobParameter[], values: Values): Set<string> {
+export function activeParameters(params: JobParameter[], values: Values): Set<string> {
   const on = new Set<string>();
   for (const p of params) {
     if (!p.parent || (on.has(p.parent) && String(values[p.parent]) === p.activeValue)) {
@@ -29,7 +29,7 @@ function activeParameters(params: JobParameter[], values: Values): Set<string> {
   return on;
 }
 
-function ParameterInput({ p, value, onChange }: { p: JobParameter; value: string | string[]; onChange: (v: string | string[]) => void }) {
+export function ParameterInput({ p, value, onChange }: { p: JobParameter; value: string | string[]; onChange: (v: string | string[]) => void }) {
   const id = `job-param-${p.name}`;
   switch (p.type) {
     case 'boolean':
@@ -48,6 +48,52 @@ function ParameterInput({ p, value, onChange }: { p: JobParameter; value: string
           type={p.type === 'integer' ? 'number' : 'text'} onChange={(_e, v) => onChange(v)} />
       );
   }
+}
+
+/** The objects a job works on: rows of a DN and which objects from it. */
+export function ScopeEditor({ scope, setScope, required, disabled }: {
+  scope: { dn: string; scope: JobScopeKind }[]; setScope: (s: { dn: string; scope: JobScopeKind }[]) => void; required: boolean; disabled?: boolean;
+}) {
+  return (
+    <FormGroup label={required ? 'Objects (this job needs some)' : 'Objects'} fieldId="job-scope" role="group">
+      {scope.map((s, i) => (
+        <Flex key={i} alignItems={{ default: 'alignItemsCenter' }} flexWrap={{ default: 'wrap' }}>
+          <FlexItem grow={{ default: 'grow' }}>
+            <TextInput aria-label="Object DN" className="dc-mono" placeholder="ou=users,o=data" value={s.dn} isDisabled={disabled}
+              onChange={(_e, v) => setScope(scope.map((x, j) => (j === i ? { ...x, dn: v } : x)))} />
+          </FlexItem>
+          <FlexItem>
+            <FormSelect aria-label="Which objects" value={s.scope} isDisabled={disabled} onChange={(_e, v) => setScope(scope.map((x, j) => (j === i ? { ...x, scope: v as JobScopeKind } : x)))}>
+              {SCOPES.map((o) => <FormSelectOption key={o.value} value={o.value} label={o.label} />)}
+            </FormSelect>
+          </FlexItem>
+          {!disabled && <FlexItem><Button variant="link" isInline onClick={() => setScope(scope.filter((_x, j) => j !== i))}>Remove</Button></FlexItem>}
+        </Flex>
+      ))}
+      {!disabled && <Button variant="link" isInline onClick={() => setScope([...scope, { dn: '', scope: 'subtree' }])}>Add objects</Button>}
+      {scope.length === 0 && <FormHelperText><HelperText><HelperTextItem>No objects: the job runs once, not once per object.</HelperTextItem></HelperText></FormHelperText>}
+    </FormGroup>
+  );
+}
+
+/**
+ * Set a job's named passwords on each server that runs it: each server's engine keeps its own. Answers the
+ * servers it could not set them on, with why.
+ */
+export async function setJobPasswords(directory: string, job: string, servers: (string | undefined)[], entries: { name: string; label: string; value: string }[],
+  confirm?: string): Promise<string[]> {
+  const failed: string[] = [];
+  for (const server of servers) {
+    const on = idm(directory, server);
+    for (const e of entries) {
+      try {
+        await on.setJobPassword(job, { name: e.name, displayName: e.label, value: e.value }, confirm);
+      } catch (x) {
+        failed.push(`${e.label}: ${x instanceof Error ? x.message : String(x)}`);
+      }
+    }
+  }
+  return failed;
 }
 
 /**
@@ -70,6 +116,8 @@ export function NewJobModal({ api, kind, guid, onClose, onCreated }: {
   const [servers, setServers] = useState<string[]>([]);
   const [scope, setScope] = useState<{ dn: string; scope: JobScopeKind }[]>([]);
   const [values, setValues] = useState<Values>({});
+  const [secrets, setSecrets] = useState<Record<string, string>>({});
+  const [partial, setPartial] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -105,10 +153,25 @@ export function NewJobModal({ api, kind, guid, onClose, onCreated }: {
     const serverDns = allServers.length ? allServers.filter((s) => servers.includes(s.dn.toLowerCase())).map((s) => s.dn) : onServer ? [onServer.dn] : [];
     setBusy(true);
     setError(null);
-    run((c) => api.createJob(kind, guid, {
-      type: type.type, name: name.trim(), disabled: !enabled, schedule: schedule.trim() ? schedule.trim().replace(/\s+/g, ' ') : null,
-      servers: serverDns, scope: scope.map((s) => ({ dn: s.dn.trim(), scope: s.scope })), parameters: changed,
-    }, c)).then((j) => { onCreated(j.name, j.notified); onClose(); }, setError).finally(() => setBusy(false));
+    const toSet = passwords.filter((p) => secrets[p.name]).map((p) => ({ name: String(p.value), label: p.label, value: secrets[p.name] }));
+    const serverGuids = allServers.length ? allServers.filter((s) => servers.includes(s.dn.toLowerCase())).map((s) => s.guid) : [undefined];
+    run(async (c) => {
+      const j = await api.createJob(kind, guid, {
+        type: type.type, name: name.trim(), disabled: !enabled, schedule: schedule.trim() ? schedule.trim().replace(/\s+/g, ' ') : null,
+        servers: serverDns, scope: scope.map((s) => ({ dn: s.dn.trim(), scope: s.scope })), parameters: changed,
+      }, c);
+      const failed = j.guid && toSet.length ? await setJobPasswords(me.directory, j.guid, serverGuids, toSet, c) : [];
+      return { j, failed };
+    }).then(({ j, failed }) => {
+      if (failed.length) {
+        // the job exists: say what is left to do rather than leave the form as if nothing happened
+        setPartial(`The job ${j.name} was created, but its passwords were not all set (${failed.join('; ')}). Set them from the job.`);
+        onCreated(j.name, j.notified);
+      } else {
+        onCreated(j.name, j.notified);
+        onClose();
+      }
+    }, setError).finally(() => setBusy(false));
   };
 
   const passwords = type?.parameters.filter((p) => p.type === 'password-ref' && active.has(p.name)) ?? [];
@@ -151,42 +214,30 @@ export function NewJobModal({ api, kind, guid, onClose, onCreated }: {
                   onChange={(_e, on) => setServers(on ? [...servers, s.dn.toLowerCase()] : servers.filter((d) => d !== s.dn.toLowerCase()))} />
               ))}
             </FormGroup>
-            <FormGroup label={type.scopeRequired ? 'Objects (this job needs some)' : 'Objects'} fieldId="new-job-scope" role="group">
-              {scope.map((s, i) => (
-                <Flex key={i} alignItems={{ default: 'alignItemsCenter' }} flexWrap={{ default: 'wrap' }}>
-                  <FlexItem grow={{ default: 'grow' }}>
-                    <TextInput aria-label="Object DN" className="dc-mono" placeholder="ou=users,o=data" value={s.dn}
-                      onChange={(_e, v) => setScope(scope.map((x, j) => (j === i ? { ...x, dn: v } : x)))} />
-                  </FlexItem>
-                  <FlexItem>
-                    <FormSelect aria-label="Which objects" value={s.scope} onChange={(_e, v) => setScope(scope.map((x, j) => (j === i ? { ...x, scope: v as JobScopeKind } : x)))}>
-                      {SCOPES.map((o) => <FormSelectOption key={o.value} value={o.value} label={o.label} />)}
-                    </FormSelect>
-                  </FlexItem>
-                  <FlexItem><Button variant="link" isInline onClick={() => setScope(scope.filter((_x, j) => j !== i))}>Remove</Button></FlexItem>
-                </Flex>
-              ))}
-              <Button variant="link" isInline onClick={() => setScope([...scope, { dn: '', scope: 'subtree' }])}>Add objects</Button>
-              {scope.length === 0 && <FormHelperText><HelperText><HelperTextItem>No objects: the job runs once, not once per object.</HelperTextItem></HelperText></FormHelperText>}
-            </FormGroup>
+            <ScopeEditor scope={scope} setScope={setScope} required={type.scopeRequired} />
             {type.parameters.filter((p) => active.has(p.name) && p.type !== 'password-ref').map((p) => (
               <FormGroup key={p.name} label={p.type === 'boolean' ? undefined : p.label} fieldId={`job-param-${p.name}`} style={{ marginLeft: `${p.depth * 1.5}rem` }}>
                 <ParameterInput p={p} value={values[p.name]} onChange={(v) => setValues({ ...values, [p.name]: v })} />
                 {p.description && <FormHelperText><HelperText><HelperTextItem>{p.description}</HelperTextItem></HelperText></FormHelperText>}
               </FormGroup>
             ))}
-            {passwords.length > 0 && (
-              <Alert variant="info" isInline isPlain title={`This job needs ${passwords.map((p) => p.label).join(' and ')}`}>
-                A named password on the job, which the console does not set yet: set it in iManager or Designer before the job runs.
-              </Alert>
-            )}
+            {passwords.map((p) => (
+              <FormGroup key={p.name} label={p.label} fieldId={`job-pw-${p.name}`} style={{ marginLeft: `${p.depth * 1.5}rem` }}>
+                <TextInput id={`job-pw-${p.name}`} type="password" autoComplete="new-password" value={secrets[p.name] ?? ''}
+                  onChange={(_e, v) => setSecrets({ ...secrets, [p.name]: v })} />
+                <FormHelperText><HelperText><HelperTextItem>
+                  {p.description ? `${p.description} ` : ''}Kept as the job's named password {String(p.value)} on each server it runs on; leave it empty to set it later.
+                </HelperTextItem></HelperText></FormHelperText>
+              </FormGroup>
+            ))}
           </Form>
         )}
         <ProblemAlert error={error} />
+        {partial && <Alert variant="warning" isInline title={partial} />}
         {dialog}
       </ModalBody>
       <ModalFooter>
-        {type && <Button onClick={create} isLoading={busy} isDisabled={busy || !ready}>Create</Button>}
+        {type && !partial && <Button onClick={create} isLoading={busy} isDisabled={busy || !ready}>Create</Button>}
         {type && <Button variant="secondary" onClick={() => setType(null)}>Back</Button>}
         <Button variant="link" onClick={onClose}>Cancel</Button>
       </ModalFooter>

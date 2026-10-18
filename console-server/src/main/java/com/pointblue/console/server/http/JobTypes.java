@@ -45,13 +45,7 @@ final class JobTypes {
             m.put("description", strip(text(child(def, "description"))));
             m.put("schedule", def.hasAttribute("schedule") ? def.getAttribute("schedule") : null);
             m.put("scopeRequired", "true".equalsIgnoreCase(def.getAttribute("scope-required")));
-            List<Map<String, Object>> params = new ArrayList<>();
-            Element cv = child(def, "configuration-values");
-            Element defs = cv == null ? null : child(cv, "definitions");
-            if (defs != null) {
-                walk(defs, 0, null, null, params);
-            }
-            m.put("parameters", params);
+            m.put("parameters", parameters(def));
             out.add(m);
         }
         out.sort((a, b) -> String.valueOf(a.get("displayName")).compareToIgnoreCase(String.valueOf(b.get("displayName"))));
@@ -67,6 +61,81 @@ final class JobTypes {
             }
         }
         return null;
+    }
+
+    /** A job-definition's configuration values, as {@link #types} gives a type's: name, label, type, value, choices, depth and parent. */
+    static List<Map<String, Object>> parameters(Element def) {
+        List<Map<String, Object>> params = new ArrayList<>();
+        Element cv = child(def, "configuration-values");
+        Element defs = cv == null ? null : child(cv, "definitions");
+        if (defs != null) {
+            walk(defs, 0, null, null, params);
+        }
+        return params;
+    }
+
+    /**
+     * {@code xml} (a job's XmlData) with the named configuration values changed, each checked against its
+     * definition in {@code def} (the same document, parsed). Only each definition's {@code <value>} content
+     * changes; everything else is kept as it was written. A password-ref is not changed here.
+     */
+    static String withValues(String xml, Element def, Map<String, Object> values) {
+        Map<String, Element> byName = new LinkedHashMap<>();
+        var all = def.getElementsByTagName("definition");
+        for (int i = 0; i < all.getLength(); i++) {
+            Element d = (Element) all.item(i);
+            byName.putIfAbsent(d.getAttribute("name"), d);
+        }
+        for (Map.Entry<String, Object> v : values.entrySet()) {
+            Element d = byName.get(v.getKey());
+            if (d == null) {
+                throw new IllegalArgumentException("this job has no parameter " + v.getKey());
+            }
+            Element checked = (Element) d.cloneNode(true);
+            set(checked, v.getValue());
+            StringBuilder inner = new StringBuilder();
+            Element value = child(checked, "value");
+            boolean items = false;
+            for (Node c = value.getFirstChild(); c != null; c = c.getNextSibling()) {
+                if (c instanceof Element i && i.getTagName().equals("item")) {
+                    inner.append("<item>").append(escape(i.getTextContent())).append("</item>");
+                    items = true;
+                }
+            }
+            if (!items) {
+                inner.append(escape(value.getTextContent()));
+            }
+            xml = valueIn(xml, v.getKey(), inner.toString());
+        }
+        return xml;
+    }
+
+    /** The definition named {@code name} with its value's content replaced by {@code inner} (escaped XML). */
+    private static String valueIn(String xml, String name, String inner) {
+        java.util.regex.Matcher start = java.util.regex.Pattern.compile(
+            "<definition\\b[^>]*?\\sname\\s*=\\s*([\"'])" + java.util.regex.Pattern.quote(name) + "\\1[^>]*?(/?)>").matcher(xml);
+        if (!start.find()) {
+            throw new IllegalArgumentException("the job's XmlData has no definition " + name);
+        }
+        if (start.group(2).equals("/")) {
+            String open = start.group().substring(0, start.group().length() - 2) + ">";
+            return xml.substring(0, start.start()) + open + "<value>" + inner + "</value></definition>" + xml.substring(start.end());
+        }
+        // definitions do not nest (a group's subordinates are siblings), so the next end tag is this one's
+        int end = xml.indexOf("</definition>", start.end());
+        if (end < 0) {
+            throw new IllegalArgumentException("the job's XmlData has an unclosed definition " + name);
+        }
+        String body = xml.substring(start.end(), end);
+        java.util.regex.Matcher value = java.util.regex.Pattern.compile("<value\\b([^>]*?)(/>|>[\\s\\S]*?</value>)").matcher(body);
+        String changed = value.find()
+            ? body.substring(0, value.start()) + "<value" + value.group(1) + ">" + inner + "</value>" + body.substring(value.end())
+            : body + "<value>" + inner + "</value>";
+        return xml.substring(0, start.end()) + changed + xml.substring(end);
+    }
+
+    private static String escape(String s) {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     /** Each definition, depth first: a group's subordinates are shown under its definition, active when it has their active value. */
@@ -173,7 +242,7 @@ final class JobTypes {
         }
     }
 
-    private static void set(Element d, Object raw) {
+    static void set(Element d, Object raw) {
         String type = d.getAttribute("type");
         String name = d.getAttribute("name");
         Element value = child(d, "value");
@@ -185,7 +254,7 @@ final class JobTypes {
             value.removeChild(value.getFirstChild());
         }
         switch (type) {
-            case "password-ref" -> throw new IllegalArgumentException(name + " names a named password; set the password itself after creating the job");
+            case "password-ref" -> throw new IllegalArgumentException(name + " names a named password: set the password on the job, not this parameter");
             case "list" -> {
                 if (!(raw instanceof List<?> items)) {
                     throw new IllegalArgumentException(name + " is a list of values");

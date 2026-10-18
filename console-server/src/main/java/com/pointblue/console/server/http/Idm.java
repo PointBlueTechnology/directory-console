@@ -49,6 +49,7 @@ import javax.naming.directory.SearchControls;
  * POST /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/passwords   {"kind", "name", "displayName", "value"}
  * DELETE same                                                            {"kind", "name"}
  * POST /api/v2/trees/{tree}/idm/jobs/{guid}/start | abort
+ * GET, POST, DELETE /api/v2/trees/{tree}/idm/jobs/{guid}/passwords      a job's named passwords: {"name", "displayName"?, "value"}, {"name"}
  * GET, POST, PATCH, DELETE /api/v2/trees/{tree}/idm/objects/{guid}/associations   the object inspector (see Associations)
  * GET, PUT /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/trace                trace settings (see Trace)
  * GET, PATCH /api/v2/trees/{tree}/idm/jobs/{guid}/definition; DELETE …/jobs/{guid}  a job's definition (see Jobs)
@@ -341,8 +342,12 @@ final class Idm {
                         Target t = target(l, guid, p[2].equals("driversets"));
                         Http.json(ex, 200, Map.of("named", engine.namedPasswords(t.dn())));
                     }
-                    case "POST drivers/{guid}/passwords", "POST driversets/{guid}/passwords" -> setPassword(ex, s, d, engine, target(l, guid, p[2].equals("driversets")), guid, confirm);
-                    case "DELETE drivers/{guid}/passwords", "DELETE driversets/{guid}/passwords" -> removePassword(ex, s, d, engine, target(l, guid, p[2].equals("driversets")), guid, confirm);
+                    case "POST drivers/{guid}/passwords", "POST driversets/{guid}/passwords" -> setPassword(ex, s, d, engine, target(l, guid, p[2].equals("driversets")), guid, confirm, false);
+                    case "DELETE drivers/{guid}/passwords", "DELETE driversets/{guid}/passwords" -> removePassword(ex, s, d, engine, target(l, guid, p[2].equals("driversets")), guid, confirm, false);
+                    // a job's named passwords (its password-ref parameters name them) are kept on the job object, as a driver's are on the driver
+                    case "GET jobs/{guid}/passwords" -> Http.json(ex, 200, Map.of("named", engine.namedPasswords(jobTarget(l, guid).dn())));
+                    case "POST jobs/{guid}/passwords" -> setPassword(ex, s, d, engine, jobTarget(l, guid), guid, confirm, true);
+                    case "DELETE jobs/{guid}/passwords" -> removePassword(ex, s, d, engine, jobTarget(l, guid), guid, confirm, true);
                     // the job types this server's engine offers for the driver or driver set
                     case "GET drivers/{guid}/job-types", "GET driversets/{guid}/job-types" -> {
                         boolean set = p[2].equals("driversets");
@@ -623,6 +628,16 @@ final class Idm {
         return new Target(e.dn(), name, driverSet ? e.dn() : Names.parent(e.dn()), driverSet);
     }
 
+    private Target jobTarget(Ldap l, String guid) throws NamingException {
+        Ldap.Entry e = server.objects.byGuid(l, guid, "objectClass", "cn");
+        if (!hasClass(e, "DirXML-Job")) {
+            throw new Http.Problem(404, "not-a-job", guid + " is not a job");
+        }
+        String parent = Names.parent(e.dn());
+        Ldap.Entry up = l.read(parent, "objectClass");
+        return new Target(e.dn(), String.valueOf(Names.leaf(e.dn()).getValue()), up != null && hasClass(up, "DirXML-Driver") ? Names.parent(parent) : parent, false);
+    }
+
     private static boolean hasClass(Ldap.Entry e, String cls) {
         return e.attributes().getOrDefault("objectclass", List.of()).stream().anyMatch(c -> String.valueOf(c).equalsIgnoreCase(cls));
     }
@@ -710,9 +725,10 @@ final class Idm {
     }
 
     /** {@code {"kind", "name", "displayName", "value"}}. Values are never read back or logged. */
-    private void setPassword(HttpExchange ex, Sessions.Session s, DirectoryConfig d, Operate.Engine engine, Target t, String guid, String confirm) throws IOException {
+    private void setPassword(HttpExchange ex, Sessions.Session s, DirectoryConfig d, Operate.Engine engine, Target t, String guid, String confirm, boolean job)
+            throws IOException {
         Map<String, Object> b = Http.body(ex);
-        String kind = kind(b);
+        String kind = kind(b, job);
         char[] value = Http.string(b, "value", true).toCharArray();
         confirmed(d, confirm);
         String name = Http.string(b, "name", kind.equals("named"));
@@ -731,9 +747,10 @@ final class Idm {
         Http.json(ex, 204, Map.of());
     }
 
-    private void removePassword(HttpExchange ex, Sessions.Session s, DirectoryConfig d, Operate.Engine engine, Target t, String guid, String confirm) throws IOException {
+    private void removePassword(HttpExchange ex, Sessions.Session s, DirectoryConfig d, Operate.Engine engine, Target t, String guid, String confirm, boolean job)
+            throws IOException {
         Map<String, Object> b = Http.body(ex);
-        String kind = kind(b);
+        String kind = kind(b, job);
         confirmed(d, confirm);
         String name = Http.string(b, "name", kind.equals("named"));
         switch (kind) {
@@ -747,8 +764,11 @@ final class Idm {
         Http.json(ex, 204, Map.of());
     }
 
-    private static String kind(Map<String, Object> b) {
+    private static String kind(Map<String, Object> b, boolean job) {
         String kind = b.get("kind") == null ? "named" : Http.string(b, "kind", true);
+        if (job && !kind.equals("named")) {
+            throw new Http.Problem(400, "bad-field", "a job has named passwords only");
+        }
         if (!KINDS.contains(kind)) {
             throw new Http.Problem(400, "bad-field", "kind is one of " + KINDS);
         }

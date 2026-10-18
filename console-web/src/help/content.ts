@@ -578,9 +578,17 @@ export const CONTENT: Record<string, HelpTopic> = {
           'New job offers the types this server\'s engine has.',
           'The schedule is five cron fields (minute hour day month weekday), in each server\'s local time. No schedule means it runs only when started.',
           'Objects: the job runs once per object found under each container or entry you give; with none it runs once.',
-          'Some job types need a named password on the job; set it before the job runs.',
           'Runs on: the servers whose engine runs the job. Each server needs it chosen; it runs in that server\'s local time.',
+          'Select a job to change it: enabled, schedule, servers, objects and its parameters. Only the values you change are rewritten; the rest of the job\'s definition is kept as it was.',
           'A job that is not enabled keeps its settings but never runs. Deleting a job asks for its name.',
+        ],
+      },
+      {
+        title: 'Named passwords',
+        list: [
+          'Some job types (Driver Health, Password Expiration Notification) log in somewhere with a password. The job keeps it as a named password, which the parameter names.',
+          'Each server that runs the job keeps its own copy, so the console sets it on every server in Runs on and shows where it is set. Add a server later, and set the password again.',
+          'Passwords are never shown or read back; set one again to change it.',
         ],
       },
     ],

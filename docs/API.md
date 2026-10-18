@@ -109,6 +109,19 @@ DELETE /api/v2/trees/{tree}/security/pki/trusted-roots/{guid}
 An export answers `{fileName, pkcs12}`, with the file base64-encoded. The password is at least 6 characters, and
 the scheme is PBES2 unless `pbes1` is asked for.
 
+## Identity Manager jobs, changed in 0.3.9
+
+```
+PATCH  /api/v2/trees/{tree}/idm/jobs/{guid}/definition   {"version", "disabled"?, "schedule"?, "servers"?, "parameters"? {name: value}, "scope"? [{dn, scope}]}
+GET    /api/v2/trees/{tree}/idm/jobs/{guid}/passwords    ?server=: the job's named passwords on that server's engine
+POST   /api/v2/trees/{tree}/idm/jobs/{guid}/passwords    ?server=  {"name", "displayName"?, "value"}
+DELETE /api/v2/trees/{tree}/idm/jobs/{guid}/passwords    ?server=  {"name"}
+```
+
+A parameter's value is checked against the job's own definition (a list is an array; an enum one of its
+choices); only each changed `<value>` is rewritten. `scope: []` removes the objects unless the job type needs
+some. A password-ref parameter's value is the name of the job's named password, set with the passwords route.
+
 ## Console settings
 
 ```
