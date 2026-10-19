@@ -98,10 +98,10 @@ Removing the container does not remove the `console-data` volume.
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.3.8
+    image: ghcr.io/pointbluetechnology/directory-console:0.3.9
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.8 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.9 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -121,6 +121,12 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.3.9:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.8
+  needs no restore (a restore staged but not yet applied is ignored by 0.3.8). What is new for operators:
+  - **Audit log** page for administrators, with filters, CSV and JSON Lines export and a chain check.
+  - **Settings > History and backup:** earlier configuration versions can be viewed and restored, and an encrypted
+    backup downloaded and restored from inside the console (applied at the next start).
+  - Identity Manager jobs: their named passwords can be set, and their parameters and objects changed after creation.
 - **0.3.8:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.7
   needs no restore. What is new for operators:
   - The console can get its own certificate from an ACME CA (**Settings > Console certificate**), proven with DNS-01
