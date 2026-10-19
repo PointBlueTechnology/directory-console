@@ -438,6 +438,18 @@ public final class LivePkiStep {
                 case "job-create" -> show(call("POST", t + "/idm/drivers/" + guid(t, h, args[3]) + "/jobs", Map.of("type", "com.novell.nds.dirxml.job.trigger.Trigger",
                     "name", args[4], "disabled", true, "schedule", "", "servers", List.of(args[5]), "scope", List.of(),
                     "parameters", Map.of("process-unassociated", "true")), h));
+                // a job's named password: a random value made here and never printed (args[4]: its name)
+                case "job-pw-set" -> show(call("POST", t + "/idm/jobs/" + guid(t, h, args[3]) + "/passwords",
+                    Map.of("name", args[4], "displayName", args[4], "value", java.util.UUID.randomUUID().toString()), h));
+                case "job-pw-list" -> show(call("GET", t + "/idm/jobs/" + guid(t, h, args[3]) + "/passwords", null, h));
+                case "job-pw-remove" -> show(call("DELETE", t + "/idm/jobs/" + guid(t, h, args[3]) + "/passwords", Map.of("name", args[4]), h));
+                // a job's parameter and scope changed, at the version just read (args[4]: a container for the scope)
+                case "job-edit" -> {
+                    String g = guid(t, h, args[3]);
+                    String version = (String) call("GET", t + "/idm/jobs/" + g + "/definition", null, h).body().get("version");
+                    show(call("PATCH", t + "/idm/jobs/" + g + "/definition", Map.of("version", version, "parameters", Map.of("process-unassociated", "false"),
+                        "scope", List.of(Map.of("dn", args[4], "scope", "entry"))), h));
+                }
                 // a job, its name typed
                 case "job-delete" -> show(call("DELETE", t + "/idm/jobs/" + guid(t, h, args[3]), Map.of("name", args[4]), h));
                 // READ-ONLY: a container's first rows, as the browser lists them: class, classes and whether each opens
