@@ -98,10 +98,10 @@ Removing the container does not remove the `console-data` volume.
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.3.11
+    image: ghcr.io/pointbluetechnology/directory-console:0.3.12
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.11 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.12 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -121,6 +121,9 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.3.12:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.11
+  needs no restore. What is new for operators: a single sign-on provider whose certificate comes from an internal
+  CA works once that CA is in the console's trust store (**Certificates**); before, only public CAs were accepted.
 - **0.3.11:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.10
   needs no restore. What is new for operators: the console's own certificate can be uploaded (PKCS#12, or PEM
   certificate and key) under **Settings > Console certificate**, as an alternative to ACME. If you go back to
