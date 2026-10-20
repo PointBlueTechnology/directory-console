@@ -14,7 +14,8 @@ add more directories, such as dev and test, afterwards.
 3. [Open the setup link and sign in](#3-open-the-setup-link-and-sign-in)
 4. [After setup](#4-after-setup)
 
-[Troubleshooting](#troubleshooting) is at the end.
+[Troubleshooting](#troubleshooting) is at the end. For a lasting deployment on a server or on Kubernetes, and for
+single sign-on, see [DEPLOYING.md](DEPLOYING.md).
 
 ## 1. Get the compose file
 
@@ -171,7 +172,8 @@ Open **Settings**, then **Directory**:
 Then, in **Settings**:
 
 - **Role mappings:** decide who else may use the console. Map an eDirectory group to a role.
-- **Single sign-on:** set it up if you want it.
+- **Single sign-on:** set it up if you want it; [DEPLOYING.md](DEPLOYING.md#6-sign-in-with-an-authorization-server-single-sign-on)
+  covers the provider side.
 - **Certificate expiry:** the console checks certificates daily and shows administrators a banner. To get notices,
   add e-mail recipients or a webhook.
 - **Syslog:** to send the console's audit entries to your SIEM as CEF, set a syslog server.

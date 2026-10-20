@@ -230,6 +230,7 @@ public class ServerTest {
         assertEquals("another site's page", 403, call("POST", "/api/v2/trust/probe", Map.of("directory", "prod"),
             Map.of("Cookie", session.get("Cookie"), "X-CSRF-Token", csrf, "Origin", "https://evil.example")).status());
         assertEquals("DNS rebinding", 421, call("GET", "/api/v2/session", null, Map.of("Host", "evil.example")).status());
+        assertEquals("a probe by IP address is answered", 200, call("GET", "/api/v2/health/live", null, Map.of("Host", "10.42.0.92:8443")).status());
         Reply headers = call("GET", "/api/v2/session", null, session);
         assertNotNull(headers.raw().headers().firstValue("Content-Security-Policy").orElse(null));
         assertEquals("no-store", headers.raw().headers().firstValue("Cache-Control").orElse(""));

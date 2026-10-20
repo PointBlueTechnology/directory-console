@@ -68,11 +68,28 @@ public final class DataDir {
         return root.resolve("bootstrap.txt");
     }
 
-    /** Create {@code dir} (and parents) owner-only. */
+    private static volatile boolean warned;
+
+    /**
+     * Create {@code dir} (and parents) owner-only. A directory someone else owns but this process may write to
+     * (a Kubernetes volume a provisioner made as root, where fsGroup does not apply) keeps its permissions: what the
+     * console makes inside it is still owner-only.
+     */
     public static void directory(Path dir) throws IOException {
         Files.createDirectories(dir);
         if (POSIX) {
-            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwx------"));
+            try {
+                Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwx------"));
+            } catch (java.nio.file.FileSystemException e) {
+                if (!Files.isWritable(dir)) {
+                    throw e;
+                }
+                if (!warned) {
+                    warned = true;
+                    System.err.println("note: " + dir + " belongs to another user, so its permissions are left as they are;"
+                        + " everything the console writes in it is owner-only");
+                }
+            }
         }
     }
 

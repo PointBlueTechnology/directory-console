@@ -1,0 +1,126 @@
+# Directory Console on Kubernetes: one pod, its data on a ReadWriteOnce volume. See docs/DEPLOYING.md.
+# Edit CONSOLE_PUBLIC_URL (and the image tag to pin a version), then: kubectl apply -f kubernetes.yaml
+# The setup link is in: kubectl -n directory-console logs deploy/directory-console
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: directory-console
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: console-data
+  namespace: directory-console
+spec:
+  accessModes: [ReadWriteOnce]
+  # storageClassName: your-class   # the cluster's default when left out
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: directory-console
+  namespace: directory-console
+  labels:
+    app.kubernetes.io/name: directory-console
+spec:
+  # exactly one: the settings, sessions and audit log belong to one pod and its volume
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: directory-console
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: directory-console
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: console
+          image: ghcr.io/pointbluetechnology/directory-console:latest
+          env:
+            # how browsers reach the console (through your ingress or load balancer)
+            - name: CONSOLE_PUBLIC_URL
+              value: https://console.example.com
+          ports:
+            - name: https
+              containerPort: 8443
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          # /api/v2/health/ready answers 503 until setup is done, which would hide the setup page: use live
+          readinessProbe:
+            httpGet: {path: /api/v2/health/live, port: https, scheme: HTTPS}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /api/v2/health/live, port: https, scheme: HTTPS}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 384Mi}
+            limits: {memory: 1Gi}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: console-data
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: directory-console
+  namespace: directory-console
+spec:
+  selector:
+    app.kubernetes.io/name: directory-console
+  ports:
+    - name: https
+      port: 443
+      targetPort: https
+# An ingress (ingress-nginx): TLS ends at the ingress, which connects to the console over HTTPS.
+# Uncomment, set the host and the TLS secret (cert-manager can make it), and list the controller's
+# addresses under Settings > Reverse proxy.
+# ---
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: directory-console
+#   namespace: directory-console
+#   annotations:
+#     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+# spec:
+#   ingressClassName: nginx
+#   tls:
+#     - hosts: [console.example.com]
+#       secretName: console-tls
+#   rules:
+#     - host: console.example.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: directory-console
+#                 port:
+#                   name: https

@@ -212,7 +212,10 @@ public final class Server {
             String path = ex.getRequestURI().getPath();
             String method = ex.getRequestMethod();
             try {
-                checkHost(ex);
+                // health checks come from orchestrators by IP address (a Kubernetes probe's Host is the pod's), and say only status and version
+                if (!path.startsWith("/api/v2/health/")) {
+                    checkHost(ex);
+                }
                 checkOrigin(ex, method);
                 route(ex, path, method);
             } catch (Http.Problem p) {
