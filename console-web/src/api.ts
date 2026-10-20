@@ -1576,7 +1576,8 @@ export interface AcmeState {
   names: string[];
   dns: null | { host: string; port: number; zone: string; keyName: string; algorithm: 'hmac-sha256' | 'hmac-sha512'; secret?: { set: true } | string | null };
   account?: string | null;
-  current: { subject: string; issuer: string; notAfter: string; sha256: string };
+  current: { subject: string; issuer: string; notAfter: string; sha256: string; names?: string[]; selfSigned?: boolean; chain?: number };
+  publicHost?: string;
   last?: { at?: string; why?: string; ok?: boolean; error?: string; notAfter?: string; issuer?: string; steps?: string[] };
 }
 
@@ -1586,6 +1587,9 @@ export const acme = {
   save: (s: Omit<AcmeState, 'current' | 'last' | 'account'>) => request<AcmeState>('PUT', '/api/v2/console/acme', s).then((r) => r.data),
   dnsTest: () => request<{ ok: boolean; error?: string }>('POST', '/api/v2/console/acme/dns-test', {}).then((r) => r.data),
   issue: () => request<AcmeState>('POST', '/api/v2/console/acme/issue', {}).then((r) => r.data),
+  /** Install an uploaded certificate: a PKCS#12 file (base64) with its password, or PEM certificates and key. */
+  upload: (body: { pkcs12: string; password: string; anyName?: boolean } | { certificate: string; key: string; password?: string; anyName?: boolean }) =>
+    request<AcmeState>('POST', '/api/v2/console/certificate', body).then((r) => r.data),
 };
 
 export interface AuditEntry {

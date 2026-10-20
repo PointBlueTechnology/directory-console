@@ -588,6 +588,96 @@ public class ServerTest {
         assertTrue(String.valueOf(test), test.get("error") != null);
     }
 
+    /** A certificate for {@code names} signed by {@code issuer} (null: self-signed), valid from {@code from} for {@code days}. */
+    private static java.security.cert.X509Certificate issue(java.security.KeyPair kp, String cn, List<String> names, java.security.KeyPair issuerKey,
+            java.security.cert.X509Certificate issuer, boolean ca, java.time.Instant from, int days) throws Exception {
+        var subject = new org.bouncycastle.asn1.x500.X500Name("CN=" + cn);
+        var b = new org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder(issuer == null ? subject
+            : org.bouncycastle.asn1.x500.X500Name.getInstance(issuer.getSubjectX500Principal().getEncoded()), java.math.BigInteger.valueOf(System.nanoTime()),
+            java.util.Date.from(from), java.util.Date.from(from.plus(java.time.Duration.ofDays(days))), subject, kp.getPublic());
+        b.addExtension(org.bouncycastle.asn1.x509.Extension.basicConstraints, true, new org.bouncycastle.asn1.x509.BasicConstraints(ca));
+        if (!names.isEmpty()) {
+            b.addExtension(org.bouncycastle.asn1.x509.Extension.subjectAlternativeName, false, new org.bouncycastle.asn1.x509.GeneralNames(
+                names.stream().map(n -> new org.bouncycastle.asn1.x509.GeneralName(org.bouncycastle.asn1.x509.GeneralName.dNSName, n))
+                    .toArray(org.bouncycastle.asn1.x509.GeneralName[]::new)));
+        }
+        var signer = new org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SHA256withECDSA").build((issuerKey == null ? kp : issuerKey).getPrivate());
+        return new org.bouncycastle.cert.jcajce.JcaX509CertificateConverter().getCertificate(b.build(signer));
+    }
+
+    @Test
+    public void anUploadedCertificateIsCheckedAndServed() throws Exception {
+        String id = firstSignIn();
+        Map<String, String> w = signedIn(id, "cn=admin,o=system", "admin-pw");
+        String t = "/api/v2/console/certificate";
+        java.time.Instant now = java.time.Instant.now().minus(java.time.Duration.ofDays(1));
+        java.security.KeyPair caKey = Certs.ecKeyPair();
+        java.security.cert.X509Certificate ca = issue(caKey, "Test CA", List.of(), null, null, true, now, 3650);
+        java.security.KeyPair key = Certs.ecKeyPair();
+        java.security.cert.X509Certificate leaf = issue(key, "localhost", List.of("localhost"), caKey, ca, false, now, 90);
+        // PKCS#8, as OpenSSL writes keys today ("BEGIN PRIVATE KEY")
+        String keyPem = "-----BEGIN PRIVATE KEY-----\n" + java.util.Base64.getMimeEncoder(64, "\n".getBytes()).encodeToString(key.getPrivate().getEncoded())
+            + "\n-----END PRIVATE KEY-----\n";
+
+        // PEM, the chain given CA first: put in order, and served from the next connection
+        Reply up = call("POST", t, Map.of("certificate", Certs.pem(ca) + Certs.pem(leaf), "key", keyPem), w);
+        assertEquals(String.valueOf(up.body()), 200, up.status());
+        Map<String, Object> current = Json.asMap(up.body().get("current"));
+        assertEquals(Certs.sha256(leaf), current.get("sha256"));
+        assertEquals(2, Json.asInt(current.get("chain"), 0));
+        assertEquals(false, current.get("selfSigned"));
+        assertEquals("in the audit log", 1, ((List<?>) call("GET", "/api/v2/audit?event=console.certificate.upload", null, w).body().get("entries")).size());
+
+        // refusals: another key, another name, out of date, an encrypted key without its password
+        java.security.KeyPair other = Certs.ecKeyPair();
+        String otherPem = "-----BEGIN PRIVATE KEY-----\n" + java.util.Base64.getMimeEncoder().encodeToString(other.getPrivate().getEncoded()) + "\n-----END PRIVATE KEY-----\n";
+        assertEquals("another key", 400, call("POST", t, Map.of("certificate", Certs.pem(leaf), "key", otherPem), w).status());
+
+        // an encrypted PKCS#8 key, with and without its password
+        var enc = new org.bouncycastle.openssl.jcajce.JceOpenSSLPKCS8EncryptorBuilder(org.bouncycastle.openssl.PKCS8Generator.AES_256_CBC)
+            .setProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider()).setPassword("key-pw".toCharArray()).build();
+        String encPem = Certs.pem(new org.bouncycastle.openssl.jcajce.JcaPKCS8Generator(key.getPrivate(), enc).generate());
+        assertTrue(encPem.contains("ENCRYPTED PRIVATE KEY"));
+        Reply noPw = call("POST", t, Map.of("certificate", Certs.pem(leaf), "key", encPem), w);
+        assertTrue(String.valueOf(noPw.body()), String.valueOf(noPw.body().get("detail")).contains("give its password"));
+        assertEquals(200, call("POST", t, Map.of("certificate", Certs.pem(leaf) + Certs.pem(ca), "key", encPem, "password", "key-pw"), w).status());
+
+        // an RSA key in PKCS#1 ("BEGIN RSA PRIVATE KEY")
+        java.security.KeyPairGenerator rsaGen = java.security.KeyPairGenerator.getInstance("RSA");
+        rsaGen.initialize(2048);
+        java.security.KeyPair rsa = rsaGen.generateKeyPair();
+        var rb = new org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder(new org.bouncycastle.asn1.x500.X500Name("CN=localhost"), java.math.BigInteger.TEN,
+            java.util.Date.from(now), java.util.Date.from(now.plus(java.time.Duration.ofDays(30))), new org.bouncycastle.asn1.x500.X500Name("CN=localhost"), rsa.getPublic());
+        java.security.cert.X509Certificate rsaCert = new org.bouncycastle.cert.jcajce.JcaX509CertificateConverter().getCertificate(
+            rb.build(new org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SHA256withRSA").build(rsa.getPrivate())));
+        String pkcs1 = Certs.pem(rsa.getPrivate());
+        assertTrue(pkcs1.contains("RSA PRIVATE KEY"));
+        assertEquals(200, call("POST", t, Map.of("certificate", Certs.pem(rsaCert), "key", pkcs1), w).status());
+        java.security.cert.X509Certificate elsewhere = issue(key, "console.example.com", List.of("console.example.com"), caKey, ca, false, now, 90);
+        Reply wrong = call("POST", t, Map.of("certificate", Certs.pem(elsewhere), "key", keyPem), w);
+        assertEquals("wrong-name", wrong.body().get("title"));
+        assertEquals("a proxy that connects by another name", 200, call("POST", t, Map.of("certificate", Certs.pem(elsewhere), "key", keyPem, "anyName", true), w).status());
+        java.security.cert.X509Certificate old = issue(key, "localhost", List.of("localhost"), caKey, ca, false, now.minus(java.time.Duration.ofDays(400)), 30);
+        assertEquals("out of date", 400, call("POST", t, Map.of("certificate", Certs.pem(old), "key", keyPem), w).status());
+
+        // PKCS#12, with its password
+        java.security.KeyStore ks = java.security.KeyStore.getInstance("PKCS12");
+        ks.load(null, null);
+        ks.setKeyEntry("x", key.getPrivate(), "p12-pw".toCharArray(), new java.security.cert.Certificate[] {leaf, ca});
+        java.io.ByteArrayOutputStream p12 = new java.io.ByteArrayOutputStream();
+        ks.store(p12, "p12-pw".toCharArray());
+        String file = java.util.Base64.getEncoder().encodeToString(p12.toByteArray());
+        assertEquals("the wrong password", 400, call("POST", t, Map.of("pkcs12", file, "password", "nope"), w).status());
+        Reply p = call("POST", t, Map.of("pkcs12", file, "password", "p12-pw"), w);
+        assertEquals(String.valueOf(p.body()), 200, p.status());
+        assertEquals(Certs.sha256(leaf), Json.asMap(p.body().get("current")).get("sha256"));
+
+        // not while ACME renews automatically
+        Map<String, Object> dns = Map.of("host", "127.0.0.1", "port", 9, "zone", "acme.test", "keyName", "k", "secret", "c2VjcmV0c2VjcmV0c2VjcmV0");
+        assertEquals(200, call("PUT", "/api/v2/console/acme", Map.of("enabled", true, "names", List.of("console.acme.test"), "dns", dns), w).status());
+        assertEquals("acme-on", call("POST", t, Map.of("pkcs12", file, "password", "p12-pw"), w).body().get("title"));
+    }
+
     @Test
     public void certificateExpiryIsFoundAndNotifiedOncePerLevel() throws Exception {
         List<String> hooks = java.util.Collections.synchronizedList(new java.util.ArrayList<>());

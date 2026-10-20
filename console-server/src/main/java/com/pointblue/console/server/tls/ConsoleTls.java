@@ -128,7 +128,7 @@ public final class ConsoleTls {
     }
 
     /** Whether {@code key} is the private half of {@code leaf}'s key: sign a nonce with one, verify with the other. */
-    private static boolean belongs(PrivateKey key, X509Certificate leaf) throws GeneralSecurityException {
+    static boolean belongs(PrivateKey key, X509Certificate leaf) throws GeneralSecurityException {
         byte[] nonce = new byte[32];
         RANDOM.nextBytes(nonce);
         String alg = key.getAlgorithm().equals("EC") ? "SHA256withECDSA" : "SHA256withRSA";

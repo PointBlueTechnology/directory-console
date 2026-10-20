@@ -833,8 +833,17 @@ export const CONTENT: Record<string, HelpTopic> = {
   'settings.other': { title: 'Other directories', summary: 'Whether people may sign in to an eDirectory server by typing its address, with their own rights only. This applies to the whole console.', sections: [] },
   'settings.certificate': {
     title: 'Console certificate',
-    summary: 'The certificate the console presents for HTTPS, and getting and renewing it from an ACME certificate authority.',
+    summary: 'The certificate the console presents for HTTPS: one you upload, or one got and renewed from an ACME certificate authority.',
     sections: [
+      {
+        title: 'Uploading a certificate',
+        list: [
+          'A PKCS#12 file (.pfx, .p12) with its password, or PEM: the certificate with its intermediate CAs (in any order) and the private key (PKCS#8, RSA or EC, encrypted or not).',
+          'The console checks that the key and certificate belong together, that the certificate is valid now, and that it names the address browsers use. It installs it at once, without a restart, and records it in the audit log.',
+          'Only when a reverse proxy connects to the console by another name, tick the box that lets the certificate name something else.',
+          'An uploaded certificate is not renewed: the expiry check warns before it runs out. While ACME is on, it would replace an upload, so upload is offered only with ACME off.',
+        ],
+      },
       {
         title: 'How DNS-01 works here',
         list: [

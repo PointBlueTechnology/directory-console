@@ -44,6 +44,13 @@ import javax.net.ssl.X509TrustManager;
  * <p>Configuration ({@code acme}): {enabled, directoryUrl, email, names: [...], dns: {host, port, zone, keyName,
  * algorithm, secret (sealed)}, accountKey (sealed), account}. The ACME server's certificate must be from a public
  * CA or a CA the console trusts for every directory. Turned off for tests with {@code console.acmeCheck=off}.
+ *
+ * <pre>
+ * GET  /api/v2/console/acme                 settings, the current certificate, the last attempt
+ * PUT  /api/v2/console/acme                 settings
+ * POST /api/v2/console/acme/dns-test | issue
+ * POST /api/v2/console/certificate          upload: {"pkcs12", "password"} or {"certificate", "key", "password"?}, "anyName"?
+ * </pre>
  */
 final class AcmeService {
 
@@ -59,7 +66,7 @@ final class AcmeService {
     }
 
     boolean handles(String path) {
-        return path.startsWith("/api/v2/console/acme");
+        return path.startsWith("/api/v2/console/acme") || path.equals("/api/v2/console/certificate");
     }
 
     void start() {
@@ -108,8 +115,69 @@ final class AcmeService {
                 issue("request", s);
                 Http.json(ex, 200, state());
             }
+            case "POST /api/v2/console/certificate" -> {
+                Sessions.Session s = server.session(ex, Role.ADMIN);
+                server.stepUp(s);
+                upload(s, Http.body(ex));
+                Http.json(ex, 200, state());
+            }
             default -> throw new Http.Problem(405, "method-not-allowed", method + " " + path);
         }
+    }
+
+    /**
+     * An uploaded certificate, installed for the next connection: {"pkcs12": base64, "password"} or {"certificate":
+     * PEM chain, "key": PEM, "password"?}. It must belong to the key, be in date and name the console's public host
+     * ({"anyName": true} when a proxy in front connects by another name). Refused while ACME renews automatically,
+     * which would replace it.
+     */
+    private void upload(Sessions.Session s, Map<String, Object> b) throws IOException {
+        if (Boolean.TRUE.equals(config().get("enabled"))) {
+            throw new Http.Problem(409, "acme-on", "the console gets its certificate by ACME, which would replace this one: turn that off first");
+        }
+        String pw = b.get("password") == null ? "" : Http.string(b, "password", false);
+        char[] password = pw.toCharArray();
+        com.pointblue.console.server.tls.Upload.Identity id;
+        try {
+            if (b.get("pkcs12") != null) {
+                byte[] file;
+                try {
+                    file = Base64.getMimeDecoder().decode(Http.string(b, "pkcs12", true));
+                } catch (IllegalArgumentException e) {
+                    throw new Http.Problem(400, "bad-field", "pkcs12 is the file, base64-encoded");
+                }
+                id = com.pointblue.console.server.tls.Upload.pkcs12(file, password);
+            } else {
+                id = com.pointblue.console.server.tls.Upload.pem(Http.string(b, "certificate", true), Http.string(b, "key", true), password);
+            }
+        } catch (java.security.GeneralSecurityException e) {
+            throw new Http.Problem(400, "bad-certificate", e.getMessage());
+        } finally {
+            java.util.Arrays.fill(password, '\0');
+        }
+        X509Certificate leaf = id.chain()[0];
+        Instant now = Instant.now();
+        if (leaf.getNotAfter().toInstant().isBefore(now) || leaf.getNotBefore().toInstant().isAfter(now)) {
+            throw new Http.Problem(400, "bad-certificate", "the certificate is not valid now: from " + leaf.getNotBefore().toInstant() + " until " + leaf.getNotAfter().toInstant());
+        }
+        String host = URI.create(server.publicUrl).getHost();
+        if (!Boolean.TRUE.equals(b.get("anyName")) && host != null && !Certs.matches(leaf, host)) {
+            throw new Http.Problem(400, "wrong-name", "the certificate is for " + String.join(", ", Certs.names(leaf)) + ", not " + host
+                + ", the address browsers use; browsers would refuse it");
+        }
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("subject", leaf.getSubjectX500Principal().getName());
+        detail.put("issuer", leaf.getIssuerX500Principal().getName());
+        detail.put("notAfter", leaf.getNotAfter().toInstant().toString());
+        detail.put("sha256", Certs.sha256(leaf));
+        detail.put("chain", id.chain().length);
+        try {
+            server.tls.install(id.key(), id.chain());
+        } catch (java.security.GeneralSecurityException e) {
+            server.audit.log(Server.who(s), "console.certificate.upload", "console", detail, "failed");
+            throw new Http.Problem(400, "bad-certificate", e.getMessage());
+        }
+        server.audit.log(Server.who(s), "console.certificate.upload", "console", detail, "ok");
     }
 
     // ---- settings ---------------------------------------------------------------------------------
@@ -135,7 +203,9 @@ final class AcmeService {
         m.put("account", c.get("account"));
         X509Certificate cert = server.tls.certificate();
         m.put("current", Map.of("subject", cert.getSubjectX500Principal().getName(), "issuer", cert.getIssuerX500Principal().getName(),
-            "notAfter", cert.getNotAfter().toInstant().toString(), "sha256", Certs.sha256(cert)));
+            "notAfter", cert.getNotAfter().toInstant().toString(), "sha256", Certs.sha256(cert), "names", Certs.names(cert),
+            "selfSigned", Certs.selfSigned(cert), "chain", server.tls.chain().length));
+        m.put("publicHost", URI.create(server.publicUrl).getHost());
         m.put("last", last);
         return m;
     }

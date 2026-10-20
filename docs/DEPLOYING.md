@@ -176,10 +176,14 @@ up its single sign-on.
 ## 7. The console's certificate
 
 On first start the console makes a self-signed certificate for `CONSOLE_PUBLIC_URL`'s host and prints its
-fingerprint. Browsers warn about it until you replace it. To replace it, use **Settings > Console certificate**,
-which gets and renews a certificate from an ACME CA (Let's Encrypt, or an internal one such as step-ca) proven with
-DNS-01: the console adds a TXT record through an RFC 2136 dynamic update signed with a TSIG key. Uploading your own
-certificate file is not built yet.
+fingerprint. Browsers warn about it until you replace it, in **Settings > Console certificate**, in one of two ways:
+
+- **Upload a certificate** from your own CA: a PKCS#12 file with its password, or PEM (the certificate with its
+  intermediate CAs, and the private key, encrypted or not). It must name the host in `CONSOLE_PUBLIC_URL`. It is
+  installed at once, without a restart; renew it by uploading again before it expires (the expiry check warns).
+- **From an ACME CA** (Let's Encrypt, or an internal one such as step-ca), proven with DNS-01: the console adds a TXT
+  record through an RFC 2136 dynamic update signed with a TSIG key, and renews by itself. While this is on, upload is
+  not offered.
 
 Behind a reverse proxy that holds the public certificate, the console's own certificate only needs to satisfy the
 proxy (next section).

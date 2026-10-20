@@ -387,7 +387,10 @@ function ConsoleCertificateSection() {
         <DescriptionListGroup><DescriptionListTerm>Issued by</DescriptionListTerm><DescriptionListDescription className="dc-mono">{st.current.issuer}</DescriptionListDescription></DescriptionListGroup>
         <DescriptionListGroup><DescriptionListTerm>Valid until</DescriptionListTerm><DescriptionListDescription><ExpiryLabel notAfter={st.current.notAfter} /></DescriptionListDescription></DescriptionListGroup>
         <DescriptionListGroup><DescriptionListTerm>Fingerprint</DescriptionListTerm><DescriptionListDescription><Fingerprint sha256={st.current.sha256} /></DescriptionListDescription></DescriptionListGroup>
+        {st.current.names && <DescriptionListGroup><DescriptionListTerm>Names</DescriptionListTerm><DescriptionListDescription className="dc-mono">{st.current.names.join(', ')}</DescriptionListDescription></DescriptionListGroup>}
       </DescriptionList>
+      {st.current.selfSigned && <Alert variant="info" isInline isPlain className="dc-tab-body" title="This is the certificate the console made for itself: browsers warn about it. Upload one, or get one from an ACME CA." />}
+      <UploadCertificate st={st} onDone={(x) => { show(x); setNotice('The certificate is installed: reload the page to see it in use.'); }} />
       <Title headingLevel="h3" size="md" className="dc-tab-body">From an ACME certificate authority</Title>
       <p className="dc-subtle">The console proves it controls its names with DNS-01: it adds a TXT record to your DNS zone with a dynamic update (RFC 2136) signed with a
         TSIG key, removes it afterwards, and installs the certificate without a restart. Once a day it renews when 30 days or fewer remain.</p>
@@ -453,6 +456,78 @@ function ConsoleCertificateSection() {
       </Form>
       {dialog}
     </div>
+  );
+}
+
+/** Upload the console's certificate: a PKCS#12 file, or PEM certificates and a private key. */
+function UploadCertificate({ st, onDone }: { st: AcmeState; onDone: (x: AcmeState) => void }) {
+  const { run, dialog } = useStepUp();
+  const [format, setFormat] = useState<'pkcs12' | 'pem'>('pkcs12');
+  const [file, setFile] = useState('');
+  const [data, setData] = useState('');
+  const [certificate, setCertificate] = useState('');
+  const [key, setKey] = useState('');
+  const [password, setPassword] = useState('');
+  const [anyName, setAnyName] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const ready = format === 'pkcs12' ? !!data && !!password : !!certificate.trim() && !!key.trim();
+  const upload = () => {
+    setBusy(true);
+    setError(null);
+    const body = format === 'pkcs12' ? { pkcs12: data, password, anyName } : { certificate, key, password: password || undefined, anyName };
+    run(() => acme.upload(body)).then((x) => {
+      setData(''); setFile(''); setCertificate(''); setKey(''); setPassword('');
+      onDone(x);
+    }, setError).finally(() => setBusy(false));
+  };
+  return (
+    <>
+      <Title headingLevel="h3" size="md" className="dc-tab-body">Upload a certificate</Title>
+      {st.enabled ? (
+        <p className="dc-subtle">The console gets its certificate from an ACME CA, which would replace an uploaded one. To upload, turn that off below first.</p>
+      ) : (
+        <Form className="dc-tab-body" isWidthLimited onSubmit={(e) => { e.preventDefault(); if (ready) upload(); }}>
+          <FormGroup role="radiogroup" fieldId="cert-format" label="Format" isInline>
+            <Radio id="cert-p12" name="cert-format" label="PKCS#12 (.pfx, .p12)" isChecked={format === 'pkcs12'} onChange={() => setFormat('pkcs12')} />
+            <Radio id="cert-pem" name="cert-format" label="PEM (certificate and key)" isChecked={format === 'pem'} onChange={() => setFormat('pem')} />
+          </FormGroup>
+          {format === 'pkcs12' ? (
+            <FormGroup label="File" fieldId="cert-file">
+              <FileUpload id="cert-file" filename={file} filenamePlaceholder="Choose a .pfx or .p12 file" browseButtonText="Choose" hideDefaultPreview value={data ? '(read)' : ''}
+                onFileInputChange={(_e, f) => {
+                  setFile(f.name);
+                  const r = new FileReader();
+                  r.onload = () => setData(String(r.result).replace(/^data:[^,]*,/, ''));
+                  r.readAsDataURL(f);
+                }} onClearClick={() => { setFile(''); setData(''); }} />
+            </FormGroup>
+          ) : (
+            <>
+              <FormGroup label="Certificate, with its chain" fieldId="cert-pem-text">
+                <TextArea id="cert-pem-text" className="dc-mono" rows={5} resizeOrientation="vertical" value={certificate} onChange={(_e, v) => setCertificate(v)}
+                  placeholder="-----BEGIN CERTIFICATE-----" />
+                <FormHelperText><HelperText><HelperTextItem>The server certificate and the intermediate CAs, in any order.</HelperTextItem></HelperText></FormHelperText>
+              </FormGroup>
+              <FormGroup label="Private key" fieldId="cert-pem-key">
+                <TextArea id="cert-pem-key" className="dc-mono" rows={4} resizeOrientation="vertical" value={key} onChange={(_e, v) => setKey(v)}
+                  placeholder="-----BEGIN PRIVATE KEY-----" />
+                <FormHelperText><HelperText><HelperTextItem>PKCS#8, RSA or EC; encrypted keys need their password below.</HelperTextItem></HelperText></FormHelperText>
+              </FormGroup>
+            </>
+          )}
+          <FormGroup label={format === 'pkcs12' ? 'Password' : 'Key password (if the key is encrypted)'} fieldId="cert-password">
+            <TextInput id="cert-password" type="password" autoComplete="off" value={password} onChange={(_e, v) => setPassword(v)} />
+          </FormGroup>
+          <Checkbox id="cert-any-name" isChecked={anyName} onChange={(_e, v) => setAnyName(v)}
+            label={`The certificate need not name ${st.publicHost ?? 'the console\'s address'}`}
+            description="Only when a reverse proxy in front of the console connects to it by another name; browsers would refuse it otherwise." />
+          <ProblemAlert error={error} />
+          <ActionGroup><Button type="submit" isLoading={busy} isDisabled={busy || !ready}>Install</Button></ActionGroup>
+        </Form>
+      )}
+      {dialog}
+    </>
   );
 }
 

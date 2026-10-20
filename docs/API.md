@@ -17,7 +17,7 @@ This page covers the conventions they share, and the directory-object routes as 
   - `admin` changes the console's settings.
 - **Sensitive changes:** these need a sign-in within the last 10 minutes; otherwise the answer asks for one:
   - changes to the console's own settings: trust, directories, roles, single sign-on, sign-in to other
-    directories, reverse proxies, certificate expiry, syslog, updates, and the console's ACME certificate (settings and getting one now);
+    directories, reverse proxies, certificate expiry, syslog, updates, the console's ACME certificate (settings and getting one now), and uploading the console's certificate;
   - restoring an earlier configuration, downloading a backup and staging a restore;
   - exporting a certificate with its private key.
 - **Production directories:** changes need the `X-Confirm-Directory` header with the directory's name. Exports
@@ -139,6 +139,7 @@ GET  /api/v2/console/acme             settings (the TSIG secret shown only as se
 PUT  /api/v2/console/acme             {enabled, directoryUrl (https), email?, names: [...], dns: {host, port?, zone, keyName, algorithm: hmac-sha256|hmac-sha512, secret?}}
 POST /api/v2/console/acme/dns-test    add a test TXT record, read it back from the server, remove it
 POST /api/v2/console/acme/issue       get a certificate now and install it
+POST /api/v2/console/certificate      upload: {pkcs12: base64, password} or {certificate: PEM, key: PEM, password?}, anyName?; refused (409) while ACME is on
 GET  /api/v2/audit                    ?event (prefix)&actor&outcome&text&from&to&before (seq)&limit (≤500): {entries, more}, newest first
 GET  /api/v2/audit/export             the same filters, every match, oldest first: ?format=csv|jsonl
 GET  /api/v2/audit/verify             the hash chain checked end to end
