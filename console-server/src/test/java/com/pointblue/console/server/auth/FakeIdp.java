@@ -43,11 +43,26 @@ public final class FakeIdp implements AutoCloseable {
     }
 
     public FakeIdp(int port) throws Exception {
+        this(port, null);
+    }
+
+    /** Over HTTPS with {@code tls}'s certificate (for 127.0.0.1), as a provider behind its own CA. */
+    public FakeIdp(javax.net.ssl.SSLContext tls) throws Exception {
+        this(0, tls);
+    }
+
+    private FakeIdp(int port, javax.net.ssl.SSLContext tls) throws Exception {
         KeyPairGenerator g = KeyPairGenerator.getInstance("RSA");
         g.initialize(2048);
         rsa = g.generateKeyPair();
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
-        issuer = "http://127.0.0.1:" + server.getAddress().getPort() + "/realm";
+        if (tls == null) {
+            server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+        } else {
+            com.sun.net.httpserver.HttpsServer https = com.sun.net.httpserver.HttpsServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+            https.setHttpsConfigurator(new com.sun.net.httpserver.HttpsConfigurator(tls));
+            server = https;
+        }
+        issuer = (tls == null ? "http" : "https") + "://127.0.0.1:" + server.getAddress().getPort() + "/realm";
         server.createContext("/realm/.well-known/openid-configuration", ex -> respond(ex, 200, "application/json", Json.compact(Map.of(
             "issuer", issuer, "authorization_endpoint", issuer + "/auth", "token_endpoint", issuer + "/token", "jwks_uri", issuer + "/jwks"))));
         server.createContext("/realm/jwks", ex -> {

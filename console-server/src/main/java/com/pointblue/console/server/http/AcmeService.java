@@ -14,7 +14,6 @@ import java.net.URI;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.security.spec.ECGenParameterSpec;
@@ -31,9 +30,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
-import javax.net.ssl.X509TrustManager;
 
 /**
  * The console's own TLS certificate from an ACME CA (Let's Encrypt, or an internal one such as step-ca), proven
@@ -506,27 +502,6 @@ final class AcmeService {
 
     /** TLS to the ACME server: the JDK's public CAs and the CAs the console trusts for every directory. */
     private SSLContext tls() throws Exception {
-        KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
-        ks.load(null, null);
-        TrustManagerFactory jdk = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        jdk.init((KeyStore) null);
-        int i = 0;
-        for (TrustManager tm : jdk.getTrustManagers()) {
-            if (tm instanceof X509TrustManager x) {
-                for (X509Certificate c : x.getAcceptedIssuers()) {
-                    ks.setCertificateEntry("jdk" + i++, c);
-                }
-            }
-        }
-        for (TrustStore.Entry e : server.trust.entries()) {
-            if (e.kind() == TrustStore.Kind.CA && "global".equals(e.scope())) {
-                ks.setCertificateEntry("console" + i++, e.cert());
-            }
-        }
-        TrustManagerFactory f = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        f.init(ks);
-        SSLContext ctx = SSLContext.getInstance("TLS");
-        ctx.init(null, f.getTrustManagers(), null);
-        return ctx;
+        return server.trust.withPublicRoots(null);
     }
 }

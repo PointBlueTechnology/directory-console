@@ -1010,6 +1010,7 @@ function SsoSection({ s, save, test, onSaved }: {
           </FormGroup>
           <FormGroup label="Issuer" fieldId="sso-issuer" isRequired>
             <TextInput id="sso-issuer" type="url" value={o.issuer} onChange={field('issuer')} placeholder="https://idp.example.com/realms/acme" isRequired />
+            <FormHelperText><HelperText><HelperTextItem>Its certificate must be from a public CA, or from a CA the console trusts (Certificates).</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <FormGroup label="Client id" fieldId="sso-client" isRequired>
             <TextInput id="sso-client" value={o.clientId} onChange={field('clientId')} isRequired />

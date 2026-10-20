@@ -814,6 +814,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'The console then acts as that person, with their own eDirectory rights, through the service account.',
           '"Never act as" lists accounts that must not sign in this way.',
           'A public client uses PKCE and has no secret.',
+          'The provider\'s certificate must be from a public CA, or from a CA the console trusts (Certificates, for every directory or this one).',
           'Provider groups map groups in the provider\'s groups claim to console roles and task presets, as role mappings do for eDirectory groups.',
           'Under these containers limits who can sign in this way. The service account needs Supervisor over those people, and nobody else.',
           'Try the mapping shows which account a claim value finds. No match, several matches, or a never-act-as account means the sign-in is refused.',

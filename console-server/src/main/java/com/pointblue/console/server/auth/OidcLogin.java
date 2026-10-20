@@ -69,7 +69,7 @@ public final class OidcLogin {
         return redirectUri;
     }
 
-    /** TLS for talking to providers; null is the JDK's default trust. */
+    /** TLS for talking to providers, for tests; null (the default) trusts Java's public roots and the console's trusted CAs. */
     public void tls(SSLContext tls) {
         this.tls = tls;
         clients.clear();
@@ -79,7 +79,15 @@ public final class OidcLogin {
         Client c = clients.get(d.id());
         if (c == null || !c.settings.equals(d.oidc()) || !Objects.equals(c.secret, secret)) {
             DirectoryConfig.Oidc o = d.oidc();
-            c = new Client(o, secret, new OidcClient(new OidcConfig(o.issuer(), o.clientId(), secret, o.scopes(), o.groupsClaim(), redirectUri, tls)));
+            SSLContext ctx = tls;
+            if (ctx == null) {
+                try {
+                    ctx = trust.withPublicRoots(d.id());
+                } catch (java.security.GeneralSecurityException e) {
+                    throw new IllegalStateException("TLS for the provider could not be set up: " + e.getMessage(), e);
+                }
+            }
+            c = new Client(o, secret, new OidcClient(new OidcConfig(o.issuer(), o.clientId(), secret, o.scopes(), o.groupsClaim(), redirectUri, ctx)));
             clients.put(d.id(), c);
         }
         return c.client;

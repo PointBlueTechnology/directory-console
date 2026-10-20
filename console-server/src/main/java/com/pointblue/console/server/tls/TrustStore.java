@@ -387,6 +387,106 @@ public final class TrustStore {
         }
     }
 
+    /**
+     * TLS for HTTPS services the console calls (an OpenID Connect provider, an ACME CA): Java's public roots, and the
+     * CAs the console trusts for every directory or for {@code directoryId} (null: every directory only). The trust
+     * store is read at each connection, so a CA added later is trusted without a restart. Host names are checked as
+     * the caller's client sets (HttpClient checks them).
+     */
+    public javax.net.ssl.SSLContext withPublicRoots(String directoryId) throws GeneralSecurityException {
+        javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
+        ctx.init(null, new javax.net.ssl.TrustManager[] {new PublicAndTrusted(directoryId)}, null);
+        return ctx;
+    }
+
+    private static volatile List<X509Certificate> jdkRoots;
+
+    private static List<X509Certificate> jdkRoots() throws GeneralSecurityException {
+        List<X509Certificate> roots = jdkRoots;
+        if (roots == null) {
+            javax.net.ssl.TrustManagerFactory f = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+            f.init((java.security.KeyStore) null);
+            roots = new ArrayList<>();
+            for (javax.net.ssl.TrustManager tm : f.getTrustManagers()) {
+                if (tm instanceof X509TrustManager x) {
+                    roots.addAll(List.of(x.getAcceptedIssuers()));
+                }
+            }
+            jdkRoots = roots;
+        }
+        return roots;
+    }
+
+    private final class PublicAndTrusted extends X509ExtendedTrustManager {
+        private final String directoryId;
+
+        PublicAndTrusted(String directoryId) {
+            this.directoryId = directoryId;
+        }
+
+        /** A standard PKIX trust manager over the roots as they are now. */
+        private X509ExtendedTrustManager now() throws CertificateException {
+            try {
+                java.security.KeyStore ks = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+                ks.load(null, null);
+                int i = 0;
+                for (X509Certificate c : jdkRoots()) {
+                    ks.setCertificateEntry("jdk" + i++, c);
+                }
+                for (Entry e : entries()) {
+                    if (e.kind == Kind.CA && (e.scope.equals("global") || (directoryId != null && e.scope.equals("directory:" + directoryId)))) {
+                        ks.setCertificateEntry("console" + i++, e.cert);
+                    }
+                }
+                javax.net.ssl.TrustManagerFactory f = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+                f.init(ks);
+                for (javax.net.ssl.TrustManager tm : f.getTrustManagers()) {
+                    if (tm instanceof X509ExtendedTrustManager x) {
+                        return x;
+                    }
+                }
+                throw new CertificateException("no trust manager");
+            } catch (IOException | GeneralSecurityException e) {
+                throw new CertificateException("the console's trusted CAs could not be read: " + e.getMessage(), e);
+            }
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine) throws CertificateException {
+            now().checkServerTrusted(chain, authType, engine);
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket) throws CertificateException {
+            now().checkServerTrusted(chain, authType, socket);
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+            now().checkServerTrusted(chain, authType);
+        }
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine) throws CertificateException {
+            throw new CertificateException("not a server");
+        }
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType, Socket socket) throws CertificateException {
+            throw new CertificateException("not a server");
+        }
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+            throw new CertificateException("not a server");
+        }
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            return new X509Certificate[0];
+        }
+    }
+
     /** The trust manager for one connection. Entries are read when it is made. */
     public X509ExtendedTrustManager trustManager(String host, int port, String directoryId, String subject) throws IOException {
         return checker(host, port, directoryId, subject, true);

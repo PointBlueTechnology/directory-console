@@ -27,7 +27,7 @@ signing people in either with their eDirectory password or through an OpenID Con
 - **Network.** Inbound: HTTPS from people's browsers (or from your proxy). Outbound: LDAPS (normally 636) to
   every eDirectory server it works with, and the connections listed in
   [UPGRADING.md](UPGRADING.md#outbound-connections-and-air-gapped-consoles); with single sign-on, HTTPS to the
-  provider.
+  provider (its certificate from a public CA, or from a CA you add to the console's trust store).
 - **Accounts you need.** A tree administrator for setup (it becomes the break-glass account), and a service
   account for finding people by short name and for single sign-on (section 5).
 - **Size.** Small: 1 CPU and 1 GB of memory are plenty; the volume needs well under 1 GB (the audit log grows
@@ -169,9 +169,10 @@ broader rights. Proxied authorization needs that right.
    eDirectory groups. A dotted path such as `realm_access.roles` works for nested claims.
 6. **Try the mapping:** enter a claim value and see which account it finds. Then sign in with the button.
 
-**Limits today:** the provider's certificate must come from a public CA (the console checks it against Java's
-public roots, not its own trust store). Each directory has its own provider settings: sign in to a directory to set
-up its single sign-on.
+**The provider's certificate** must come from a public CA, or from a CA the console trusts: add your internal CA
+under **Certificates** in the console (for every directory, or for this one). It takes effect at the next sign-in,
+without a restart. Each directory has its own provider settings: sign in to a directory to set up its single
+sign-on.
 
 ## 7. The console's certificate
 

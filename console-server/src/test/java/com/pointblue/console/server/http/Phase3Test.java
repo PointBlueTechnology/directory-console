@@ -276,6 +276,36 @@ public class Phase3Test {
     }
 
     @Test
+    public void aProviderBehindAnInternalCaIsTrustedOnceTheConsoleTrustsThatCa() throws Exception {
+        com.pointblue.console.server.tls.TestPki pki = new com.pointblue.console.server.tls.TestPki("IDP");
+        com.pointblue.console.server.tls.TestPki.Server cert = pki.server("idp", List.of("127.0.0.1"));
+        java.security.KeyStore ks = java.security.KeyStore.getInstance("PKCS12");
+        ks.load(null, null);
+        ks.setKeyEntry("idp", cert.key().getPrivate(), "pw".toCharArray(), new java.security.cert.X509Certificate[] {cert.cert(), pki.ca});
+        javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(ks, "pw".toCharArray());
+        javax.net.ssl.SSLContext tls = javax.net.ssl.SSLContext.getInstance("TLS");
+        tls.init(kmf.getKeyManagers(), null, null);
+        try (FakeIdp secure = new FakeIdp(tls).person("alice", Map.of("preferred_username", "alice"))) {
+            server.config.update(server.config.version(), "test", "an https provider", doc -> {
+                Map<String, Object> d = Json.asMap(Json.asMap(doc.get("directories")).get("acme"));
+                Map<String, Object> o = new HashMap<>(Json.asMap(d.get("oidc")));
+                o.put("issuer", secure.issuer);
+                d.put("oidc", o);
+            });
+            Reply refused = call("GET", "/api/v2/oidc/start?directory=acme", null, Map.of());
+            assertEquals("the provider's CA is not trusted yet", "/?sso-error=provider", refused.raw().headers().firstValue("Location").orElse(""));
+
+            Map<String, String> admin = withCsrf(signIn("cn=admin,o=system", "admin-pw"));
+            Reply added = call("POST", "/api/v2/trust/certificates", Map.of("pem", Certs.pem(pki.ca), "scope", "global", "kind", "ca"), admin);
+            assertTrue(String.valueOf(added.body()), added.status() / 100 == 2);
+            Reply start = call("GET", "/api/v2/oidc/start?directory=acme", null, Map.of());
+            assertTrue("now trusted, without a restart: " + start.raw().headers().firstValue("Location").orElse(""),
+                start.raw().headers().firstValue("Location").orElse("").startsWith(secure.issuer + "/auth"));
+        }
+    }
+
+    @Test
     public void singleSignOnActsAsTheMappedPerson() throws Exception {
         assertEquals("Acme SSO", Json.asMap(((List<?>) call("GET", "/api/v2/directories", null, Map.of()).body().get("list")).get(0)).get("sso"));
         Reply cb = sso("alice", "/browse");
