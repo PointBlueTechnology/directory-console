@@ -212,7 +212,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Building a search',
         list: [
-          'Search under a container (or the whole directory): everything below it, or only what is directly inside.',
+          'Search under a container (or the whole directory): everything below it, or only what is directly inside. Type its DN, or use Browse to pick it from the directory\'s containers.',
           '"All of these" matches objects meeting every condition; "Any of these" those meeting at least one.',
           '"Sounds like" matches names that sound alike; "is at least" and "is at most" compare in order.',
           'Or type an LDAP filter. Escape parentheses and asterisks in values as \\28, \\29 and \\2a.',

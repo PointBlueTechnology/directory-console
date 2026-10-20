@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Button, Checkbox, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, Form,
+  Flex, FlexItem, Alert, Button, Checkbox, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, Form,
   FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, Modal, ModalBody,
   ModalFooter, ModalHeader, TextArea, TextInput,
 } from '@patternfly/react-core';
 import { type DirObject, type Row, type SchemaAttribute, type SchemaClass, ApiError } from '../api';
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
+import { BrowseContainers } from './ContainerChooser';
 import { type InputValue, ValueInput } from './ValueInput';
 import { explain } from '../help/glossary';
 
@@ -199,7 +200,12 @@ export function MoveModal({ obj, etag, onClose, onDone }: EditProps) {
         <Form id="move-form" onSubmit={(e) => { e.preventDefault(); if (target) { move(); } else { check(); } }}>
           <Target obj={obj} />
           <FormGroup label="New container (DN)" fieldId="parent" isRequired>
-            <TextInput id="parent" value={dn} onChange={(_e, v) => { setDn(v); setTarget(null); }} placeholder="ou=sales,o=acme" autoFocus />
+            <Flex flexWrap={{ default: 'nowrap' }} spaceItems={{ default: 'spaceItemsSm' }}>
+              <FlexItem grow={{ default: 'grow' }}>
+                <TextInput id="parent" value={dn} onChange={(_e, v) => { setDn(v); setTarget(null); }} placeholder="ou=sales,o=acme" autoFocus />
+              </FlexItem>
+              <FlexItem><BrowseContainers title="Move into" onChoose={(v) => { setDn(v); setTarget(null); }} /></FlexItem>
+            </Flex>
           </FormGroup>
           {target && <Target obj={target} label="Into" />}
           {target && (

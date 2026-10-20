@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  ActionGroup, Button, Card, CardBody, EmptyState, EmptyStateBody, Form, FormGroup, FormHelperText, FormSelect,
+  ActionGroup, Button, Card, CardBody, EmptyState, EmptyStateBody, Flex, FlexItem, Form, FormGroup, FormHelperText, FormSelect,
   FormSelectOption, FormSelectOptionGroup, HelperText, HelperTextItem, PageSection, Pagination, Spinner, Switch, TextArea, TextInput, Title,
   ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
@@ -12,6 +12,7 @@ import { type Condition, OPS, toFilter } from '../filters';
 import { ObjectDrawer } from '../components/ObjectDrawer';
 import { RowsTable } from '../components/RowsTable';
 import { ProblemAlert } from '../components/Problem';
+import { BrowseContainers } from '../components/ContainerChooser';
 
 const EMPTY: Condition = { attribute: 'cn', op: 'prefix', value: '' };
 
@@ -85,7 +86,12 @@ export function Search() {
           <Form onSubmit={run} isWidthLimited>
             <datalist id="attribute-names">{attributes.map((a) => <option key={a.name} value={a.name} />)}</datalist>
             <FormGroup label="Search under" fieldId="base">
-              <TextInput id="base" value={base} onChange={(_e, v) => setBase(v)} placeholder="the whole directory, or a DN such as ou=users,o=acme" />
+              <Flex flexWrap={{ default: 'nowrap' }} spaceItems={{ default: 'spaceItemsSm' }}>
+                <FlexItem grow={{ default: 'grow' }}>
+                  <TextInput id="base" value={base} onChange={(_e, v) => setBase(v)} placeholder="the whole directory, or a DN such as ou=users,o=acme" />
+                </FlexItem>
+                <FlexItem><BrowseContainers title="Search under" onChoose={setBase} /></FlexItem>
+              </Flex>
             </FormGroup>
             <FormGroup label="Depth" fieldId="scope" role="radiogroup" isInline>
               <ToggleGroup aria-label="Depth">

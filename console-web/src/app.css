@@ -63,6 +63,12 @@
   overflow: auto;
 }
 
+/* the container tree in a Browse dialog */
+.dc-chooser {
+  max-height: 24rem;
+  overflow: auto;
+}
+
 /* the login time grid: 7 rows of 48 half-hour cells */
 .dc-timegrid {
   margin-block-start: var(--pf-t--global--spacer--sm);
