@@ -170,7 +170,7 @@ broader rights. Proxied authorization needs that right.
 6. **Try the mapping:** enter a claim value and see which account it finds. Then sign in with the button.
 
 **The provider's certificate** must come from a public CA, or from a CA the console trusts: add your internal CA
-under **Certificates** in the console (for every directory, or for this one). It takes effect at the next sign-in,
+under **Settings > Trusted certificates** (for every directory, or for this one). It takes effect at the next sign-in,
 without a restart. Each directory has its own provider settings: sign in to a directory to set up its single
 sign-on.
 

@@ -24,7 +24,6 @@ import { LdapGroupPage, LdapServerPage } from '../pages/LdapPages';
 // administration pages load when first opened: most sessions never visit them
 const IdmPage = lazy(() => import('../pages/IdmPage').then((m) => ({ default: m.IdmPage })));
 const DriverPage = lazy(() => import('../pages/DriverPage').then((m) => ({ default: m.DriverPage })));
-const CertificatesPage = lazy(() => import('../pages/CertificatesPage').then((m) => ({ default: m.CertificatesPage })));
 const SettingsPage = lazy(() => import('../pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const EdirPage = lazy(() => import('../pages/EdirPage').then((m) => ({ default: m.EdirPage })));
 const ServerPage = lazy(() => import('../pages/EdirPage').then((m) => ({ default: m.ServerPage })));
@@ -42,7 +41,6 @@ const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>
   { to: '/security', label: 'Security', show: (s) => s.me.roles.length > 0 },
   // Identity Manager needs a configured directory: not for one the person entered themselves
   { to: '/idm', label: 'Identity Manager', show: (s) => s.me.roles.length > 0 && s.me.via !== 'user-directory' },
-  { to: '/certificates', label: 'Certificates', show: (s) => s.can('admin') },
   { to: '/audit', label: 'Audit log', show: (s) => s.can('admin') },
   { to: '/settings', label: 'Settings', show: (s) => s.can('admin') },
 ];
@@ -50,7 +48,7 @@ const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>
 export function Shell() {
   const sessionState = useSession();
   const { me, signOut } = sessionState;
-  const { path } = useLocation();
+  const { path, query } = useLocation();
   const [userOpen, setUserOpen] = useState(false);
   const help = useHelpState(topicForPath(path));
   const [version, setVersion] = useState<{ version: string; update?: UpdateState } | null>(null);
@@ -60,6 +58,10 @@ export function Shell() {
   useEffect(() => {
     if (path === '/' || path === '') {
       navigate('/browse', true);
+    }
+    // the trust store moved to Settings > Trusted certificates; old links and bookmarks land there
+    if (path === '/certificates') {
+      navigate('/settings?tab=trust', true);
     }
   }, [path]);
 
@@ -143,7 +145,7 @@ export function Shell() {
   return (
     <HelpContext.Provider value={help}>
     <Page masthead={masthead} sidebar={sidebar} isManagedSidebar mainAriaLabel="Directory Console">
-      {sessionState.can('admin') && path !== '/certificates' && <ExpiryBanner />}
+      {sessionState.can('admin') && !(path === '/settings' && query.get('tab') === 'trust') && <ExpiryBanner />}
       {sessionState.can('admin') && path !== '/settings' && <UpdateBanner update={version?.update ?? null} />}
       <SessionWarning />
       <Drawer isExpanded={help.open} isInline position="end">
@@ -226,7 +228,7 @@ function route(path: string) {
     return <AuditPage />;
   }
   if (path === '/certificates') {
-    return <CertificatesPage />;
+    return null;   // on its way to Settings > Trusted certificates
   }
   if (path === '/idm') {
     return <IdmPage />;
@@ -262,7 +264,7 @@ function ExpiryBanner() {
   return (
     <PageSection padding={{ default: 'noPadding' }}>
       <Alert variant={soon.changed || soon.expired ? 'danger' : 'warning'} isInline component="h2" title={`Certificates: ${parts}`}
-        actionLinks={<AlertActionLink onClick={() => navigate('/certificates')}>Review certificates</AlertActionLink>} />
+        actionLinks={<AlertActionLink onClick={() => navigate('/settings?tab=trust')}>Review certificates</AlertActionLink>} />
     </PageSection>
   );
 }

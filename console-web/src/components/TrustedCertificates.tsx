@@ -1,28 +1,29 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Button, ClipboardCopy, EmptyState, EmptyStateBody, FileUpload, Form, FormGroup, FormHelperText, HelperText, HelperTextItem,
-  Modal, ModalBody, ModalFooter, ModalHeader, PageSection, Spinner, TextInput, Title, Toolbar, ToolbarContent, ToolbarItem,
+  Modal, ModalBody, ModalFooter, ModalHeader, Spinner, TextInput, Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
 import { PlusIcon, SyncIcon, UploadIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { type Directory, type HostExceptionInfo, type Probe, type TrustAlert, type TrustState, type TrustedCertificate, daysUntil, session, trust } from '../api';
 import { useSession } from '../session';
 import { HeadingLevel, useHeading } from '../heading';
-import { ProblemAlert } from '../components/Problem';
-import { useAreYouSure } from '../components/Confirm';
-import { useStepUp } from '../components/StepUp';
-import { CertificateDetails, ExpiryLabel, Fingerprint, ScopeSelect, TrustCertificateModal, TrustStatus, scopeText } from '../components/Certificates';
+import { ProblemAlert } from './Problem';
+import { useAreYouSure } from './Confirm';
+import { useStepUp } from './StepUp';
+import { CertificateDetails, ExpiryLabel, Fingerprint, ScopeSelect, TrustCertificateModal, TrustStatus, scopeText } from './Certificates';
 import { explain } from '../help/glossary';
 import { Hint } from '../help/Help';
 
 type Live = { directory: Directory; probe?: Probe; error?: string };
 
 /**
- * The certificates the console trusts for its directory connections: each
- * directory's live certificate, the trusted certificates with their expiry, and the host exceptions.
- * Administrators only; every change needs a sign-in within the last 10 minutes and is audited.
+ * Settings > Trusted certificates: the certificates the console trusts for its directory connections and the
+ * services it calls (single sign-on providers, ACME, syslog): each directory's live certificate, the trusted
+ * certificates with their expiry, and the host exceptions. Administrators only; every change needs a sign-in
+ * within the last 10 minutes and is audited.
  */
-export function CertificatesPage() {
+export function TrustedCertificates() {
   const { me } = useSession();
   const [directories, setDirectories] = useState<Directory[]>([]);
   const [live, setLive] = useState<Live[] | null>(null);
@@ -59,11 +60,11 @@ export function CertificatesPage() {
   const usedBy = (sha256: string) => (live ?? []).filter((l) => l.probe?.chain.some((c) => c.sha256 === sha256)).map((l) => l.directory.name);
 
   return (
-    <PageSection isFilled>
-      <Title headingLevel="h1">Certificates</Title>
-      <p className="dc-subtle">The certificates the console trusts when it connects to eDirectory. The JDK's own store is never changed.</p>
+    <div className="dc-tab-body">
+      <p>This applies to the whole console: the certificates it trusts when it connects to eDirectory, and to single sign-on
+        providers and ACME CAs beside Java's public roots. Java's own store is never changed.</p>
       <ProblemAlert error={error} onRetry={changed} />
-      <HeadingLevel.Provider value="h2">
+      <HeadingLevel.Provider value="h3">
         {store && store.alerts.length > 0 && (
           <AlertsSection alerts={store.alerts} directories={directories} onReview={(a) => {
             const dir = a.directory ?? me.directory;
@@ -86,7 +87,7 @@ export function CertificatesPage() {
       )}
       {adding === 'probe' && <ProbeModal directories={directories} initial={me.directory} onClose={() => { setAdding(null); changed(); }} />}
       {adding === 'upload' && <UploadModal directories={directories} initial={me.directory} onClose={(done) => { setAdding(null); if (done) changed(); }} />}
-    </PageSection>
+    </div>
   );
 }
 

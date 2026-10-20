@@ -123,7 +123,7 @@ log exactly as they were at the backup; anything changed since is lost.
 
 - **0.3.12:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.11
   needs no restore. What is new for operators: a single sign-on provider whose certificate comes from an internal
-  CA works once that CA is in the console's trust store (**Certificates**); before, only public CAs were accepted.
+  CA works once that CA is in the console's trust store (**Settings > Trusted certificates**); before, only public CAs were accepted.
 - **0.3.11:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.10
   needs no restore. What is new for operators: the console's own certificate can be uploaded (PKCS#12, or PEM
   certificate and key) under **Settings > Console certificate**, as an alternative to ACME. If you go back to

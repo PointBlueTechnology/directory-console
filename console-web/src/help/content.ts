@@ -462,7 +462,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Trusted root containers hold certificates that services set up to use them (NMAS, SSL clients configured with the container) accept, with whatever those roots sign.',
           'New container makes one in the Security container, an Organization or an OU; it can be deleted once empty.',
           'Add a root takes a PEM or DER certificate; its name defaults to the certificate\'s CN, or OU. Removing a root stops those services accepting what it signed.',
-          'These are the directory\'s trusted roots. The certificates the console itself trusts are under Certificates in the navigation.',
+          'These are the directory\'s trusted roots. The certificates the console itself trusts are under Settings > Trusted certificates.',
         ],
       },
 
@@ -485,7 +485,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       { title: 'CA configuration', paragraphs: ['Each switch changes the Organizational CA at once. Server self-provisioning lets eDirectory\'s own PKI Health Check create or renew a server\'s SSL CertificateDNS in place when ndsd starts or DSRepair runs there. Suite B mode needs a CA with only an EC P-256 or P-384 certificate.'] },
       { title: 'Revoking', caution: true, paragraphs: ['Revoking cannot be undone, except with the reason "Certificate on hold". The CA lists the certificate on its CRL from the CRL\'s next issue.'] },
     ],
-    related: ['certificates'],
+    related: ['settings.trust'],
   },
   'security.password-policies': {
     title: 'Password policies',
@@ -727,8 +727,8 @@ export const CONTENT: Record<string, HelpTopic> = {
   'idm.driver.password-sync': { title: 'Password synchronization', summary: 'How this driver handles passwords between the vault and the connected system.', sections: [] },
 
   // ---- Console certificates and settings -------------------------------------------------------
-  certificates: {
-    title: 'How the console trusts directories',
+  'settings.trust': {
+    title: 'Trusted certificates',
     summary: 'The certificates the console accepts from your directories\' servers. This is the console\'s own trust store; it does not change eDirectory.',
     sections: [
       {
@@ -814,7 +814,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'The console then acts as that person, with their own eDirectory rights, through the service account.',
           '"Never act as" lists accounts that must not sign in this way.',
           'A public client uses PKCE and has no secret.',
-          'The provider\'s certificate must be from a public CA, or from a CA the console trusts (Certificates, for every directory or this one).',
+          'The provider\'s certificate must be from a public CA, or from a CA the console trusts (Settings > Trusted certificates, for every directory or this one).',
           'Provider groups map groups in the provider\'s groups claim to console roles and task presets, as role mappings do for eDirectory groups.',
           'Under these containers limits who can sign in this way. The service account needs Supervisor over those people, and nobody else.',
           'Try the mapping shows which account a claim value finds. No match, several matches, or a never-act-as account means the sign-in is refused.',
@@ -860,7 +860,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Create a TSIG key on the DNS server, allowed to change only TXT records under _acme-challenge in the zone (in BIND: update-policy { grant key. zonesub TXT; }).',
           'Enter the zone\'s primary server, the zone, the key\'s name, algorithm and secret, and use Test DNS: it adds a record, reads it back and removes it.',
           'Try Let\'s Encrypt staging first; its certificates are not trusted by browsers, but its limits are generous.',
-          'An internal ACME CA (step-ca, for example) works too, once the console trusts its root (Certificates, for every directory).',
+          'An internal ACME CA (step-ca, for example) works too, once the console trusts its root (Settings > Trusted certificates, for every directory).',
         ],
       },
       {
@@ -868,7 +868,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         paragraphs: ['The current certificate stays in use. The page shows the error and the steps that were done; the attempt is also in the audit log.'],
       },
     ],
-    related: ['settings.expiry', 'certificates'],
+    related: ['settings.expiry', 'settings.trust'],
   },
   'settings.expiry': {
     title: 'Certificate expiry',
@@ -892,7 +892,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       },
       { title: 'Webhooks', paragraphs: ['Up to five. Each notice is POSTed as JSON; with a secret, X-Console-Signature carries sha256= and the HMAC-SHA256 of the body.'] },
     ],
-    related: ['certificates', 'security.certificates'],
+    related: ['settings.trust', 'security.certificates'],
   },
   'settings.syslog': {
     title: 'Syslog',

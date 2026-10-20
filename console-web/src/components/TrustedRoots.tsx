@@ -32,7 +32,7 @@ export function TrustedRootsCard({ pki, api, editor, onChanged }: {
       <CardTitle><Title headingLevel="h2" size="lg">Trusted roots</Title></CardTitle>
       <CardBody>
         <p className="dc-subtle">Certificates kept in trusted root containers. Services set up to use a container (such as NMAS, or SSL clients configured with it) accept
-          certificates its roots have signed. The console's own trust is separate (Certificates in the navigation).</p>
+          certificates its roots have signed. The console's own trust is separate (Settings &gt; Trusted certificates).</p>
         {notice && <Alert variant="success" isInline isPlain title={notice} className="dc-tab-body" />}
         <ProblemAlert error={error} />
         {editor && <Button variant="secondary" size="sm" className="dc-tab-body" onClick={() => setMaking(true)}>New container</Button>}

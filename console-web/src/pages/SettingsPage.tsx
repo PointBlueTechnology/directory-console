@@ -17,6 +17,8 @@ import { FieldHelp, Hint, useHelpTopic } from '../help/Help';
 import { explain } from '../help/glossary';
 import { useAreYouSure } from '../components/Confirm';
 import { ExpiryLabel, Fingerprint } from '../components/Certificates';
+import { TrustedCertificates } from '../components/TrustedCertificates';
+import { navigate, useLocation } from '../router';
 
 /** A whole number from {@code min} to {@code max}. */
 const sessionOk = (v: string, min: number, max: number) => /^\d+$/.test(v.trim()) && Number(v) >= min && Number(v) <= max;
@@ -33,7 +35,10 @@ export function SettingsPage() {
   const [s, setS] = useState<DirectorySettings | null>(null);
   const [etag, setEtag] = useState<string | undefined>();
   const [error, setError] = useState<unknown>(null);
-  const [tab, setTab] = useState<string | number>(() => new URLSearchParams(location.search).get('tab') ?? 'directory');
+  // the tab is in the address (?tab=), so a link such as the expiry banner's opens it
+  const { query } = useLocation();
+  const tab = query.get('tab') ?? 'directory';
+  const setTab = (k: string | number) => navigate(`/settings?tab=${encodeURIComponent(String(k))}`, true);
   useHelpTopic(`settings.${String(tab)}`);
   const load = useCallback(() => {
     setError(null);
@@ -68,6 +73,9 @@ export function SettingsPage() {
             </Tab>
             <Tab eventKey="other" title={<TabTitleText>Other directories</TabTitleText>}>
               <OtherDirectoriesSection />
+            </Tab>
+            <Tab eventKey="trust" title={<TabTitleText>Trusted certificates</TabTitleText>}>
+              <TrustedCertificates />
             </Tab>
             <Tab eventKey="certificate" title={<TabTitleText>Console certificate</TabTitleText>}>
               <ConsoleCertificateSection />
@@ -411,7 +419,7 @@ function ConsoleCertificateSection() {
           {![LETS_ENCRYPT, LETS_ENCRYPT_STAGING].includes(draft.directoryUrl) && (
             <TextInput id="acme-dir" className="dc-mono dc-tab-body" value={draft.directoryUrl} onChange={(_e, v) => setDraft({ ...draft, directoryUrl: v })} placeholder="https://ca.example.com/acme/directory" />
           )}
-          <FormHelperText><HelperText><HelperTextItem>An internal CA's certificate must be trusted by the console (Certificates, for every directory).</HelperTextItem></HelperText></FormHelperText>
+          <FormHelperText><HelperText><HelperTextItem>An internal CA's certificate must be trusted by the console (Trusted certificates, for every directory).</HelperTextItem></HelperText></FormHelperText>
         </FormGroup>
         <FormGroup label="Contact e-mail" fieldId="acme-email">
           <TextInput id="acme-email" value={draft.email ?? ''} onChange={(_e, v) => setDraft({ ...draft, email: v })} placeholder="optional: the CA writes about problems" />
@@ -580,7 +588,7 @@ function SyslogSection() {
             <FormSelectOption value="tcp" label="TCP (port 514), not encrypted" />
             <FormSelectOption value="udp" label="UDP (port 514), not encrypted, may lose messages" />
           </FormSelect>
-          <FormHelperText><HelperText><HelperTextItem>With TLS, the server's certificate must be from a public CA or a CA the console trusts (Certificates), and name the host.</HelperTextItem></HelperText></FormHelperText>
+          <FormHelperText><HelperText><HelperTextItem>With TLS, the server's certificate must be from a public CA or a CA the console trusts (Trusted certificates), and name the host.</HelperTextItem></HelperText></FormHelperText>
         </FormGroup>
         <FormGroup label="Port" fieldId="syslog-port">
           <TextInput id="syslog-port" type="number" value={String(draft.port)} onChange={(_e, v) => setDraft({ ...draft, port: Number(v) })} style={{ maxWidth: '8rem' }} />
@@ -1010,7 +1018,7 @@ function SsoSection({ s, save, test, onSaved }: {
           </FormGroup>
           <FormGroup label="Issuer" fieldId="sso-issuer" isRequired>
             <TextInput id="sso-issuer" type="url" value={o.issuer} onChange={field('issuer')} placeholder="https://idp.example.com/realms/acme" isRequired />
-            <FormHelperText><HelperText><HelperTextItem>Its certificate must be from a public CA, or from a CA the console trusts (Certificates).</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>Its certificate must be from a public CA, or from a CA the console trusts (Trusted certificates).</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <FormGroup label="Client id" fieldId="sso-client" isRequired>
             <TextInput id="sso-client" value={o.clientId} onChange={field('clientId')} isRequired />
