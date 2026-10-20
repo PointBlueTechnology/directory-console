@@ -98,10 +98,10 @@ Removing the container does not remove the `console-data` volume.
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.3.9
+    image: ghcr.io/pointbluetechnology/directory-console:0.3.10
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.9 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.10 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -121,6 +121,11 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.3.10:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.9
+  needs no restore. What is new for operators:
+  - [DEPLOYING.md](DEPLOYING.md): running the console on a server or on Kubernetes, with or without single sign-on.
+  - Kubernetes works: the health checks answer probes sent by IP address, and a data volume owned by root is
+    accepted. Use this version or later there.
 - **0.3.9:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.8
   needs no restore (a restore staged but not yet applied is ignored by 0.3.8). What is new for operators:
   - **Audit log** page for administrators, with filters, CSV and JSON Lines export and a chain check.
