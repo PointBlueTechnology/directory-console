@@ -98,10 +98,10 @@ Removing the container does not remove the `console-data` volume.
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.3.15
+    image: ghcr.io/pointbluetechnology/directory-console:0.3.16
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.15 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.16 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -121,6 +121,9 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.3.16:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.15
+  needs no restore. Help only: it now covers the server Identity Manager uses, Browse in Move, what the trusted
+  certificates are also used for, and role assignments.
 - **0.3.15:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.14
   needs no restore. Set password names the user's policy and its rules, and says which rule a password breaks; a
   policy that requires digits or special characters it does not allow (no password can meet it) is pointed out.
