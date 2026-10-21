@@ -59,7 +59,7 @@ public class DirectLoginTest {
     }
 
     private DirectoryConfig dir(DirectoryConfig.Duplicates dup, boolean direct) {
-        return new DirectoryConfig("prod", "Production", "127.0.0.1", edir.port(), "production", direct, List.of("o=acme"),
+        return new DirectoryConfig("prod", "Production", "127.0.0.1", edir.port(), "production", direct, List.of("cn=jsmith,ou=it,o=acme"), List.of("o=acme"),
             List.of("inetOrgPerson"), List.of("cn"), true, 10, dup, "title", "cn=console,o=system",
             List.of(new DirectoryConfig.RoleMapping("cn=Console Admins,o=acme", Role.ADMIN), new DirectoryConfig.RoleMapping("cn=Operators,o=acme", Role.OPERATOR)),
             List.of("cn=admin,o=system"), java.util.Map.of(), null);
@@ -140,11 +140,22 @@ public class DirectLoginTest {
     }
 
     @Test
-    public void withDirectLoginOffOnlyBreakGlassSignsIn() {
+    public void withDirectLoginOffOnlyBreakGlassAndAllowedAccountsSignIn() {
         DirectoryConfig off = dir(DirectoryConfig.Duplicates.CHOOSE, false);
-        assertEquals("not-allowed", ((DirectLogin.Refused) as(off, "cn=pat,ou=users,o=acme", "pw-pat")).code());
+        DirectLogin.Refused pat = (DirectLogin.Refused) as(off, "cn=pat,ou=users,o=acme", "pw-pat");
+        assertEquals("not-allowed", pat.code());
+        assertEquals("a short name outside the list is refused the same way", pat.message(), ((DirectLogin.Refused) as(off, "pat", "pw-pat")).message());
+        assertEquals("and so is a name nobody has", pat.message(), ((DirectLogin.Refused) as(off, "nobody", "x")).message());
         DirectLogin.SignedIn bg = (DirectLogin.SignedIn) as(off, "cn=admin,o=system", "pw-admin");
+        assertEquals("break-glass", bg.principal().via());
         bg.connection().close();
+        // an allowed account keeps its mapped roles, and its short name finds it among duplicates
+        DirectLogin.SignedIn it = (DirectLogin.SignedIn) as(off, "jsmith", "pw-jsmith");
+        assertEquals("cn=jsmith,ou=it,o=acme", it.principal().dn());
+        assertEquals(Set.of(Role.OPERATOR), it.principal().roles());
+        assertEquals("direct", it.principal().via());
+        it.connection().close();
+        assertEquals("not-allowed", ((DirectLogin.Refused) as(off, "cn=jsmith,ou=sales,o=acme", "pw-jsmith")).code());
     }
 
     @Test

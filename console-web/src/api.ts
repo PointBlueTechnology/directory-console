@@ -824,7 +824,8 @@ export interface DirectorySettings {
   tier: string;
   directLogin: boolean;
   serviceAccount: string | null;
-  login: { searchBases: string[]; duplicates: 'choose' | 'error' };
+  /** {@code allowed}: who may still sign in with a password while direct sign-in is off (besides break-glass). */
+  login: { searchBases: string[]; duplicates: 'choose' | 'error'; allowed: string[] };
   session: { idleMinutes: number; maxHours: number };
   breakGlass: string[];
   roles: RoleMappingJson[];
@@ -846,7 +847,7 @@ export function settings(id: string) {
     oidc: (o: OidcSettings | null, etag?: string) => put('oidc', o, etag),
     testMapping: (value: string) => request<{ matches: string[]; neverProxy: boolean }>('POST', `${base}/oidc/test`, { value }).then((r) => r.data),
     tier: (tier: 'production' | 'lab', etag?: string) => put('tier', { tier }, etag),
-    login: (login: { searchBases: string[]; duplicates: 'choose' | 'error' }, etag?: string) => put('login', login, etag),
+    login: (login: { searchBases?: string[]; duplicates?: 'choose' | 'error'; direct?: boolean; allowed?: string[] }, etag?: string) => put('login', login, etag),
     /** Checked by signing in as it; null removes it. */
     serviceAccount: (account: { dn: string; password: string } | null, etag?: string) => put('service-account', account, etag),
     /** Idle timeout and longest session for this tree; applies at once, to open sessions too. */

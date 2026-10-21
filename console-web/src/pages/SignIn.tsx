@@ -92,8 +92,12 @@ export function SignIn({ reason, onSignedIn }: Props) {
   const [port, setPort] = useState(saved?.port ?? '636');
   const [offer, setOffer] = useState<Probe | null>(null);
   const [confirm, setConfirm] = useState('');
+  const [passwordAnyway, setPasswordAnyway] = useState(false);
   const chosen = directories?.find((d) => d.id === directory);
   const other = directory === OTHER;
+  // a directory that is single sign-on only shows the password form on request (or for a remembered name)
+  const ssoOnly = !other && !!chosen?.sso && !chosen.direct;
+  const passwordForm = !ssoOnly || passwordAnyway || !!candidates || (!!saved && saved.directory === directory);
 
   useEffect(() => {
     session.directories().then((d) => {
@@ -209,10 +213,14 @@ export function SignIn({ reason, onSignedIn }: Props) {
                   Sign in with {chosen.sso}
                 </Button>
                 <Divider />
-                <p className="dc-subtle">{chosen.direct ? 'Or sign in with your directory name and password:' : <><Hint text={explain('breakGlass')}><span tabIndex={0} className="dc-term">Break-glass accounts</span></Hint> sign in with their name and password:</>}</p>
+                {chosen.direct
+                  ? <p className="dc-subtle">Or sign in with your directory name and password:</p>
+                  : passwordForm
+                    ? <p className="dc-subtle">This directory uses single sign-on. Only <Hint text={explain('passwordSignIn')}><span tabIndex={0} className="dc-term">accounts an administrator has listed</span></Hint> sign in with a password:</p>
+                    : <p className="dc-subtle">This directory uses single sign-on. <Button variant="link" isInline onClick={() => setPasswordAnyway(true)}>Administrator sign-in with a password</Button></p>}
               </>
             )}
-            <FormGroup label="Name" fieldId="name" isRequired>
+            {passwordForm && <FormGroup label="Name" fieldId="name" isRequired>
               <TextInput id="name" value={name} onChange={(_e, v) => setName(v)} autoComplete="username"
                 aria-describedby="name-help" isRequired autoFocus={!saved} />
               <FormHelperText>
@@ -220,7 +228,7 @@ export function SignIn({ reason, onSignedIn }: Props) {
                   <HelperTextItem>{other ? 'Your full name (DN), such as cn=jsmith,ou=sales,o=acme' : 'Your user name, or your full name such as jsmith.sales.acme'}</HelperTextItem>
                 </HelperText>
               </FormHelperText>
-            </FormGroup>
+            </FormGroup>}
             {other && offer && (
               <section aria-labelledby="offer-title" className="dc-tab-body">
                 <Alert id="offer-title" component="h3" variant="warning" isInline title="The console does not trust this directory's certificate">
@@ -247,24 +255,24 @@ export function SignIn({ reason, onSignedIn }: Props) {
             ))}
           </FormGroup>
         )}
-        <FormGroup label="Password" fieldId="password" isRequired>
+        {passwordForm && <FormGroup label="Password" fieldId="password" isRequired>
           <TextInput id="password" type="password" value={password} onChange={(_e, v) => setPassword(v)}
             autoComplete="current-password" isRequired autoFocus={!!saved} />
-        </FormGroup>
-        {!candidates && (
+        </FormGroup>}
+        {passwordForm && !candidates && (
           <FormGroup fieldId="remember">
             <Checkbox id="remember" label="Remember my name on this computer" isChecked={rememberMe} onChange={(_e, v) => setRememberMe(v)}
               description={saved ? <Button variant="link" isInline onClick={forget}>Forget {saved.name}</Button> : 'Your name and directory are kept in this browser; your password never is.'} />
           </FormGroup>
         )}
-        <ActionGroup>
+        {passwordForm && <ActionGroup>
           <Button type="submit" variant={!other && chosen?.sso ? 'secondary' : 'primary'} isBlock isLoading={busy}
             isDisabled={busy || !directory || !password || (!candidates && !name) || (!!candidates && !choice)
               || (other && (!host.trim() || !(Number(port) > 0))) || (other && !!offer && confirm.replace(/[^0-9a-fA-F]/g, '').length !== 8)}>
             {other && offer ? 'Trust and sign in' : 'Sign in'}
           </Button>
           {candidates && <Button variant="link" onClick={restart}>Use a different name</Button>}
-        </ActionGroup>
+        </ActionGroup>}
       </Form>
     </LoginPage>
     </>

@@ -32,7 +32,9 @@ import javax.naming.NamingException;
  * PUT  /api/v2/directories/{id}/oidc            {"issuer", "clientId", "clientSecret"?, …} or null to turn single sign-on off
  * POST /api/v2/directories/{id}/oidc/test       {"value"}: which account that claim value maps to
  * PUT  /api/v2/directories/{id}/tier            {"tier": production|lab}
- * PUT  /api/v2/directories/{id}/login           {"searchBases": [DN…], "duplicates": choose|error}
+ * PUT  /api/v2/directories/{id}/login           {"searchBases": [DN…], "duplicates": choose|error, "direct": bool, "allowed": [DN…]}
+ *                                               (direct false needs single sign-on; then only break-glass and allowed
+ *                                               accounts sign in with a password)
  * PUT  /api/v2/directories/{id}/service-account {"dn", "password"} (checked by signing in as it), or null for none
  * PUT  /api/v2/directories/{id}/session         {"idleMinutes": 5-240, "maxHours": 1-24}: applies at once, to sessions already open too
  * </pre>
@@ -118,7 +120,8 @@ final class Settings {
         m.put("serviceAccount", d.serviceAccountDn());
         Sessions.Limits limits = server.sessionLimits(d.id());
         m.put("session", Map.of("idleMinutes", limits == null ? 30 : limits.idle().toMinutes(), "maxHours", limits == null ? 12 : limits.absolute().toHours()));
-        m.put("login", Map.of("searchBases", d.searchBases(), "duplicates", d.duplicates() == DirectoryConfig.Duplicates.ERROR ? "error" : "choose"));
+        m.put("login", Map.of("searchBases", d.searchBases(), "duplicates", d.duplicates() == DirectoryConfig.Duplicates.ERROR ? "error" : "choose",
+            "allowed", d.directAllowed()));
         m.put("breakGlass", d.breakGlass());
         m.put("roles", d.roles().stream().map(DirectoryConfig.RoleMapping::json).toList());
         m.put("presets", d.presets().values().stream().map(TaskPreset::json).toList());
@@ -197,6 +200,12 @@ final class Settings {
                         out.put(k, m.get(k));
                     }
                 }
+                return out;
+            }
+            if (key.equals("login")) {
+                // who may still use a password is the part worth seeing in the audit log
+                out.put("direct", !Boolean.FALSE.equals(m.get("direct")));
+                out.put("allowed", m.get("allowed") instanceof List<?> a ? a : List.of());
                 return out;
             }
             return new ArrayList<>(Json.asMap(m).keySet());
@@ -278,7 +287,7 @@ final class Settings {
     private void oidc(HttpExchange ex, Sessions.Session s, DirectoryConfig d) throws IOException {
         Object b = body(ex);
         if (b == null) {
-            save(ex, s, d, "oidc", null, v -> { });
+            save(ex, s, d, "oidc", null, v -> ssoStillNeeded(d, "turning single sign-on off"));
             return;
         }
         if (!(b instanceof Map<?, ?>)) {
@@ -350,16 +359,30 @@ final class Settings {
             login.put("duplicates", Http.string(b, "duplicates", true));
         }
         if (b.get("searchBases") instanceof List<?> l) {
-            List<String> bases = new ArrayList<>();
-            for (Object o : l) {
-                String dn = String.valueOf(o).trim();
-                if (!dn.isEmpty()) {
-                    bases.add(dn);
-                }
-            }
-            login.put("searchBases", bases);
+            login.put("searchBases", dns(l));
+        }
+        if (b.containsKey("direct")) {
+            login.put("direct", Json.asBool(b.get("direct")));
+        }
+        if (b.get("allowed") instanceof List<?> l) {
+            login.put("allowed", dns(l));
         }
         save(ex, s, d, "login", login, v -> {
+            if (Boolean.FALSE.equals(login.get("direct"))) {
+                if (d.oidc() == null || d.serviceAccountDn() == null) {
+                    throw new IllegalArgumentException("set up single sign-on before turning direct sign-in off");
+                }
+                if (d.breakGlass().isEmpty() && !(login.get("allowed") instanceof List<?> a && !a.isEmpty())) {
+                    throw new IllegalArgumentException("list at least one account that may still sign in with a password");
+                }
+            }
+            for (Object dn : login.get("allowed") instanceof List<?> a ? a : List.of()) {
+                try {
+                    Names.parse(String.valueOf(dn));
+                } catch (RuntimeException e) {
+                    throw new IllegalArgumentException("not a DN: " + dn);
+                }
+            }
             Object dup = login.get("duplicates");
             if (dup != null && !"choose".equals(dup) && !"error".equals(dup)) {
                 throw new IllegalArgumentException("duplicates is choose or error");
@@ -374,11 +397,29 @@ final class Settings {
         });
     }
 
+    /** Single sign-on is the only way in for most people while direct sign-in is off. */
+    private static void ssoStillNeeded(DirectoryConfig d, String what) {
+        if (!d.directLogin()) {
+            throw new IllegalArgumentException("direct sign-in is off, so only single sign-on lets most people in: turn direct sign-in on before " + what);
+        }
+    }
+
+    private static List<String> dns(List<?> l) {
+        List<String> out = new ArrayList<>();
+        for (Object o : l) {
+            String dn = String.valueOf(o).trim();
+            if (!dn.isEmpty()) {
+                out.add(dn);
+            }
+        }
+        return out;
+    }
+
     /** The console's service account, proven by signing in as it; its password is sealed. Null removes it. */
     private void serviceAccount(HttpExchange ex, Sessions.Session s, DirectoryConfig d) throws IOException {
         Object raw = body(ex);
         if (raw == null) {
-            save(ex, s, d, "serviceAccount", null, v -> { });
+            save(ex, s, d, "serviceAccount", null, v -> ssoStillNeeded(d, "removing the service account"));
             return;
         }
         Map<String, Object> b = Json.asMap(raw);

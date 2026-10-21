@@ -172,6 +172,11 @@ broader rights. Proxied authorization needs that right.
 5. **Groups claim** and **Provider groups:** map the provider's groups to console roles, as role mappings do for
    eDirectory groups. A dotted path such as `realm_access.roles` works for nested claims.
 6. **Try the mapping:** enter a claim value and see which account it finds. Then sign in with the button.
+7. **Password sign-in** (optional): choose **Single sign-on only, except the accounts below** to stop everyone else
+   signing in with a password. The break-glass accounts always may; list any other accounts that should (for example
+   administrators who need a way in when the provider is down), one DN per line. They keep the roles their groups
+   give them. The sign-in page then offers single sign-on first, with a link to the password form. While this is
+   on, single sign-on and the service account cannot be removed.
 
 **The provider's certificate** must come from a public CA, or from a CA the console trusts: add your internal CA
 under **Settings > Trusted certificates** (for every directory, or for this one). It takes effect at the next sign-in,
@@ -216,7 +221,8 @@ proxy (next section).
 - The certificate browsers see is the one you expect.
 - A person with a role signs in with a short name; one without a role is refused.
 - With single sign-on: the button signs someone in as their own account, and an account under **Never act as** is
-  refused.
+  refused. With password sign-in limited to single sign-on, an unlisted account's password is refused, and a
+  break-glass account still signs in.
 - The audit log (Audit log page, **Check the chain**) shows those sign-ins.
 - A backup downloads from **Settings > History and backup**, and you have stored it and its passphrase apart.
 

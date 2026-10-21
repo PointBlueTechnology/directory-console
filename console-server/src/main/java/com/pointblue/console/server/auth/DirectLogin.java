@@ -32,6 +32,9 @@ import javax.naming.ldap.LdapName;
  * token, and the browser sends the password again with the chosen token. The password is only ever
  * tried against the one account the person chose: trying it against every candidate would count wrong
  * passwords toward intruder lockout on other people's accounts.
+ *
+ * <p>With the directory's direct sign-in off, only its break-glass and allowed accounts may sign in here; a
+ * bare name is matched among those alone, so a refusal says nothing about whether another account exists.
  */
 public final class DirectLogin {
 
@@ -63,6 +66,7 @@ public final class DirectLogin {
     }
 
     static final String BAD_CREDENTIALS = "The name or password is incorrect, or the account may not log in.";
+    static final String NOT_ALLOWED = "This account may not sign in with a password here. Sign in with single sign-on.";
     private static final Duration CHOICE = Duration.ofMinutes(2);
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final DateTimeFormatter GENERALIZED = DateTimeFormatter.ofPattern("yyyyMMddHHmmss'Z'").withZone(ZoneOffset.UTC);
@@ -112,8 +116,7 @@ public final class DirectLogin {
         } else if (looksLikeDn(name)) {
             dn = name.trim();
         } else {
-            boolean breakGlassOnly = !d.directLogin();
-            if (d.serviceAccountDn() == null || serviceAccountPassword == null || breakGlassOnly) {
+            if (d.serviceAccountDn() == null || serviceAccountPassword == null) {
                 return new Refused("full-name-required", "Sign in with your full name (for example cn=jsmith,ou=users,o=acme).");
             }
             List<Ldap.Entry> found;
@@ -123,6 +126,13 @@ public final class DirectLogin {
                 return new Refused("untrusted-certificate", u.getMessage(), u.cause);
             } catch (Ldap.BadCredentials | NamingException e) {
                 return new Refused("unavailable", "Contextless sign-in is unavailable: the console's service account could not search the directory. Sign in with your full name.");
+            }
+            if (!d.directLogin()) {
+                // only the listed accounts are candidates: anyone else, existing or not, gets the same refusal
+                found.removeIf(e -> !d.passwordAllowed(e.dn()));
+                if (found.isEmpty()) {
+                    return new Refused("not-allowed", NOT_ALLOWED);
+                }
             }
             if (found.isEmpty()) {
                 // the same answer as a wrong password, after a bind that takes about as long
@@ -145,8 +155,8 @@ public final class DirectLogin {
             dn = found.get(0).dn();
         }
         boolean breakGlass = d.breakGlass().stream().anyMatch(b -> sameDn(b, dn));
-        if (!d.directLogin() && !breakGlass) {
-            return new Refused("not-allowed", "Direct sign-in is turned off for this directory.");
+        if (!d.passwordAllowed(dn)) {
+            return new Refused("not-allowed", NOT_ALLOWED);
         }
         Ldap conn;
         try {

@@ -393,4 +393,31 @@ public class Phase3Test {
         assertEquals(204, call("POST", "/api/v2/session/step-up", Map.of("password", "admin-pw"), h).status());
         assertTrue(audit().contains("settings.oidc"));
     }
+
+    @Test
+    public void directSignInCanBeLimitedToListedAccounts() throws Exception {
+        Map<String, String> h = withCsrf(signIn("cn=admin,o=system", "admin-pw"));
+        String at = "/api/v2/directories/acme";
+        Reply off = call("PUT", at + "/login", Map.of("direct", false, "allowed", List.of("cn=ed,ou=Sales,o=acme", " ")), h);
+        assertEquals(String.valueOf(off.body()), 200, off.status());
+        assertEquals(List.of("cn=ed,ou=Sales,o=acme"), Json.asMap(off.body().get("login")).get("allowed"));
+        assertEquals(false, off.body().get("directLogin"));
+        assertEquals(false, Json.asMap(Json.asList(call("GET", "/api/v2/directories", null, Map.of()).body().get("list")).get(0)).get("direct"));
+
+        // the sign-in page's rule, enforced: break-glass and listed accounts only
+        Reply help = call("POST", "/api/v2/session", Map.of("directory", "acme", "name", "cn=help,ou=Sales,o=acme", "password", "help-pw"), Map.of());
+        assertEquals(403, help.status());
+        assertEquals("urn:directory-console:problem:not-allowed", help.body().get("type"));
+        signIn("cn=ed,ou=Sales,o=acme", "ed-pw");
+        signIn("cn=admin,o=system", "admin-pw");
+
+        // and nothing that would leave most people without a way in
+        assertEquals(400, call("PUT", at + "/oidc", null, h).status());
+        assertEquals(400, call("PUT", at + "/service-account", null, h).status());
+        assertEquals(400, call("PUT", at + "/login", Map.of("allowed", List.of("not a dn")), h).status());
+        assertTrue(audit().contains("\"allowed\":[\"cn=ed,ou=Sales,o=acme\"]"));
+
+        assertEquals(true, call("PUT", at + "/login", Map.of("direct", true), h).body().get("directLogin"));
+        signIn("cn=help,ou=Sales,o=acme", "help-pw");
+    }
 }

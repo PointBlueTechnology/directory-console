@@ -67,6 +67,7 @@ export function SettingsPage() {
             </Tab>
             <Tab eventKey="sso" title={<TabTitleText>Single sign-on</TabTitleText>}>
               <SsoSection s={s} save={(v) => api.oidc(v, etag)} test={api.testMapping} onSaved={saved} />
+              {s.oidc && s.serviceAccount && <PasswordSignInSection s={s} save={(v) => api.login(v, etag)} onSaved={saved} />}
             </Tab>
             <Tab eventKey="trees" title={<TabTitleText>Directories</TabTitleText>}>
               <TreesSection />
@@ -1092,6 +1093,56 @@ function SsoSection({ s, save, test, onSaved }: {
           </FormSection>
         </Form>
       )}
+      {dialog}
+    </div>
+  );
+}
+
+/**
+ * Whether people may still sign in with a password once single sign-on is set up. Off, only the
+ * break-glass accounts and the accounts listed here may; they keep the roles their groups give them.
+ */
+function PasswordSignInSection({ s, save, onSaved }: {
+  s: DirectorySettings; save: Saver<{ direct: boolean; allowed: string[] }>;
+  onSaved: (r: { data: DirectorySettings; etag?: string }) => void;
+}) {
+  const { me } = useSession();
+  const [direct, setDirect] = useState(s.directLogin);
+  const [allowed, setAllowed] = useState(s.login.allowed.join('\n'));
+  const { go, busy, error, notice, dialog } = useSave(save, onSaved);
+  useEffect(() => {
+    setDirect(s.directLogin);
+    setAllowed(s.login.allowed.join('\n'));
+  }, [s.directLogin, s.login.allowed]);
+  const same = (a: string, b: string) => a.replace(/\s+/g, '').toLowerCase() === b.replace(/\s+/g, '').toLowerCase();
+  const list = lines(allowed);
+  const changed = direct !== s.directLogin || list.join('|') !== s.login.allowed.join('|');
+  const meListed = [...s.breakGlass, ...list].some((d) => same(d, me.dn));
+  return (
+    <div className="dc-tab-body">
+      <Form onSubmit={(e) => { e.preventDefault(); go({ direct, allowed: list }, direct ? 'Everyone may sign in with a password again.' : 'Only single sign-on and the listed accounts can sign in now.'); }} isWidthLimited>
+        <FormSection title="Password sign-in" titleElement="h2">
+          <FormGroup role="radiogroup" fieldId="pw-direct" isStack>
+            <Radio id="pw-direct-on" name="pw-direct" label="Anyone may sign in with a password or with single sign-on" isChecked={direct} onChange={() => setDirect(true)} />
+            <Radio id="pw-direct-off" name="pw-direct" label="Single sign-on only, except the accounts below"
+              description="The sign-in page offers single sign-on first; the password form is for the listed accounts." isChecked={!direct} onChange={() => setDirect(false)} />
+          </FormGroup>
+          <p className="dc-subtle">
+            Always allowed: <Hint text={explain('breakGlass')}><span tabIndex={0} className="dc-term">break-glass accounts</span></Hint>{' '}
+            {s.breakGlass.length ? <span className="dc-mono">{s.breakGlass.join(', ')}</span> : '(none)'}.
+          </p>
+          <FormGroup label="Also allowed to sign in with a password" fieldId="pw-allowed" labelHelp={<FieldHelp label="Also allowed">{explain('passwordAllowed')}</FieldHelp>}>
+            <TextArea id="pw-allowed" className="dc-mono" value={allowed} onChange={(_e, v) => setAllowed(v)} resizeOrientation="vertical"
+              placeholder="cn=jsmith,ou=admins,o=acme" isDisabled={direct} />
+            <FormHelperText><HelperText><HelperTextItem>One full name (DN) per line. They keep the roles their groups give them.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+          {!direct && me.via !== 'oidc' && !meListed && (
+            <Alert variant="warning" isInline isPlain title="You signed in with a password and are not on this list: next time, sign in with single sign-on." />
+          )}
+        </FormSection>
+        <Outcome error={error} notice={notice} />
+        <ActionGroup><Button type="submit" variant="secondary" isLoading={busy} isDisabled={busy || !changed}>Save password sign-in</Button></ActionGroup>
+      </Form>
       {dialog}
     </div>
   );

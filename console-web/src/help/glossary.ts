@@ -119,6 +119,8 @@ export const GLOSSARY = {
   trustedAsPinned: 'Exactly this certificate, at this address. If the server presents another, connections are refused and admins are alerted.',
   pinned: 'A certificate trusted for exactly one server. A changed one may be a renewal, or someone else answering: connections stay refused until it is reviewed.',
   breakGlass: 'An account that can always sign in as an admin, even when no role mapping applies: the directory administrator who set the console up.',
+  passwordSignIn: 'Break-glass accounts, and any accounts listed in Settings > Single sign-on > Password sign-in. Everyone else signs in with single sign-on.',
+  passwordAllowed: 'With password sign-in limited to single sign-on, these accounts may still sign in with their name and password, for example administrators who need a way in when the identity provider is down. Unlike break-glass accounts, they are not made admins.',
   publicClient: 'The provider has no client secret for the console: PKCE alone protects the sign-in.',
   claim: 'The part of the provider\'s identity token that says who the person is, such as their user name.',
   claimAttribute: 'The eDirectory attribute whose value must equal the claim.',

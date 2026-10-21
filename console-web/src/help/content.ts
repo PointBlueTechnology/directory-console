@@ -863,6 +863,15 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Try the mapping shows which account a claim value finds. No match, several matches, or a never-act-as account means the sign-in is refused.',
         ],
       },
+      {
+        title: 'Password sign-in',
+        list: [
+          'By default people may sign in with single sign-on or with their name and password.',
+          'Single sign-on only: the sign-in page offers single sign-on first, and only the break-glass accounts and the accounts listed here may sign in with a password. Listed accounts keep the roles their groups give them.',
+          'Keep a way in for when the provider is down: the break-glass accounts always have one.',
+          'While password sign-in is limited, single sign-on and the service account cannot be removed. Allow passwords again first.',
+        ],
+      },
     ],
     related: ['settings.directory'],
   },

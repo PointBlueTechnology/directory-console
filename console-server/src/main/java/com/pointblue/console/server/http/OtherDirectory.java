@@ -214,7 +214,7 @@ final class OtherDirectory {
         server.failedByClient.clear(client);
         server.failedByName.clear(nameKey);
         String name = dn.split(",")[0].replaceFirst("^[^=]*=", "");
-        DirectoryConfig d = new DirectoryConfig(id, host + ":" + port, host, port, "production", true, List.of(), List.of(), List.of(), false, 0,
+        DirectoryConfig d = new DirectoryConfig(id, host + ":" + port, host, port, "production", true, List.of(), List.of(), List.of(), List.of(), false, 0,
             DirectoryConfig.Duplicates.ERROR, null, null, List.of(), List.of(), Map.of(), null);
         entered.put(id, d);
         Sessions.Principal p = new Sessions.Principal(subject, l.boundDn() == null ? dn : l.boundDn(), name, id, Set.of(Role.EDITOR), VIA);

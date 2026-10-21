@@ -12,7 +12,7 @@ import java.util.Map;
  *
  * <pre>
  * { "name": "Production tree", "host": "edir1.acme.local", "port": 636, "tier": "production",
- *   "login": { "direct": true, "searchBases": ["o=acme"], "objectClasses": ["inetOrgPerson"],
+ *   "login": { "direct": true, "allowed": [], "searchBases": ["o=acme"], "objectClasses": ["inetOrgPerson"],
  *              "matchAttributes": ["cn"], "excludeInactive": true, "maxCandidates": 10,
  *              "duplicates": "choose", "labelAttribute": "title" },
  *   "serviceAccount": { "dn": "cn=console,ou=sa,o=system", "password": {"sealed": "v1:…"} },
@@ -27,11 +27,14 @@ import java.util.Map;
  *             "roles": [ { "group": "console-admins", "role": "admin" } ], "neverProxy": [] } }
  * </pre>
  *
- * A role mapping's {@code role} is optional when it grants {@code presets}; {@code scopes} limit both
+ * With {@code login.direct} false, only the break-glass accounts and those in {@code login.allowed} sign in with
+ * a password (the allowed ones with their mapped roles); everyone else uses single sign-on.
+ *
+ * <p>A role mapping's {@code role} is optional when it grants {@code presets}; {@code scopes} limit both
  * to objects under those containers (section 7.4). OIDC role mappings name the provider's groups.
  */
 public record DirectoryConfig(String id, String name, String host, int port, String tier,
-                              boolean directLogin, List<String> searchBases, List<String> objectClasses,
+                              boolean directLogin, List<String> directAllowed, List<String> searchBases, List<String> objectClasses,
                               List<String> matchAttributes, boolean excludeInactive, int maxCandidates,
                               Duplicates duplicates, String labelAttribute,
                               String serviceAccountDn, List<RoleMapping> roles, List<String> breakGlass,
@@ -102,6 +105,12 @@ public record DirectoryConfig(String id, String name, String host, int port, Str
         return new Ldap.Target(id, host, port);
     }
 
+    /** Whether {@code dn} may sign in with a password: anyone while direct sign-in is on, else the listed accounts. */
+    public boolean passwordAllowed(String dn) {
+        return directLogin || breakGlass.stream().anyMatch(b -> DirectLogin.sameDn(b, dn))
+            || directAllowed.stream().anyMatch(b -> DirectLogin.sameDn(b, dn));
+    }
+
     public boolean production() {
         return "production".equals(tier);
     }
@@ -141,7 +150,7 @@ public record DirectoryConfig(String id, String name, String host, int port, Str
         }
         Oidc oidc = d.get("oidc") instanceof Map<?, ?> om && om.get("issuer") != null ? Oidc.of(Json.asMap(om)) : null;
         return new DirectoryConfig(id, str(d, "name", id), Json.asString(d.get("host")), Json.asInt(d.get("port"), 636),
-            str(d, "tier", "production"), bool(login, "direct", true), strings(login.get("searchBases")),
+            str(d, "tier", "production"), bool(login, "direct", true), strings(login.get("allowed")), strings(login.get("searchBases")),
             strings(login.get("objectClasses"), "inetOrgPerson"), strings(login.get("matchAttributes"), "cn"),
             bool(login, "excludeInactive", true), Json.asInt(login.get("maxCandidates"), 10),
             "error".equals(login.get("duplicates")) ? Duplicates.ERROR : Duplicates.CHOOSE,

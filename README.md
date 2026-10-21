@@ -99,7 +99,7 @@ docker compose up -d
   - **inspection:** the cache inspector, the association inspector, the object inspector, and per-user password synchronization status;
   - **data:** migrate and synchronize, and mapping tables.
 - **Sign-in and access:**
-  - direct sign-in, or single sign-on with OpenID Connect;
+  - direct sign-in, or single sign-on with OpenID Connect, optionally the only way in except for listed accounts;
   - several directories, chosen at sign-in;
   - role mappings from eDirectory groups to four roles, optionally limited to containers: viewer, editor, operator (Identity Manager) and admin;
   - task presets for delegated work;
