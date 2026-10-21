@@ -24,8 +24,8 @@ signing people in either with their eDirectory password or through an OpenID Con
 - **Its address.** Choose the host name people will use, such as `https://console.example.com`. It becomes
   `CONSOLE_PUBLIC_URL`. It must be exactly what browsers see: the console checks it on every change, puts it in
   the single sign-on redirect URI, and puts its host in the certificate it makes.
-- **HTTPS only.** The console serves HTTPS itself, on port 8443 inside the container. There is no plain HTTP
-  port.
+- **HTTPS only.** The console serves HTTPS itself, on port 8443 (`CONSOLE_PORT`; inside the container, when it runs in
+  one). There is no plain HTTP port.
 - **Network.** Inbound: HTTPS from people's browsers (or from your proxy). Outbound: LDAPS (normally 636) to
   every eDirectory server it works with, and the connections listed in
   [UPGRADING.md](UPGRADING.md#outbound-connections-and-air-gapped-consoles); with single sign-on, HTTPS to the
@@ -78,7 +78,9 @@ Use version 0.3.10 or later on Kubernetes: 0.3.9 and earlier stop at start on a 
 
 [`container/kubernetes.yaml`](../container/kubernetes.yaml) has a namespace, a volume claim, a deployment of one
 pod, a service, and an ingress for ingress-nginx to uncomment. It was tried on k3s 1.36 with the `local-path`
-storage class and ingress-nginx. Edit `CONSOLE_PUBLIC_URL` (and the image tag, if you pin one), then:
+storage class and ingress-nginx. Edit `CONSOLE_PUBLIC_URL`, and set the image tag to a version rather than `latest`
+(a pinned version upgrades only when you change it; see
+[UPGRADING.md](UPGRADING.md#upgrade-on-kubernetes)). Then:
 
 ```bash
 kubectl apply -f kubernetes.yaml
@@ -182,8 +184,9 @@ On first start the console makes a self-signed certificate for `CONSOLE_PUBLIC_U
 fingerprint. Browsers warn about it until you replace it, in **Settings > Console certificate**, in one of two ways:
 
 - **Upload a certificate** from your own CA: a PKCS#12 file with its password, or PEM (the certificate with its
-  intermediate CAs, and the private key, encrypted or not). It must name the host in `CONSOLE_PUBLIC_URL`. It is
-  installed at once, without a restart; renew it by uploading again before it expires (the expiry check warns).
+  intermediate CAs, and the private key, encrypted or not). It must name the host in `CONSOLE_PUBLIC_URL`, unless a
+  reverse proxy in front connects to the console by another name (a box on the form allows that). It is installed at
+  once, without a restart; renew it by uploading again before it expires (the expiry check warns).
 - **From an ACME CA** (Let's Encrypt, or an internal one such as step-ca), proven with DNS-01: the console adds a TXT
   record through an RFC 2136 dynamic update signed with a TSIG key, and renews by itself. While this is on, upload is
   not offered.
