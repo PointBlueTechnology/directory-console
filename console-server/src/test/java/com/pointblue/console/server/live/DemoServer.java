@@ -209,10 +209,11 @@ public final class DemoServer {
             "nsimNumberRandomQuestions: 0");
         edir.add("dn: cn=Staff,cn=Password Policies," + sec, "objectClass: nspmPasswordPolicy", "cn: Staff", "description: Everyone in ou=Users",
             "nspmConfigurationOptions: 884", "passwordMinimumLength: 10", "nspmMaximumLength: 64", "nspmMinUpperCaseCharacters: 1", "nspmMinNumericCharacters: 1",
-            "passwordExpirationInterval: 7776000", "passwordUniqueRequired: TRUE", "nspmPasswordHistoryLimit: 8", "nspmCaseSensitive: TRUE",
+            "nspmNumericCharactersAllowed: TRUE", "nspmSpecialCharactersAllowed: TRUE", "passwordExpirationInterval: 7776000", "passwordUniqueRequired: TRUE", "nspmPasswordHistoryLimit: 8", "nspmCaseSensitive: TRUE",
             "nsimChallengeSetDN: cn=Basics,cn=Password Policies," + sec, "nsimAssignments: ou=Sales,ou=Users,o=acme");
         edir.add("dn: cn=Service accounts,cn=Password Policies," + sec, "objectClass: nspmPasswordPolicy", "cn: Service accounts",
-            "nspmConfigurationOptions: 596", "passwordMinimumLength: 24", "nspmMaximumLength: 128");
+            "nspmConfigurationOptions: 596", "passwordMinimumLength: 24", "nspmMaximumLength: 128",
+            "nspmNumericCharactersAllowed: TRUE", "nspmSpecialCharactersAllowed: TRUE");
         edir.server.modify("ou=Sales,ou=Users,o=acme", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.REPLACE,
             "nspmPasswordPolicyDN", "cn=Staff,cn=Password Policies," + sec));
     }

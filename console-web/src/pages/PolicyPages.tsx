@@ -11,7 +11,7 @@ import { linkProps, navigate } from '../router';
 import { useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
 import { ObjectPicker } from '../components/ObjectPicker';
-import { generatePassword } from '../passwordgen';
+import { contradictions, generatePassword } from '../passwordgen';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { explain } from '../help/glossary';
 import { Hint } from '../help/Help';
@@ -132,6 +132,12 @@ export function PasswordPolicyPage({ guid }: { guid: string }) {
         <BreadcrumbItem isActive>{p.name}</BreadcrumbItem>
       </Breadcrumb>
       <Title headingLevel="h1" className="dc-tab-body">{p.name}</Title>
+      {contradictions(rules).length > 0 && (
+        <Alert variant="warning" isInline className="dc-tab-body" title="No password can meet this policy">
+          NMAS will refuse every password, because {contradictions(rules).join('; and ')}.
+          {' '}Allow digits or special characters where the policy requires them (unset means not allowed), or lower the minimums.
+        </Alert>
+      )}
       <Form onSubmit={save} className="dc-tab-body">
         <FormGroup label="Description" fieldId="policy-description">
           <TextInput id="policy-description" value={description} onChange={(_e, v) => setDescription(v)} isDisabled={!edit} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { breaks, generatePassword } from './passwordgen';
+import { breaks, contradictions, generatePassword } from './passwordgen';
 
 describe('generated passwords', () => {
   it('keep the policy\'s rules', () => {
@@ -26,8 +26,11 @@ describe('generated passwords', () => {
     expect(generatePassword({ maxLength: 10 }, 16)).toHaveLength(10);
   });
 
-  it('say so when the rules cannot be met', () => {
-    expect(() => generatePassword({ maxLength: 4, minUpper: 3, minNumeric: 3 })).toThrow(/No password fits/);
+  it('say why when no password can meet the rules', () => {
+    expect(() => generatePassword({ maxLength: 4, minUpper: 3, minNumeric: 3, numericAllowed: true })).toThrow(/minimums add up to 6 characters, more than its maximum length of 4/);
+    expect(() => generatePassword({ minLength: 10, minNumeric: 1 })).toThrow(/requires at least 1 digit but does not allow digits/);
+    expect(() => generatePassword({ minSpecial: 2, numericAllowed: true })).toThrow(/2 special characters but does not allow them/);
+    expect(contradictions({ minNumeric: 1, numericAllowed: true, minSpecial: 1, specialAllowed: true })).toEqual([]);
   });
 
   it('notice broken rules', () => {

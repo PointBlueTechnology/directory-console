@@ -66,10 +66,35 @@ export function breaks(pw: string, r: PolicyRules): string | null {
 }
 
 /**
+ * Rules NMAS can never satisfy: a minimum of digits or special characters the policy does not allow (unset means not
+ * allowed, and a minimum does not change that: lab, eDirectory 9.2.8), or minimums adding up past the maximum length.
+ */
+export function contradictions(r: PolicyRules): string[] {
+  const out: string[] = [];
+  const min = (k: string) => num(r, k) ?? 0;
+  if (min('minNumeric') > 0 && !flag(r, 'numericAllowed')) {
+    out.push(`it requires at least ${min('minNumeric')} digit${min('minNumeric') === 1 ? '' : 's'} but does not allow digits`);
+  }
+  if (min('minSpecial') > 0 && !flag(r, 'specialAllowed')) {
+    out.push(`it requires at least ${min('minSpecial')} special character${min('minSpecial') === 1 ? '' : 's'} but does not allow them`);
+  }
+  const max = num(r, 'maxLength');
+  const sum = min('minUpper') + min('minLower') + min('minNumeric') + min('minSpecial');
+  if (max && sum > max) {
+    out.push(`its minimums add up to ${sum} characters, more than its maximum length of ${max}`);
+  }
+  return out;
+}
+
+/**
  * A random password the policy's character rules allow: {@code length} long (within its minimum and maximum), with at
  * least the minimum of each kind and no more than the maximum, each character used once where possible.
  */
 export function generatePassword(r: PolicyRules, length = 16, random: (n: number) => number = cryptoRandom): string {
+  const impossible = contradictions(r);
+  if (impossible.length) {
+    throw new Error(`No password can meet this policy: ${impossible.join('; ')}. Correct the policy's rules first.`);
+  }
   const min = (k: string) => num(r, k) ?? 0;
   const maxOf = (k: string) => { const v = num(r, k); return v === undefined || v === 0 ? Infinity : v; };
   const allowed: Record<Kind, boolean> = { upper: true, lower: true, digit: flag(r, 'numericAllowed'), special: flag(r, 'specialAllowed') };
