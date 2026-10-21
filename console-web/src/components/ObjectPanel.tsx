@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, AlertActionCloseButton, Bullseye, Button, ClipboardCopy, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm,
-  Divider, Dropdown, DropdownGroup, DropdownItem, DropdownList, Flex, FlexItem, Label, LabelGroup, MenuToggle, Spinner, Tab, Tabs, TabTitleText, Title,
+  Divider, Dropdown, DropdownGroup, DropdownItem, DropdownList, Flex, FlexItem, Label, LabelGroup, MenuToggle, Spinner, Switch, Tab, Tabs, TabTitleText, Title,
 } from '@patternfly/react-core';
 import { EllipsisVIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
@@ -10,7 +10,7 @@ import { useConfirmed } from './Confirm';
 import { PresetModal } from './PresetModal';
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
-import { ValueView } from './ValueView';
+import { ValuesList, useWrapValues } from './ValuesList';
 import { AttributeModal, AuxClassModal, DeleteModal, MoveModal, PasswordModal, RenameModal } from './Edit';
 import { AccountTab } from './AccountTab';
 import { UserCertificatesTab } from './UserCertificatesTab';
@@ -44,6 +44,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
   const [allowed, setAllowed] = useState<string[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [tab, setTab] = useState<string | number>('attributes');
+  const [wrap, setWrap] = useWrapValues();
   useHelpTopic(`object.${String(tab)}`);
   const [menu, setMenu] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -162,6 +163,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
       {notice && <Alert variant="success" isInline isPlain title={notice} actionClose={<AlertActionCloseButton onClose={() => setNotice(null)} />} />}
       <Tabs activeKey={tab} onSelect={(_e, k) => setTab(k)} aria-label="Object details" mountOnEnter>
         <Tab eventKey="attributes" title={<TabTitleText>Attributes</TabTitleText>}>
+          <Switch id="wrap-values" className="dc-tab-body" label="Wrap long values" isChecked={wrap} onChange={(_e, v) => setWrap(v)} isReversed />
           <Table aria-label="Attributes" variant="compact">
             <Thead>
               <Tr>
@@ -175,7 +177,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
                 <Tr key={name}>
                   <Td dataLabel="Attribute"><span className="dc-mono">{name}</span></Td>
                   <Td dataLabel="Values">
-                    <ul className="dc-values">{values.map((v, i) => <li key={i}><ValueView value={v} /></li>)}</ul>
+                    <ValuesList values={values} wrap={wrap} />
                   </Td>
                   {editor && (
                     <Td isActionCell>

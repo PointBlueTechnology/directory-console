@@ -62,6 +62,8 @@ export const CONTENT: Record<string, HelpTopic> = {
           'A value naming another object is a link: it opens that object.',
           'Binary values show their size; ACL values show a summary (change rights on the Rights tab).',
           '"Set, never shown" marks values the console never displays, such as password hashes.',
+          'Each value stays on one line, cut off with an ellipsis; point at it (or tab to it) to see it in full. Wrap long values shows them all wrapped; this browser remembers the choice.',
+          'An attribute with many values shows the first ten; Show all lists the rest.',
         ],
       },
       {
@@ -220,6 +222,13 @@ export const CONTENT: Record<string, HelpTopic> = {
         ],
       },
       { title: 'Results', paragraphs: ['Large results are sorted and paged by eDirectory, and their total is an estimate.'] },
+      {
+        title: 'Columns and export',
+        list: [
+          'Columns names attributes to show for each result (commas between them); several values share a cell, separated by semicolons.',
+          'Export CSV or Export JSON saves every match, not only this page, up to 10,000: the DN, name and class, then the columns. In CSV a value a spreadsheet would run as a formula is kept as text.',
+        ],
+      },
     ],
   },
   schema: {
@@ -677,6 +686,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Migrate',
         list: [
           'Vault objects to the application: each object found is sent as if just added, so the driver matches or creates it. Find the objects shows what would be sent first.',
+          'Choose the container with Browse, then a class and conditions as on the Search page, or write an LDAP filter instead.',
           'Application objects into the vault: the engine asks the application for its objects and brings each in through the publisher channel\'s matching, creation and placement policies.',
         ],
       },

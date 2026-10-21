@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Alert, Button, Flex, FlexItem, Form, FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, Label, NumberInput,
-  TextInput, Title, ToggleGroup, ToggleGroupItem,
+  Switch, TextInput, Title, ToggleGroup, ToggleGroupItem,
 } from '@patternfly/react-core';
 import { PlusIcon, TrashIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
@@ -9,6 +9,9 @@ import { type Idm, type MigrateResult, type SchemaAttribute, type SchemaClass } 
 import { useSession } from '../session';
 import { useAreYouSure, useConfirmed } from './Confirm';
 import { ProblemAlert } from './Problem';
+import { BrowseContainers } from './ContainerChooser';
+import { ConditionsEditor, EMPTY_CONDITION } from './Conditions';
+import { type Condition, toFilter, toLdap } from '../filters';
 
 /**
  * Migrate, on this server's copy of the driver: vault objects to the application (find them by
@@ -33,25 +36,36 @@ export function MigratePanel({ api, guid }: { api: Idm; guid: string }) {
         <ToggleGroupItem text="Application objects into the vault" isSelected={direction === 'from-app'} onChange={() => setDirection('from-app')} />
       </ToggleGroup>
       {direction === 'to-app'
-        ? <ToApp api={api} guid={guid} classes={classes} />
+        ? <ToApp api={api} guid={guid} classes={classes} attributes={attributes} />
         : <FromApp api={api} guid={guid} classes={classes} attributes={attributes} />}
     </div>
   );
 }
 
-function ToApp({ api, guid, classes }: { api: Idm; guid: string; classes: SchemaClass[] }) {
+function ToApp({ api, guid, classes, attributes }: { api: Idm; guid: string; classes: SchemaClass[]; attributes: SchemaAttribute[] }) {
   const { tree } = useSession();
   const { run, dialog } = useConfirmed();
   const sure = useAreYouSure();
   const [base, setBase] = useState('');
   const [cls, setCls] = useState('inetOrgPerson');
   const [filter, setFilter] = useState('');
+  const [advanced, setAdvanced] = useState(false);
+  const [conditions, setConditions] = useState<Condition[]>([{ ...EMPTY_CONDITION, value: '' }]);
+  const [join, setJoin] = useState<'and' | 'or'>('and');
   const [max, setMax] = useState(100);
   const [preview, setPreview] = useState<MigrateResult | null>(null);
   const [done, setDone] = useState<MigrateResult | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const body = async () => ({ base: (await tree.resolve(base.trim())).data.guid, class: cls, filter: filter.trim() || undefined, max });
+  // the conditions as LDAP filter text (the class is sent apart); none when no row is complete
+  const ldap = () => {
+    if (advanced) {
+      return filter.trim() || undefined;
+    }
+    const f = toFilter(conditions, join);
+    return f ? toLdap(f) : undefined;
+  };
+  const body = async () => ({ base: (await tree.resolve(base.trim())).data.guid, class: cls, filter: ldap(), max });
   const reset = () => { setPreview(null); setDone(null); };
 
   const look = async () => {
@@ -83,7 +97,12 @@ function ToApp({ api, guid, classes }: { api: Idm; guid: string; classes: Schema
     <Form className="dc-tab-body" onSubmit={(e) => { e.preventDefault(); look(); }}>
       <p className="dc-subtle">Each object found is sent to the driver as if it had just been added, so the driver matches or creates it in the application.</p>
       <FormGroup label="Container" fieldId="mig-base" isRequired>
-        <TextInput id="mig-base" className="dc-mono" placeholder="ou=Users,o=acme" value={base} onChange={(_e, v) => { setBase(v); reset(); }} />
+        <Flex flexWrap={{ default: 'nowrap' }} spaceItems={{ default: 'spaceItemsSm' }}>
+          <FlexItem grow={{ default: 'grow' }}>
+            <TextInput id="mig-base" className="dc-mono" placeholder="ou=Users,o=acme" value={base} onChange={(_e, v) => { setBase(v); reset(); }} />
+          </FlexItem>
+          <FlexItem><BrowseContainers title="Migrate from" onChoose={(v) => { setBase(v); reset(); }} /></FlexItem>
+        </Flex>
         <FormHelperText><HelperText><HelperTextItem>Its whole subtree is searched.</HelperTextItem></HelperText></FormHelperText>
       </FormGroup>
       <Flex>
@@ -94,11 +113,6 @@ function ToApp({ api, guid, classes }: { api: Idm; guid: string; classes: Schema
             </FormSelect>
           </FormGroup>
         </FlexItem>
-        <FlexItem grow={{ default: 'grow' }}>
-          <FormGroup label="Filter (optional)" fieldId="mig-filter">
-            <TextInput id="mig-filter" className="dc-mono" placeholder="(department=Sales)" value={filter} onChange={(_e, v) => { setFilter(v); reset(); }} />
-          </FormGroup>
-        </FlexItem>
         <FlexItem>
           <FormGroup label="At most" fieldId="mig-max">
             <NumberInput id="mig-max" value={max} min={1} max={1000} onMinus={() => setMax(Math.max(1, max - 10))} onPlus={() => setMax(Math.min(1000, max + 10))}
@@ -106,6 +120,15 @@ function ToApp({ api, guid, classes }: { api: Idm; guid: string; classes: Schema
           </FormGroup>
         </FlexItem>
       </Flex>
+      <Switch id="mig-advanced" label="Write an LDAP filter instead" isChecked={advanced} onChange={(_e, v) => { setAdvanced(v); reset(); }} />
+      {advanced ? (
+        <FormGroup label="LDAP filter (optional)" fieldId="mig-filter">
+          <TextInput id="mig-filter" className="dc-mono" placeholder="(department=Sales)" value={filter} onChange={(_e, v) => { setFilter(v); reset(); }} />
+        </FormGroup>
+      ) : (
+        <ConditionsEditor id="mig-cond" conditions={conditions} onChange={(c) => { setConditions(c); reset(); }} join={join}
+          onJoin={(j) => { setJoin(j); reset(); }} attributes={attributes} />
+      )}
       <div><Button type="submit" variant="secondary" isLoading={busy && !preview} isDisabled={busy || !base.trim()}>Find the objects</Button></div>
       {preview && !done && (
         <>

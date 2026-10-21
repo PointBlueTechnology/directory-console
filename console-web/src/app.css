@@ -32,6 +32,34 @@
   margin-block-start: var(--pf-t--global--spacer--xs);
 }
 
+/* one line per value, cut off; in full while pointed at or focused. The list takes the width left over
+   (its contents do not widen the table), so the attribute names keep theirs. */
+.dc-values-clip {
+  contain: inline-size;
+}
+
+.dc-values-clip > li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dc-values-clip > li .dc-mono {
+  overflow-wrap: normal;
+}
+
+.dc-values-clip > li:hover,
+.dc-values-clip > li:focus-within,
+.dc-values-clip > li:focus {
+  overflow: visible;
+  white-space: normal;
+}
+
+.dc-values-clip > li:hover .dc-mono,
+.dc-values-clip > li:focus .dc-mono {
+  overflow-wrap: anywhere;
+}
+
 .dc-filter-row {
   display: grid;
   grid-template-columns: minmax(8rem, 1fr) 10rem minmax(8rem, 2fr) auto;

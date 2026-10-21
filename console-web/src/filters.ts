@@ -58,3 +58,36 @@ export function toFilter(conditions: Condition[], join: 'and' | 'or', objectClas
   const cls: Filter = { eq: { objectClass } };
   return rows ? { and: [cls, rows] } : cls;
 }
+
+/** A value escaped for an LDAP filter (RFC 4515): \, *, (, ) and NUL as \5c, \2a, \28, \29 and \00. */
+function escape(v: string): string {
+  return v.replace(/[\\*()\0]/g, (ch) => `\\${ch.charCodeAt(0).toString(16).padStart(2, '0')}`);
+}
+
+/** {@code f} as LDAP filter text, for requests that take one (Identity Manager's migrate). */
+export function toLdap(f: Filter): string {
+  if ('and' in f && f.and) {
+    return `(&${f.and.map(toLdap).join('')})`;
+  }
+  if ('or' in f && f.or) {
+    return `(|${f.or.map(toLdap).join('')})`;
+  }
+  if ('not' in f && f.not) {
+    return `(!${toLdap(f.not)})`;
+  }
+  if ('present' in f && typeof f.present === 'string') {
+    return `(${f.present}=*)`;
+  }
+  const [op, pair] = Object.entries(f)[0] as [string, Record<string, string>];
+  const [attribute, value] = Object.entries(pair)[0];
+  const v = escape(value);
+  switch (op) {
+    case 'prefix': return `(${attribute}=${v}*)`;
+    case 'suffix': return `(${attribute}=*${v})`;
+    case 'contains': return `(${attribute}=*${v}*)`;
+    case 'gte': return `(${attribute}>=${v})`;
+    case 'lte': return `(${attribute}<=${v})`;
+    case 'approx': return `(${attribute}~=${v})`;
+    default: return `(${attribute}=${v})`;
+  }
+}
