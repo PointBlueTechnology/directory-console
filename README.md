@@ -30,7 +30,9 @@ The log prints a setup link. Open it, check the certificate fingerprint it shows
 as an administrator. That tree becomes the console's first directory, and that administrator its break-glass
 account. You can add more directories (dev, test, production) later under **Settings > Directories**. The
 [quickstart](docs/QUICKSTART.md) walks through every step. To run it as a lasting service on a server or on
-Kubernetes, with or without single sign-on, see [DEPLOYING.md](docs/DEPLOYING.md).
+Kubernetes, with or without single sign-on, see [DEPLOYING.md](docs/DEPLOYING.md). It can also run without a
+container, as a plain Java program, but that is strongly discouraged: every update becomes a manual job
+([how, if you must](docs/DEPLOYING.md#10-without-a-container-not-recommended)).
 
 The image is `ghcr.io/pointbluetechnology/directory-console`, for amd64 and arm64. Tags:
 - `latest` and `<version>`: each release;

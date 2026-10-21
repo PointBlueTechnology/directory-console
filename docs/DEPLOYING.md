@@ -13,6 +13,7 @@ signing people in either with their eDirectory password or through an OpenID Con
 7. [The console's certificate](#7-the-consoles-certificate)
 8. [Behind a reverse proxy or load balancer](#8-behind-a-reverse-proxy-or-load-balancer)
 9. [Check the deployment](#9-check-the-deployment)
+10. [Without a container (not recommended)](#10-without-a-container-not-recommended)
 
 ## 1. Plan
 
@@ -214,3 +215,89 @@ proxy (next section).
   refused.
 - The audit log (Audit log page, **Check the chain**) shows those sign-ins.
 - A backup downloads from **Settings > History and backup**, and you have stored it and its passphrase apart.
+
+## 10. Without a container (not recommended)
+
+The console can run as an ordinary Java program, without Docker or Kubernetes. **We strongly advise against it.**
+The container is the supported install: these steps work, but you take on what the image does for you.
+
+- **Every update is manual.** Each release you stop the console, replace its files by hand and start it again; `docker
+  compose pull` is not there to do it, and going back means keeping the previous files yourself.
+- **Java is yours to keep patched.** The image carries a current Java 21 runtime; here you install and update it.
+- **The hardening is yours to rebuild.** The image runs as a non-root user with a read-only file system and no
+  capabilities; outside it, that is up to the service manager (an example follows).
+- **The update banner and the docs assume the image.** Their upgrade steps are for compose and Kubernetes.
+
+### What you need
+
+- Linux with **Java 21** (a JRE is enough; the image uses Java 21, and that is what is tested).
+- The console's files: `console.jar` and the `lib/` folder beside it. They are in the published image under `/app`;
+  on any machine with Docker, copy them out, for example for 0.3.16:
+
+```bash
+docker create --name dc-files ghcr.io/pointbluetechnology/directory-console:0.3.16
+```
+
+```bash
+docker cp dc-files:/app ./directory-console-0.3.16 && docker rm dc-files
+```
+
+  Or build them from source (see the README): `container/build.sh --artifacts` leaves them in `container/artifacts/`.
+- A user for the service, and a data folder only it can read (`chmod 700`), such as `/var/lib/directory-console`.
+
+### Run it
+
+Put the files in a folder of their own, such as `/opt/directory-console/0.3.16`, and point `/opt/directory-console/current`
+at it, so an update can switch folders and a rollback can switch back. Then run, as the service user:
+
+```bash
+CONSOLE_DATA=/var/lib/directory-console CONSOLE_PORT=8443 CONSOLE_PUBLIC_URL=https://console.example.com:8443 java -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -cp "/opt/directory-console/current/console.jar:/opt/directory-console/current/lib/*" com.pointblue.console.server.Main
+```
+
+The setup link and the certificate's fingerprint are printed when it starts, as in a container (with systemd:
+`journalctl -u directory-console`). The `admin` commands run the same way, with the same `CONSOLE_DATA`:
+
+```bash
+CONSOLE_DATA=/var/lib/directory-console java -jar /opt/directory-console/current/console.jar admin verify-audit
+```
+
+A systemd unit that keeps some of the container's limits:
+
+```ini
+[Unit]
+Description=Directory Console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dconsole
+Environment=CONSOLE_DATA=/var/lib/directory-console
+Environment=CONSOLE_PORT=8443
+Environment=CONSOLE_PUBLIC_URL=https://console.example.com:8443
+# the path to your Java 21
+ExecStart=/usr/bin/java -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -cp "/opt/directory-console/current/console.jar:/opt/directory-console/current/lib/*" com.pointblue.console.server.Main
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/directory-console
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Port 8443 needs no privileges. For 443, put a reverse proxy in front (section 8), or forward the port in the
+firewall, rather than running Java as root.
+
+### Updating, and going back
+
+1. Back up the data folder: stop the service and copy it whole (`cp -a /var/lib/directory-console …`), or download
+   a backup from **Settings > History and backup** first. Read the release's notes in [UPGRADING.md](UPGRADING.md).
+2. Put the new release's files in a new folder; do not copy them over the old ones (the `lib/` jars change names
+   between releases).
+3. Point `current` at the new folder and restart the service.
+
+To go back: point `current` at the previous folder, and restore the data backup if the release notes say the
+configuration format changed.
