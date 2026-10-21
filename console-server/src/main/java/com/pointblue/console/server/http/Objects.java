@@ -50,7 +50,14 @@ import javax.naming.ldap.Rdn;
  * POST   /api/v2/trees/{tree}/objects/{guid}/children       create
  * POST   /api/v2/trees/{tree}/objects/{guid}/rename         {"name"}, If-Match
  * POST   /api/v2/trees/{tree}/objects/{guid}/move           {"newParent": guid}, If-Match
- * DELETE /api/v2/trees/{tree}/objects/{guid}                If-Match
+ * DELETE /api/v2/trees/{tree}/objects/{guid}                If-Match; ?subtree=true with X-Confirm-Count
+ * GET    /api/v2/trees/{tree}/objects/{guid}/subtree        {count, capped}: what a subtree delete would remove
+ * GET    /api/v2/trees/{tree}/objects/{guid}/servers        the servers holding a replica, and the object's values on each
+ * POST   /api/v2/trees/{tree}/objects/{guid}/password       {"password", "mustChange"} (see Tasks)
+ * GET, PATCH /api/v2/trees/{tree}/objects/{guid}/account    sign-in status and restrictions (see Tasks)
+ * POST   /api/v2/trees/{tree}/objects/{guid}/unlock         clear intruder lockout
+ * GET, POST /api/v2/trees/{tree}/objects/{guid}/memberships | members   {"add": [guid], "remove": [guid]}, both sides
+ * POST   /api/v2/trees/{tree}/objects/{guid}/presets/{id}   a task preset (see Presets)
  * GET    /api/v2/trees/{tree}/schema/classes[/{name}]
  * GET    /api/v2/trees/{tree}/schema/attributes[/{name}]
  * </pre>

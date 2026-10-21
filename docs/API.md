@@ -21,11 +21,13 @@ This page covers the conventions they share, and the directory-object routes as 
   - restoring an earlier configuration, downloading a backup and staging a restore;
   - exporting a certificate with its private key.
 - **Production directories:** changes need the `X-Confirm-Directory` header with the directory's name. Exports
-  with a private key need a recent sign-in instead.
+  with a private key need a recent sign-in instead; a password policy check changes nothing and needs neither.
 - **Paths:** `{tree}` in `/api/v2/trees/{tree}/…` is the directory's id. The paths still say `trees`; the UI now
   says directory.
 - **Errors:** problem details (RFC 9457) with a stable `title` code, such as `confirm-directory` or
   `version-conflict`.
+- **Host:** every path but the health checks refuses a `Host` that is not the console's (421, against DNS
+  rebinding). `/api/v2/health/live` and `/ready` answer any `Host`, for probes sent by IP address.
 - **Objects:** objects are addressed by GUID; DNs appear only in JSON.
 - **Concurrent edits:** writes to an object need `If-Match` with the ETag of the last read (`*` overrides).
 - **Audit:** writes are audited with attribute names, never values.
@@ -65,9 +67,26 @@ PATCH  /api/v2/trees/{tree}/objects/{guid}               {"changes": [{"op", "at
 POST   /api/v2/trees/{tree}/objects/{guid}/children      create: {"objectClass", "name": {"type", "value"}, "attributes"}
 POST   /api/v2/trees/{tree}/objects/{guid}/rename        {"name"}
 POST   /api/v2/trees/{tree}/objects/{guid}/move          {"newParent": guid}
-DELETE /api/v2/trees/{tree}/objects/{guid}
+DELETE /api/v2/trees/{tree}/objects/{guid}               ?subtree=true with X-Confirm-Count: the count from …/subtree
+GET    /api/v2/trees/{tree}/objects/{guid}/subtree       {count, capped}: what a subtree delete would remove
+GET    /api/v2/trees/{tree}/objects/{guid}/servers       the servers holding a replica of the object, and its values on each
 GET    /api/v2/trees/{tree}/schema/classes[/{name}], /schema/attributes[/{name}]
 ```
+
+Account and group tasks (`Tasks.java`), and task presets (`Presets.java`):
+
+```
+POST   /api/v2/trees/{tree}/objects/{guid}/password      {"password", "mustChange"?}
+GET    /api/v2/trees/{tree}/objects/{guid}/account       sign-in status and restrictions (login, intruder lockout, expiry, grace, time map)
+PATCH  /api/v2/trees/{tree}/objects/{guid}/account       the same fields, those to change
+POST   /api/v2/trees/{tree}/objects/{guid}/unlock        clear intruder lockout
+GET    /api/v2/trees/{tree}/objects/{guid}/memberships   a user's groups;  POST {"add": [guid], "remove": [guid]}
+GET    /api/v2/trees/{tree}/objects/{guid}/members       a group's members; POST {"add": [guid], "remove": [guid]}
+GET    /api/v2/trees/{tree}/presets                      the presets granted to the caller, with where
+POST   /api/v2/trees/{tree}/objects/{guid}/presets/{id}  {"password", "mustChange", "unlock", "enabled", "attributes": {name: value|null}}
+```
+
+Group changes write both sides (the group's `member` and the user's `groupMembership`), as eDirectory expects.
 
 Lists are sorted windows with a total:
 - small results are sorted by the console;
@@ -171,15 +190,15 @@ secret. A webhook URL is `https://`; `http://` is accepted only for this host.
 
 | Prefix | Handler |
 |---|---|
-| `/api/v2/trees/{tree}/idm/…` | `Idm.java`, with `Jobs`, `JobTypes`, `Associations`, `Trace`, `MappingTables`, `DriverProperties` |
-| `/api/v2/trees/{tree}/edir/…` | `Edir.java`: partitions, replicas, servers, indexes, schema changes, LDAP servers and groups, CEF auditing, SNMP, encryption policies, replica filters |
-| `/api/v2/trees/{tree}/security/…` | `Security.java`: certificates, the CA, password and login policies, PKCS#12 export |
+| `/api/v2/trees/{tree}/idm/…` | `Idm.java`, with `Jobs`, `JobTypes`, `Associations`, `Trace`, `MappingTables`, `DriverProperties`, `Cache`, `Statistics`, `Versions` |
+| `/api/v2/trees/{tree}/edir/…` | `Edir.java`, with `LdapObjects` and `Monitoring`: partitions, replicas, servers, indexes, schema changes, LDAP servers and groups, CEF auditing, SNMP, encryption policies, replica filters |
+| `/api/v2/trees/{tree}/security/…` | `Security.java`: certificates, the CA, PKCS#12 export and import, trusted roots, password and login policies, password checks |
 | `/api/v2/directories/{id}/…` | `Settings.java`: a directory's tier, session limits, service account, sign-in options, roles, presets, single sign-on |
 | `/api/v2/console/trees` | `Trees.java`: the directories people choose from at sign-in, added, renamed and removed |
 | `/api/v2/console/version`, `/updates` | `Updates.java` |
 | `/api/v2/console/expiry` | `Expiry.java` |
 | `/api/v2/console/syslog` | `Syslog.java` |
-| `/api/v2/console/acme` | `AcmeService.java`: the console's own certificate by ACME (DNS-01) |
+| `/api/v2/console/acme`, `/api/v2/console/certificate` | `AcmeService.java`: the console's own certificate, by ACME (DNS-01) or uploaded |
 | `/api/v2/audit`, `/api/v2/config/history`, `/api/v2/console/backup`, `/restore` | `Records.java`: the audit log, configuration history, backup and restore |
 | `/api/v2/console/settings`, `/api/v2/sign-in/options`, `/api/v2/session/other` | `OtherDirectory.java`: sign-in to other directories, trusted proxies |
 | `/api/v2/session…`, `/api/v2/oidc/…`, `/api/v2/config`, `/api/v2/audit/verify`, `/api/v2/health/live` and `/ready` | `Server.java` |
