@@ -1,4 +1,4 @@
-import { type DirObject, type Row, type Value, isAcl, isBinary, isReference, isWithheld } from './api';
+import { type DirObject, type Row, type Value, isAcl, isBinary, isPath, isReference, isWithheld } from './api';
 import { toCsv } from './csv';
 
 /** A value as text for a report: a reference as its DN, binary and withheld values as a note. */
@@ -11,6 +11,9 @@ export function valueText(v: Value): string {
   }
   if (isBinary(v)) {
     return '(binary)';
+  }
+  if (isPath(v)) {
+    return v.raw;
   }
   if (isReference(v)) {
     return v.dn;

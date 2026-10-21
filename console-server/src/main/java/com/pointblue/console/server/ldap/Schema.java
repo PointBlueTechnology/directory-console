@@ -23,6 +23,8 @@ public final class Schema {
     /** RFC 4517 / eDirectory syntax OIDs the console treats specially. */
     public static final String DN_SYNTAX = "1.3.6.1.4.1.1466.115.121.1.12";
     public static final String ACL_SYNTAX = "2.16.840.1.113719.1.1.5.1.17";
+    /** eDirectory's Path: {@code dn#nameSpace#path}, as in nrfAssignedRoles and DirXML-Scope. */
+    public static final String PATH_SYNTAX = "2.16.840.1.113719.1.1.5.1.15";
     /** Syntaxes whose values are bytes: octet string, binary, certificates, JPEG, audio, fax. */
     static final Set<String> BINARY_SYNTAXES = Set.of(
         "1.3.6.1.4.1.1466.115.121.1.40", "1.3.6.1.4.1.1466.115.121.1.5", "1.3.6.1.4.1.1466.115.121.1.8",

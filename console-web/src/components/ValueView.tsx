@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button, Label, Spinner } from '@patternfly/react-core';
-import { type Value, isAcl, isBinary, isReference, isWithheld } from '../api';
+import { type Value, isAcl, isBinary, isPath, isReference, isWithheld } from '../api';
+import { assignment } from '../assignment';
 import { useSession } from '../session';
 import { navigate } from '../router';
 import { explain } from '../help/glossary';
@@ -23,6 +24,15 @@ export function ValueView({ value }: { value: Value }) {
         {value.privileges.length ? value.privileges.join(', ') : 'no rights'} on <strong>{value.attribute}</strong> for{' '}
         {'special' in value.trustee ? <code>{value.trustee.special}</code> : <ReferenceLink dn={value.trustee.dn} name={value.trustee.name} />}
         {' '}<Hint text={explain(value.scope === 'subtree' ? 'aclInheritedBelow' : 'aclThisObject')}><Label isCompact>{value.scope === 'subtree' ? 'inherited below' : 'this object only'}</Label></Hint>
+      </span>
+    );
+  }
+  if (isPath(value)) {
+    // the object it names as a link, then the rest (an nrfAssignedRoles value's assignment details)
+    return (
+      <span>
+        <ReferenceLink dn={value.path.dn} name={value.path.name} />
+        {value.text && <span className={assignment(value.text) ? 'dc-subtle' : 'dc-mono dc-subtle'} title={value.text}> {assignment(value.text) ?? `#${value.space}# ${value.text}`}</span>}
       </span>
     );
   }

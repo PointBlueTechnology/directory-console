@@ -103,7 +103,14 @@ export interface Acl {
 }
 /** A secret attribute (a private key, a login secret): the console says it is set, never what it is. */
 export type Withheld = { withheld: number };
-export type Value = string | Reference | Binary | Acl | Withheld;
+/** eDirectory's Path syntax (dn#nameSpace#text), such as nrfAssignedRoles: the object it names, and the text after it. */
+export interface PathValue { raw: string; path: Reference; space: number; text: string }
+
+export type Value = string | Reference | Binary | Acl | Withheld | PathValue;
+
+export function isPath(v: Value): v is PathValue {
+  return typeof v === 'object' && 'raw' in v && 'path' in v;
+}
 
 export function isWithheld(v: Value): v is Withheld {
   return typeof v === 'object' && 'withheld' in v;

@@ -54,7 +54,33 @@ public final class Values {
             Map<String, Object> acl = acl(s);
             return acl == null ? s : acl;
         }
+        if (type != null && Schema.PATH_SYNTAX.equals(type.syntax())) {
+            Map<String, Object> path = path(s);
+            return path == null ? s : path;
+        }
         return s;
+    }
+
+    /**
+     * {@code dn#nameSpace#path} as {raw, path: {dn, name}, space, text}: the object it names can be linked, and raw is
+     * what is written back. Null when the value does not have that shape.
+     */
+    static Map<String, Object> path(String s) {
+        int a = s.indexOf('#');
+        int b = a < 0 ? -1 : s.indexOf('#', a + 1);
+        if (a <= 0 || b < 0 || !s.substring(a + 1, b).matches("\\d+")) {
+            return null;
+        }
+        Object ref = reference(s.substring(0, a));
+        if (!(ref instanceof Map<?, ?>)) {
+            return null;
+        }
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("raw", s);
+        m.put("path", ref);
+        m.put("space", Integer.parseInt(s.substring(a + 1, b)));
+        m.put("text", s.substring(b + 1));
+        return m;
     }
 
     private static Object reference(String dn) {
@@ -141,6 +167,9 @@ public final class Values {
         if (v instanceof Map<?, ?> m) {
             if (m.containsKey("base64")) {
                 return Base64.getDecoder().decode(String.valueOf(m.get("base64")));
+            }
+            if (m.get("raw") instanceof String raw) {
+                return raw;
             }
             if (type != null && Schema.ACL_SYNTAX.equals(type.syntax())) {
                 return aclString(m, guids);

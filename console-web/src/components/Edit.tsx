@@ -45,14 +45,14 @@ export function AttributeModal({ obj, etag, onClose, onDone, allowed, initial }:
   const [attribute, setAttribute] = useState(initial ?? '');
   const [op, setOp] = useState<'replace' | 'add' | 'remove'>('replace');
   const current = attribute ? obj.attributes[attribute] : undefined;
-  const editable = !current || current.every((v) => typeof v === 'string' || ('dn' in v && !('privileges' in v)));
+  const editable = !current || current.every((v) => typeof v === 'string' || 'raw' in v || ('dn' in v && !('privileges' in v)));
   const [text, setText] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const v = attribute ? obj.attributes[attribute] : undefined;
-    setText(v ? v.map((x) => (typeof x === 'string' ? x : 'dn' in x ? x.dn : '')).join('\n') : '');
+    setText(v ? v.map((x) => (typeof x === 'string' ? x : 'raw' in x ? x.raw : 'dn' in x ? x.dn : '')).join('\n') : '');
   }, [attribute, obj]);
 
   const values = text.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);

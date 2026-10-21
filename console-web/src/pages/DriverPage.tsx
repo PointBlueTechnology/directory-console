@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Breadcrumb, BreadcrumbItem, Button, Card, CardBody, DescriptionList, DescriptionListDescription, DescriptionListGroup,
-  DescriptionListTerm, Flex, FlexItem, Form, FormGroup, FormSelect, FormSelectOption, PageSection, Spinner, Tab, Tabs, TabTitleText,
+  DescriptionListTerm, Flex, FlexItem, Form, FormGroup, PageSection, Spinner, Tab, Tabs, TabTitleText,
   TextInput, Title, ToggleGroup, ToggleGroupItem,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
@@ -10,6 +10,7 @@ import { useServerSignIn } from '../components/ServerSignIn';
 import { useSession } from '../session';
 import { useHeading } from '../heading';
 import { linkProps, useLocation } from '../router';
+import { ServerChooser } from '../components/ServerChooser';
 import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../components/IdmParts';
@@ -65,13 +66,7 @@ export function DriverPage({ guid }: { guid: string }) {
       <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsMd' }} className="dc-tab-body">
         <FlexItem><Title headingLevel="h1">{status.name}</Title></FlexItem>
         {status.state && <FlexItem><StateLabel state={status.state} /></FlexItem>}
-        {servers.length > 1 && (
-          <FlexItem>
-            <FormSelect id="driver-server" aria-label="Server" value={server ?? ''} onChange={(_e, v) => setServer(v || undefined)}>
-              {servers.map((x) => <FormSelectOption key={x.guid} value={x.connected ? '' : x.guid} label={`On ${x.name}${x.connected ? ' (connected)' : ''}`} />)}
-            </FormSelect>
-          </FlexItem>
-        )}
+        <FlexItem><ServerChooser id="driver-server" choices={servers} server={server} onChange={setServer} /></FlexItem>
       </Flex>
       <div className="dc-subtle dc-mono">{status.dn}</div>
       {servers.length > 1 && <p className="dc-subtle">Each server runs its own copy of this driver: state, starting and stopping, the start option, jobs, the cache and named passwords all apply to {(servers.find((x) => x.guid === server) ?? servers.find((x) => x.connected))?.name} only.</p>}

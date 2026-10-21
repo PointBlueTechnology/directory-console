@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Button, Card, CardBody, CardTitle, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm,
-  EmptyState, EmptyStateBody, Flex, FlexItem, FormSelect, FormSelectOption, Label, PageSection, Spinner, Tab, Tabs, TabTitleText, Title,
+  EmptyState, EmptyStateBody, Flex, FlexItem, Label, PageSection, Spinner, Tab, Tabs, TabTitleText, Title,
 } from '@patternfly/react-core';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { type DriverRow, type DriverSet, type IdmStatus, type Job, type Row, type ServerChoice, idm } from '../api';
@@ -9,6 +9,7 @@ import { useServerSignIn } from '../components/ServerSignIn';
 import { useSession } from '../session';
 import { HeadingLevel, useHeading } from '../heading';
 import { linkProps, navigate } from '../router';
+import { ServerChooser } from '../components/ServerChooser';
 import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../components/IdmParts';
@@ -20,7 +21,7 @@ import { StatisticsPanel } from '../components/StatisticsPanel';
 import { DriverSetPropertiesTab } from '../components/DriverProperties';
 import { plan } from '../lifecycle';
 import { Hint, useHelpTopic } from '../help/Help';
-import { explain, tip } from '../help/glossary';
+import { tip } from '../help/glossary';
 
 /** Identity Manager: the engine, the driver sets, and each set's drivers with their state. */
 export function IdmPage({ driverSet }: { driverSet?: string }) {
@@ -106,15 +107,7 @@ function DriverSetView({ api: connected, guid }: { api: ReturnType<typeof idm>; 
       <CardTitle>
         <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsMd' }}>
           <FlexItem><Title headingLevel="h2">{set.name}</Title></FlexItem>
-          {choices.length > 1 && (
-            <FlexItem>
-              <Hint text={explain('idmServer')}>
-                <FormSelect id="set-server" aria-label="Server" value={server ?? ''} onChange={(_e, v) => setServer(v || undefined)}>
-                  {choices.map((x) => <FormSelectOption key={x.guid} value={x.connected ? '' : x.guid} label={`On ${x.name}${x.connected ? ' (connected)' : ''}`} />)}
-                </FormSelect>
-              </Hint>
-            </FlexItem>
-          )}
+          <FlexItem><ServerChooser id="set-server" choices={choices} server={server} onChange={setServer} /></FlexItem>
         </Flex>
         <span className="dc-subtle">{running} of {set.drivers.length} drivers running{on ? ` on ${on.name}` : ''} · <span className="dc-mono">{set.dn}</span></span>
         {choices.length > 1 && <p className="dc-subtle">Each server runs its own copy of these drivers: state, starting and stopping, start options, jobs, caches and passwords all apply to {on?.name ?? 'the chosen server'} only.</p>}
