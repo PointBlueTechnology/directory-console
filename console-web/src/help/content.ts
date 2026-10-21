@@ -87,6 +87,13 @@ export const CONTENT: Record<string, HelpTopic> = {
         ],
       },
       {
+        title: 'Setting a password',
+        list: [
+          'Generate makes a random password from the rules of the policy that governs this user, and has NMAS check it before offering it.',
+          'Copy it from the box under the field before you set it: it is not shown again.',
+        ],
+      },
+      {
         title: 'Password restrictions',
         paragraphs: [
           'These are the account\'s own NDS password restrictions. A Universal Password policy (Security > Password policies) may apply its own rules as well.',
@@ -514,7 +521,16 @@ export const CONTENT: Record<string, HelpTopic> = {
   'security.password-policy': {
     title: 'A password policy',
     summary: 'This policy\'s Universal Password options and rules, and what it is assigned to.',
-    sections: [],
+    sections: [
+      {
+        title: 'Test a password',
+        list: [
+          'Choose a user and type a password, or Generate one from this policy\'s rules. Test asks NMAS whether the policy that governs that user accepts it.',
+          'Nothing is set and nobody signs in, so a test never counts as a failed login. The audit log records that a test was made, never the password.',
+          'NMAS uses the policy governing the user: their own, else the nearest container\'s, else the Login Policy\'s. If that is another policy, the result says so.',
+        ],
+      },
+    ],
     related: ['security.password-policies'],
   },
   'security.challenge-sets': {

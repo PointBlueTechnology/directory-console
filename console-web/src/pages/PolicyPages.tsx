@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActionGroup, Alert, Breadcrumb, BreadcrumbItem, Button, Card, CardBody, CardTitle, Checkbox, Form, FormGroup, FormSection, FormSelect, FormSelectOption,
-  Grid, GridItem, PageSection, Spinner, Switch, TextArea, TextInput, Title,
+  ActionGroup, Alert, Breadcrumb, BreadcrumbItem, Button, Card, CardBody, CardTitle, Checkbox, Flex, FlexItem, Form, FormGroup, FormHelperText, FormSection, FormSelect, FormSelectOption,
+  Grid, GridItem, HelperText, HelperTextItem, PageSection, Spinner, Switch, TextArea, TextInput, Title,
 } from '@patternfly/react-core';
 import { TrashIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
@@ -11,6 +11,7 @@ import { linkProps, navigate } from '../router';
 import { useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
 import { ObjectPicker } from '../components/ObjectPicker';
+import { generatePassword } from '../passwordgen';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { explain } from '../help/glossary';
 import { Hint } from '../help/Help';
@@ -168,6 +169,7 @@ export function PasswordPolicyPage({ guid }: { guid: string }) {
         )}
       </Form>
       <Assignments api={api} p={p} edit={edit} run={run} onChanged={show} />
+      <TestPassword api={api} p={p} />
       {dialog}
       {sure.dialog}
     </PageSection>
@@ -218,6 +220,78 @@ function Assignments({ api, p, edit, run, onChanged }: {
         )}
         <ProblemAlert error={error} />
         {sure.dialog}
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * Try a password against this policy as NMAS applies it to a chosen user (nothing is set), or generate one from the
+ * policy's rules. NMAS checks against the policy that governs that user, which may be another one: the result says so.
+ */
+function TestPassword({ api, p }: { api: ReturnType<typeof security>; p: PasswordPolicy }) {
+  const [user, setUser] = useState<{ guid: string; name: string; dn: string } | null>(null);
+  const [password, setPassword] = useState('');
+  const [result, setResult] = useState<{ passes: boolean; reason: string | null; governing: string | null; same: boolean } | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const check = async () => {
+    if (!user) return;
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const r = await api.passwordCheck(user.guid, password);
+      const g = r.policy.governing ?? null;
+      setResult({ passes: r.passes, reason: r.reason, governing: g?.name ?? null, same: !!g && (g.guid === p.guid || g.dn.toLowerCase() === p.dn.toLowerCase()) });
+    } catch (x) {
+      setError(x);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const generate = () => {
+    setError(null);
+    setResult(null);
+    try {
+      setPassword(generatePassword(p.rules));
+    } catch (x) {
+      setError(x);
+    }
+  };
+  return (
+    <Card className="dc-tab-body">
+      <CardTitle><Title headingLevel="h2" size="lg">Test a password</Title></CardTitle>
+      <CardBody>
+        <p className="dc-subtle">NMAS checks the password against the policy that governs the user you choose. Nothing is set and nobody signs in.</p>
+        {user ? (
+          <p className="dc-tab-body">User: <strong>{user.name}</strong> <span className="dc-mono dc-subtle">{user.dn}</span>{' '}
+            <Button variant="link" isInline onClick={() => { setUser(null); setResult(null); }}>Change</Button></p>
+        ) : (
+          <ObjectPicker label="Find the user to test against" classes={['inetOrgPerson', 'User']}
+            onPick={(r) => { setUser({ guid: r.guid, name: r.name, dn: r.dn }); setResult(null); }} />
+        )}
+        <Form className="dc-tab-body" isWidthLimited onSubmit={(e) => { e.preventDefault(); void check(); }}>
+          <FormGroup label="Password" fieldId="test-pw">
+            <Flex flexWrap={{ default: 'nowrap' }} spaceItems={{ default: 'spaceItemsSm' }}>
+              <FlexItem grow={{ default: 'grow' }}>
+                <TextInput id="test-pw" className="dc-mono" autoComplete="off" value={password} onChange={(_e, v) => { setPassword(v); setResult(null); }} />
+              </FlexItem>
+              <FlexItem><Button variant="secondary" onClick={generate}>Generate</Button></FlexItem>
+            </Flex>
+            <FormHelperText><HelperText><HelperTextItem>Generate makes a random one from this policy's rules.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+          <ActionGroup><Button type="submit" isLoading={busy} isDisabled={busy || !user || !password}>Test</Button></ActionGroup>
+        </Form>
+        {result && (
+          <Alert isInline className="dc-tab-body" variant={result.passes ? 'success' : 'danger'}
+            title={result.passes ? 'The policy accepts it' : `The policy refuses it: ${result.reason}`}>
+            {result.governing
+              ? (result.same ? `${user?.name} is governed by this policy.` : `${user?.name} is governed by ${result.governing}, not this policy: the answer is that policy's.`)
+              : `No password policy governs ${user?.name}.`}
+          </Alert>
+        )}
+        <ProblemAlert error={error} />
       </CardBody>
     </Card>
   );

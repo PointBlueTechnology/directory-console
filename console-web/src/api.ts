@@ -1180,6 +1180,14 @@ export interface PasswordPolicySummary extends Ref {
   assignments: number;
 }
 
+/** The policies over an object, and the one that governs it: its own, else the nearest container's, else the Login Policy's. */
+export interface PolicyFor {
+  own: Ref | null;
+  containers: { container: string; policy: Ref }[];
+  loginPolicy: Ref | null;
+  governing?: Ref | null;
+}
+
 export interface PasswordPolicy extends Ref {
   description?: string;
   rules: PolicyRules;
@@ -1254,7 +1262,10 @@ export function security(id: string) {
       request<PasswordPolicy>('POST', `${base}/password-policies/${guidPath(guid)}/assignments`, { target }, h(confirm)).then((r) => r.data),
     unassign: (guid: string, target: string, confirm?: string) =>
       request<PasswordPolicy>('DELETE', `${base}/password-policies/${guidPath(guid)}/assignments/${guidPath(target)}`, undefined, h(confirm)).then((r) => r.data),
-    policyFor: (guid: string) => get<{ own: Ref | null; containers: { container: string; policy: Ref }[]; loginPolicy: Ref | null }>(`/objects/${guidPath(guid)}/password-policy`),
+    policyFor: (guid: string) => get<PolicyFor>(`/objects/${guidPath(guid)}/password-policy`),
+    /** Whether {@code password} meets the policy governing the object, checked by NMAS; nothing is set. */
+    passwordCheck: (guid: string, password: string) =>
+      request<{ passes: boolean; code: number; reason: string | null; policy: PolicyFor }>('POST', `${base}/objects/${guidPath(guid)}/password-check`, { password }).then((r) => r.data),
     challengeSets: () => get<(Ref & { description?: string; required: number; random: number; randomCount: number })[]>('/challenge-sets'),
     challengeSet: (guid: string) => get<ChallengeSet>(`/challenge-sets/${guidPath(guid)}`),
     createChallengeSet: (body: Partial<ChallengeSet> & { name: string }, confirm?: string) =>

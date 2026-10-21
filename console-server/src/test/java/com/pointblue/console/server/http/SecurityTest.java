@@ -167,6 +167,22 @@ public class SecurityTest {
         assertTrue(edir.server.getEntry("cn=Staff,cn=Password Policies,cn=Security,o=system").hasAttributeValue("nsimAssignments", "ou=Sales,o=acme"));
         Reply seen = call("GET", "/api/v2/trees/acme/security/objects/" + guid("cn=pat,ou=Sales,o=acme") + "/password-policy", null, h);
         assertTrue(String.valueOf(seen.body().get("containers")).contains("cn=Staff"));
+        assertEquals("the nearest container's governs", "cn=Staff,cn=Password Policies,cn=Security,o=system", Json.asMap(seen.body().get("governing")).get("dn"));
+
+        // NMAS checks a password against pat's policy; nothing is set, and the audit has no password
+        String check = "/api/v2/trees/acme/security/objects/" + guid("cn=pat,ou=Sales,o=acme") + "/password-check";
+        Reply weak = call("POST", check, Map.of("password", "abc"), h);
+        assertEquals(String.valueOf(weak.body()), 200, weak.status());
+        assertEquals(false, weak.body().get("passes"));
+        assertEquals(-216, Json.asInt(weak.body().get("code"), 0));
+        assertEquals("it is too short", weak.body().get("reason"));
+        Reply strong = call("POST", check, Map.of("password", "Correct-Horse-7"), h);
+        assertEquals(true, strong.body().get("passes"));
+        assertEquals("cn=Staff,cn=Password Policies,cn=Security,o=system", Json.asMap(Json.asMap(strong.body().get("policy")).get("governing")).get("dn"));
+        assertEquals(List.of("cn=pat,ou=Sales,o=acme", "cn=pat,ou=Sales,o=acme"), edir.policyChecks);
+        String audit = String.valueOf(call("GET", "/api/v2/audit?event=security.password.check", null, h).body().get("entries"));
+        assertTrue(audit, audit.contains("security.password.check") && audit.contains("-216"));
+        assertFalse("the password is never written down", audit.contains("Correct-Horse-7") || audit.contains("abc,") || audit.contains("=abc"));
 
         assertEquals(409, call("DELETE", "/api/v2/trees/acme/security/challenge-sets/" + set.body().get("guid"), null, h).status());
         Reply refused = call("DELETE", "/api/v2/trees/acme/security/password-policies/" + policy, null, h);

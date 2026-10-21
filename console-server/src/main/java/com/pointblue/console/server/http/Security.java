@@ -47,6 +47,7 @@ import javax.naming.directory.SearchControls;
  * PATCH  /api/v2/trees/{tree}/security/password-policies/{guid}              {"description", "rules", "options", "challengeSet"}
  * DELETE /api/v2/trees/{tree}/security/password-policies/{guid}              X-Confirm-Count: its assignments, when it has any
  * POST   /api/v2/trees/{tree}/security/password-policies/{guid}/assignments  {"target": guid}
+ * POST   /api/v2/trees/{tree}/security/objects/{guid}/password-check          {"password"}: whether it meets the object's policy (NMAS; nothing is set)
  * DELETE /api/v2/trees/{tree}/security/password-policies/{guid}/assignments/{target}
  * GET    /api/v2/trees/{tree}/security/objects/{guid}/password-policy        assignments on it and its containers, and the Login Policy's
  * GET    /api/v2/trees/{tree}/security/challenge-sets
@@ -105,7 +106,7 @@ final class Security {
             .replaceAll("assignments/[0-9a-f]{32}$", "assignments/{target}");
         String guid = p.length > 3 && p[2].equals("pki") ? (p.length > 4 ? p[4] : null) : p.length > 3 ? p[3] : null;
         // an export changes nothing; a user's own certificate is theirs to export (checked with the user's DN)
-        boolean export = route.endsWith("/export");
+        boolean export = route.endsWith("/export") || route.equals("POST objects/{guid}/password-check");
         if (!method.equals("GET") && !export || route.equals("POST pki/server-certificates/{guid}/export")) {
             if (!s.principal.may(Role.EDITOR, "")) {
                 throw new Http.Problem(403, "forbidden", "security settings need an editor role for the whole directory");
@@ -129,6 +130,7 @@ final class Security {
                 case "POST password-policies/{guid}/assignments" -> assign(ex, l, s, guid, Http.string(Http.body(ex), "target", true), true);
                 case "DELETE password-policies/{guid}/assignments/{target}" -> assign(ex, l, s, guid, p[5], false);
                 case "GET objects/{guid}/password-policy" -> Http.json(ex, 200, policyFor(l, guid));
+                case "POST objects/{guid}/password-check" -> passwordCheck(ex, l, s, guid);
                 case "GET challenge-sets" -> Http.json(ex, 200, challengeSets(l));
                 case "POST challenge-sets" -> createChallengeSet(ex, l, s);
                 case "GET challenge-sets/{guid}" -> Http.json(ex, 200, challengeSet(l, guid));
@@ -2000,6 +2002,28 @@ final class Security {
     }
 
     /** The policy assignments that could apply to an object: its own, its containers' (nearest first), and the Login Policy's (the tree's). */
+    /**
+     * Whether a password would meet the policy governing an object, checked by NMAS without setting it. Nothing is
+     * changed and the password is never recorded; the audit entry says whose policy was tried and the outcome.
+     */
+    private void passwordCheck(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
+        char[] password = Http.string(Http.body(ex), "password", true).toCharArray();
+        Ldap.Entry e = server.objects.byGuid(l, guid, "objectClass");
+        int code;
+        try {
+            code = l.passwordPolicyCheck(e.dn(), password);
+        } finally {
+            Arrays.fill(password, '\0');
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("passes", code == 0);
+        out.put("code", code);
+        out.put("reason", code == 0 ? null : PasswordRules.reason(code));
+        out.put("policy", policyFor(l, guid));
+        server.audit.log(Server.who(s), "security.password.check", guid, Map.of("dn", e.dn(), "code", code), code == 0 ? "ok" : "refused");
+        Http.json(ex, 200, out);
+    }
+
     private Map<String, Object> policyFor(Ldap l, String guid) throws NamingException {
         Ldap.Entry e = server.objects.byGuid(l, guid, "nspmPasswordPolicyDN");
         Map<String, Object> m = new LinkedHashMap<>();
@@ -2021,6 +2045,9 @@ final class Security {
         String lpDn = sec == null || sec.first("sASLoginPolicyDN") == null ? "cn=Login Policy,cn=Security" : sec.first("sASLoginPolicyDN");
         Ldap.Entry lp = l.read(lpDn, "nspmPasswordPolicyDN");
         m.put("loginPolicy", lp == null ? null : refOf(l, lp.first("nspmPasswordPolicyDN")));
+        // the one that applies: the object's own, else the nearest container's, else the Login Policy's
+        Object governing = m.get("own") != null ? m.get("own") : !containers.isEmpty() ? containers.get(0).get("policy") : m.get("loginPolicy");
+        m.put("governing", governing);
         return m;
     }
 

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Flex, FlexItem, Alert, Button, Checkbox, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, Form,
+  ClipboardCopy, Flex, FlexItem, Alert, Button, Checkbox, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, Form,
   FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, Modal, ModalBody,
   ModalFooter, ModalHeader, TextArea, TextInput,
 } from '@patternfly/react-core';
-import { type DirObject, type Row, type SchemaAttribute, type SchemaClass, ApiError } from '../api';
+import { type DirObject, type Row, type SchemaAttribute, type SchemaClass, ApiError, security } from '../api';
+import { generatePassword } from '../passwordgen';
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
 import { BrowseContainers } from './ContainerChooser';
@@ -382,9 +383,40 @@ export function CreateModal({ parent, onClose, onCreated }: { parent: Row; onClo
 
 /** Set a user's password; optionally expire it so the person must choose a new one at the next login. */
 export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClose: () => void; onDone: () => void }) {
-  const { tree } = useSession();
+  const { tree, me } = useSession();
   const [pw, setPw] = useState('');
   const [again, setAgain] = useState('');
+  const [shown, setShown] = useState<string | null>(null);
+  const [made, setMade] = useState<string | null>(null);
+  const [making, setMaking] = useState(false);
+  // a random password from the rules of the policy that governs this user, confirmed by NMAS (a few tries)
+  const generate = async () => {
+    setMaking(true);
+    setError(null);
+    setMade(null);
+    try {
+      const sec = security(me.directory);
+      const governing = (await sec.policyFor(obj.guid)).governing;
+      const rules = governing?.guid ? (await sec.policy(governing.guid)).rules : { minLength: 12 };
+      let candidate = '';
+      let ok = false;
+      for (let i = 0; i < 5 && !ok; i++) {
+        candidate = generatePassword(rules);
+        ok = (await sec.passwordCheck(obj.guid, candidate)).passes;
+      }
+      if (!ok) {
+        throw new Error('NMAS refused five generated passwords: the policy may need rules the generator cannot see (such as excluded attribute values).');
+      }
+      setPw(candidate);
+      setAgain(candidate);
+      setShown(candidate);
+      setMade(governing ? `Made from ${governing.name}, and checked against it.` : 'No password policy governs this user; made 12 or more characters long.');
+    } catch (e) {
+      setError(e);
+    } finally {
+      setMaking(false);
+    }
+  };
   const [mustChange, setMustChange] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -410,10 +442,17 @@ export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClos
         <Form id="pw-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
           <Target obj={obj} />
           <FormGroup label="New password" fieldId="pw" isRequired>
-            <TextInput id="pw" type="password" autoComplete="new-password" value={pw} onChange={(_e, v) => setPw(v)} autoFocus />
+            <Flex flexWrap={{ default: 'nowrap' }} spaceItems={{ default: 'spaceItemsSm' }}>
+              <FlexItem grow={{ default: 'grow' }}>
+                <TextInput id="pw" type="password" autoComplete="new-password" value={pw} onChange={(_e, v) => { setPw(v); setShown(null); setMade(null); }} autoFocus />
+              </FlexItem>
+              <FlexItem><Button variant="secondary" onClick={() => void generate()} isLoading={making} isDisabled={making}>Generate</Button></FlexItem>
+            </Flex>
+            {shown && <ClipboardCopy isReadOnly hoverTip="Copy" clickTip="Copied" className="dc-tab-body dc-mono">{shown}</ClipboardCopy>}
+            {made && <FormHelperText><HelperText><HelperTextItem>{made} Copy it before you set it: it is not shown again.</HelperTextItem></HelperText></FormHelperText>}
           </FormGroup>
           <FormGroup label="Type it again" fieldId="pw2" isRequired>
-            <TextInput id="pw2" type="password" autoComplete="new-password" value={again} onChange={(_e, v) => setAgain(v)} validated={mismatch ? 'error' : 'default'} />
+            <TextInput id="pw2" type="password" autoComplete="new-password" value={again} onChange={(_e, v) => { setAgain(v); setShown(null); }} validated={mismatch ? 'error' : 'default'} />
             {mismatch && <FormHelperText><HelperText><HelperTextItem variant="error">The passwords differ</HelperTextItem></HelperText></FormHelperText>}
           </FormGroup>
           <Checkbox id="must-change" label="Must change it at the next login" isChecked={mustChange} onChange={(_e, v) => setMustChange(v)} />

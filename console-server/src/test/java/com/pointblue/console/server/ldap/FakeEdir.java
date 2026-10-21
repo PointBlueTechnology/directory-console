@@ -44,6 +44,8 @@ public final class FakeEdir implements AutoCloseable {
     public final TestPki pki;
     public final InMemoryDirectoryServer server;
     /** What GetEffectivePrivileges was asked: target, trustee, attribute. */
+    /** The DNs NMAS policy checks were asked for. */
+    public final List<String> policyChecks = java.util.Collections.synchronizedList(new ArrayList<>());
     public final List<String[]> privilegeRequests = new ArrayList<>();
     public volatile int privileges = 0x1f;
     /** The authorization id of the last modify's RFC 4370 control ("dn:…"), or null when it had none. */
@@ -133,6 +135,37 @@ public final class FakeEdir implements AutoCloseable {
                 privilegeRequests.add(parts);
                 return new ExtendedResult(messageID, ResultCode.SUCCESS, null, null, null, "2.16.840.1.113719.1.27.100.34",
                     new ASN1OctetString(new ASN1Integer(privileges).encode()), null);
+            }
+        });
+        // NMAS's Password Policy Check: a stand-in policy of 8 characters or more (-216, too short, otherwise)
+        cfg.addExtendedOperationHandler(new InMemoryExtendedOperationHandler() {
+            @Override
+            public String getExtendedOperationHandlerName() {
+                return "nmas password policy check";
+            }
+
+            @Override
+            public List<String> getSupportedExtendedRequestOIDs() {
+                return List.of(Ldap.NMAS_POLICY_CHECK);
+            }
+
+            @Override
+            public ExtendedResult processExtendedOperation(InMemoryRequestHandler handler, int messageID, ExtendedRequest request) {
+                try {
+                    com.unboundid.asn1.ASN1Element[] e = com.unboundid.asn1.ASN1Sequence.decodeAsSequence(request.getValue().getValue()).elements();
+                    byte[] dn = e[1].getValue();
+                    byte[] pw = e[2].getValue();
+                    // NMAS's strings end with NUL; a request without one is not what NMAS's library sends
+                    if (ASN1Integer.decodeAsInteger(e[0]).intValue() != 1 || dn[dn.length - 1] != 0 || pw[pw.length - 1] != 0) {
+                        return new ExtendedResult(messageID, ResultCode.PROTOCOL_ERROR, "not an NMAS policy check", null, null, null, null, null);
+                    }
+                    policyChecks.add(new String(dn, 0, dn.length - 1, StandardCharsets.UTF_8));
+                    int code = pw.length - 1 < 8 ? -216 : 0;
+                    return new ExtendedResult(messageID, ResultCode.SUCCESS, null, null, null, "2.16.840.1.113719.1.39.42.100.28",
+                        new ASN1OctetString(new com.unboundid.asn1.ASN1Sequence(new ASN1Integer(1), new ASN1Integer(code)).encode()), null);
+                } catch (Exception x) {
+                    return new ExtendedResult(messageID, ResultCode.PROTOCOL_ERROR, x.getMessage(), null, null, null, null, null);
+                }
             }
         });
         cfg.addExtendedOperationHandler(partitions);
