@@ -41,6 +41,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         list: [
           'The ⋮ menu holds what you may do to this object: edit an attribute, set a user\'s password, enable or disable a user, rename, move, delete, add or remove auxiliary classes, make a container a partition, and task presets granted to you.',
           'Rename and move can leave an alias at the old name or place, so references to it keep working.',
+          'Move: type the new container\'s DN, or use Browse to pick it from the directory\'s containers.',
           'Deleting a container with objects in it asks you to type its name.',
         ],
       },
@@ -60,6 +61,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Reading values',
         list: [
           'A value naming another object is a link: it opens that object.',
+          'A value that names an object and adds to it (eDirectory\'s Path syntax, such as a role assignment in nrfAssignedRoles) shows the object as a link, then the rest; a role assignment reads as since when, by whom and why. Editing uses the value exactly as stored.',
           'Binary values show their size; ACL values show a summary (change rights on the Rights tab).',
           '"Set, never shown" marks values the console never displays, such as password hashes.',
           'Each value stays on one line, cut off with an ellipsis; point at it (or tab to it) to see it in full. Wrap long values shows them all wrapped; this browser remembers the choice.',
@@ -582,7 +584,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Each server runs its own copy',
         paragraphs: [
-          'Driver state, start options, jobs, caches and named passwords belong to one server. The server picker chooses which; it starts on the server the console is connected through.',
+          'Driver state, start options, jobs, caches and named passwords belong to one server. Server, beside the driver set\'s name, says which: a choice when several servers run the driver set, else the one that does. It starts on the server the console is connected through.',
         ],
       },
       {
@@ -766,7 +768,7 @@ export const CONTENT: Record<string, HelpTopic> = {
   // ---- Console certificates and settings -------------------------------------------------------
   'settings.trust': {
     title: 'Trusted certificates',
-    summary: 'The certificates the console accepts from your directories\' servers. This is the console\'s own trust store; it does not change eDirectory.',
+    summary: 'The certificates the console accepts from your directories\' servers, and from the services it calls. This is the console\'s own trust store; it does not change eDirectory.',
     sections: [
       {
         title: 'Kinds of trust',
@@ -784,6 +786,10 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Changed certificates: a pinned server presented a different one. Connections stay refused until you trust the new one; dismiss an alert only once you know why it changed.',
           'Certificates people accepted for directories they entered themselves are listed too, and can be removed.',
         ],
+      },
+      {
+        title: 'What else uses it',
+        paragraphs: ['Single sign-on providers, ACME certificate authorities and syslog servers over TLS are accepted with a certificate from a public CA (Java\'s own list) or from a certificate authority trusted here. Add an internal CA here for those; a CA trusted for one directory also covers that directory\'s single sign-on provider. It applies from the next connection, without a restart.'],
       },
       { title: 'Expiry', paragraphs: ['A banner on every page warns admins of trusted certificates that have expired or expire within 30 days.'] },
       { title: 'Changes', paragraphs: ['Adding or removing trust needs a sign-in within the last 10 minutes.'] },

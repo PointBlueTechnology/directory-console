@@ -79,7 +79,7 @@ export const GLOSSARY = {
   persistentSearch: 'A search that stays open and returns entries as they change.',
   lburp: 'LDAP Bulk Update/Replication Protocol, used by ICE to bulk-load entries. More threads load faster on a busy server.',
   // Identity Manager
-  idmServer: 'Driver state, start options, jobs, caches and passwords belong to one server: this chooses which.',
+  idmServer: 'Driver state, start options, jobs, caches and passwords belong to one server: this says which, and chooses another when several run the driver set.',
   startOption: 'Automatic starts with the engine; Manual waits to be started; Disabled never starts, deletes the driver\'s cache and keeps no events.',
   'start.auto': 'Starts with the engine.',
   'start.manual': 'Waits to be started.',
