@@ -10,7 +10,8 @@ type Kind = 'upper' | 'lower' | 'digit' | 'special';
 const SETS: Record<Kind, string> = { upper: UPPER, lower: LOWER, digit: DIGITS, special: SPECIAL };
 
 const num = (r: PolicyRules, k: string): number | undefined => (typeof r[k] === 'number' ? (r[k] as number) : typeof r[k] === 'string' && /^\d+$/.test(r[k] as string) ? Number(r[k]) : undefined);
-// unset, NMAS treats digits and special characters as not allowed (lab, eDirectory 9.2.8); unset positions are avoided too
+// unset, NMAS treats digits and special characters as not allowed, but a digit or special character first or last as
+// allowed (lab, eDirectory 9.2.8): callers give the position rules a default of true
 const flag = (r: PolicyRules, k: string, dflt = false): boolean => (typeof r[k] === 'boolean' ? (r[k] as boolean) : dflt);
 
 function randomInt(n: number, random: (n: number) => number): number {
@@ -44,10 +45,10 @@ export function breaks(pw: string, r: PolicyRules): string | null {
   if (!flag(r, 'specialAllowed') && count('special')) return 'special characters not allowed';
   const first = pw[0];
   const last = pw[pw.length - 1];
-  if (!flag(r, 'numericFirst') && kindOf(first) === 'digit') return 'digit first';
-  if (!flag(r, 'numericLast') && kindOf(last) === 'digit') return 'digit last';
-  if (!flag(r, 'specialFirst') && kindOf(first) === 'special') return 'special first';
-  if (!flag(r, 'specialLast') && kindOf(last) === 'special') return 'special last';
+  if (!flag(r, 'numericFirst', true) && kindOf(first) === 'digit') return 'digit first';
+  if (!flag(r, 'numericLast', true) && kindOf(last) === 'digit') return 'digit last';
+  if (!flag(r, 'specialFirst', true) && kindOf(first) === 'special') return 'special first';
+  if (!flag(r, 'specialLast', true) && kindOf(last) === 'special') return 'special last';
   const repeated = max('maxRepeated');
   const seen = new Map<string, number>();
   for (const c of pw) seen.set(c, (seen.get(c) ?? 0) + 1);
@@ -132,4 +133,59 @@ export function generatePassword(r: PolicyRules, length = 16, random: (n: number
     }
   }
   throw new Error('No password fits these rules: check the policy\'s minimums and maximums.');
+}
+
+/**
+ * A policy's password rules in a few words each, for a compact line under a password field: length, the minimums and
+ * maximums of each kind, what is not allowed, where digits and special characters may not go, repeats and history.
+ */
+export function describeRules(r: PolicyRules): string[] {
+  const n = (k: string) => num(r, k);
+  const out: string[] = [];
+  const lo = n('minLength');
+  const hi = n('maxLength');
+  if (lo || hi) {
+    out.push(lo && hi ? `${lo}–${hi} characters` : lo ? `at least ${lo} characters` : `at most ${hi} characters`);
+  }
+  const plural = (c: number, one: string, many: string) => `${c} ${c === 1 ? one : many}`;
+  const mins = [
+    n('minUpper') && plural(n('minUpper')!, 'capital', 'capitals'),
+    n('minLower') && plural(n('minLower')!, 'lower-case letter', 'lower-case letters'),
+    n('minNumeric') && plural(n('minNumeric')!, 'digit', 'digits'),
+    n('minSpecial') && plural(n('minSpecial')!, 'special character', 'special characters'),
+  ].filter(Boolean) as string[];
+  if (mins.length) {
+    out.push(`at least ${mins.length > 1 ? `${mins.slice(0, -1).join(', ')} and ${mins[mins.length - 1]}` : mins[0]}`);
+  }
+  const maxs = [
+    n('maxUpper') && plural(n('maxUpper')!, 'capital', 'capitals'),
+    n('maxLower') && plural(n('maxLower')!, 'lower-case letter', 'lower-case letters'),
+    n('maxNumeric') && plural(n('maxNumeric')!, 'digit', 'digits'),
+    n('maxSpecial') && plural(n('maxSpecial')!, 'special character', 'special characters'),
+  ].filter(Boolean) as string[];
+  if (maxs.length) {
+    out.push(`at most ${maxs.join(', ')}`);
+  }
+  const digits = flag(r, 'numericAllowed');
+  const specials = flag(r, 'specialAllowed');
+  if (!digits || !specials) {
+    out.push(!digits && !specials ? 'no digits or special characters' : !digits ? 'no digits' : 'no special characters');
+  }
+  const ends: string[] = [];
+  if (digits && (!flag(r, 'numericFirst', true) || !flag(r, 'numericLast', true))) {
+    ends.push(!flag(r, 'numericFirst', true) && !flag(r, 'numericLast', true) ? 'a digit' : !flag(r, 'numericFirst', true) ? 'a digit first' : 'a digit last');
+  }
+  if (specials && (!flag(r, 'specialFirst', true) || !flag(r, 'specialLast', true))) {
+    ends.push(!flag(r, 'specialFirst', true) && !flag(r, 'specialLast', true) ? 'a special character' : !flag(r, 'specialFirst', true) ? 'a special character first' : 'a special character last');
+  }
+  if (ends.length) {
+    out.push(`not ${ends.join(' or ')} at either end`.replace(/ first at either end| last at either end/g, (m) => m.replace(' at either end', '')));
+  }
+  if (n('maxConsecutive')) out.push(`no character more than ${n('maxConsecutive')} in a row`);
+  if (n('maxRepeated')) out.push(`no character more than ${n('maxRepeated')} times`);
+  if (n('minUnique')) out.push(`at least ${n('minUnique')} different characters`);
+  const excluded = Array.isArray(r.excludeList) ? r.excludeList.length : 0;
+  if (excluded) out.push(`none of ${excluded} excluded word${excluded === 1 ? '' : 's'}`);
+  if (n('historyLimit') && r.uniqueRequired !== false) out.push(`not one of the last ${n('historyLimit')}`);
+  return out;
 }

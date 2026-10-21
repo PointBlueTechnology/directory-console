@@ -16,7 +16,7 @@ export function ProblemAlert({ error, onRetry, title }: { error: unknown; onRetr
         : e?.code === 'would-lock-out' ? 'Not saved: this would lock everyone out of the object'
           : e?.status === 403 ? 'Not allowed' : 'The request failed')}
       actionLinks={onRetry ? <AlertActionLink onClick={onRetry}>{e?.status === 412 ? 'Reload' : 'Try again'}</AlertActionLink> : undefined}>
-      {e ? e.message : String(error)}
+      {error instanceof Error ? error.message : String(error)}
       {nds !== undefined && <> (eDirectory error {nds})</>}
     </Alert>
   );

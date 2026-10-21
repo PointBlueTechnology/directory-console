@@ -89,6 +89,8 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Setting a password',
         list: [
+          'Under the field: the policy that governs this user (its own, else the nearest container\'s, else the Login Policy\'s) and its rules in short.',
+          'A password you type is checked by NMAS first; if the policy refuses it, the reason is shown and nothing is set.',
           'Generate makes a random password from the rules of the policy that governs this user, and has NMAS check it before offering it.',
           'Copy it from the box under the field before you set it: it is not shown again.',
         ],

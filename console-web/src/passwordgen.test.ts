@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { breaks, contradictions, generatePassword } from './passwordgen';
+import { breaks, contradictions, describeRules, generatePassword } from './passwordgen';
 
 describe('generated passwords', () => {
   it('keep the policy\'s rules', () => {
@@ -38,8 +38,22 @@ describe('generated passwords', () => {
     expect(breaks('1abcdefgh', { numericAllowed: true, numericFirst: false })).toBe('digit first');
     expect(breaks('abcdefgh1', {})).toBe('digits not allowed');
     expect(breaks('a1bcdefgh', { numericAllowed: true })).toBeNull();
-    expect(breaks('1abcdefgh', { numericAllowed: true })).toBe('digit first');
+    expect(breaks('1abcdefgh', { numericAllowed: true })).toBeNull();
     expect(breaks('aabcdefg', { maxConsecutive: 1 })).toBe('a character repeats in a row');
     expect(breaks('helloAcmeX', { excludeList: ['acme'] })).toBe('contains an excluded word');
+  });
+});
+
+describe('policy rules in words', () => {
+  it('treat unset first and last positions as allowed, as NMAS does', () => {
+    expect(describeRules({ minLength: 8, numericAllowed: true, specialAllowed: true })).toEqual(['at least 8 characters']);
+  });
+
+  it('fit on one line', () => {
+    expect(describeRules({ minLength: 10, maxLength: 64, minUpper: 1, minNumeric: 1, numericAllowed: true, specialAllowed: true, numericFirst: true,
+      numericLast: true, specialFirst: true, specialLast: true, historyLimit: 8, uniqueRequired: true }))
+      .toEqual(['10–64 characters', 'at least 1 capital and 1 digit', 'not one of the last 8']);
+    expect(describeRules({ minLength: 8, minSpecial: 2, specialAllowed: true, specialLast: true, specialFirst: false, excludeList: ['acme', 'corp'] }))
+      .toEqual(['at least 8 characters', 'at least 2 special characters', 'no digits', 'not a special character first', 'none of 2 excluded words']);
   });
 });

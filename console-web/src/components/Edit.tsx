@@ -4,8 +4,8 @@ import {
   FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, Modal, ModalBody,
   ModalFooter, ModalHeader, TextArea, TextInput,
 } from '@patternfly/react-core';
-import { type DirObject, type Row, type SchemaAttribute, type SchemaClass, ApiError, security } from '../api';
-import { generatePassword } from '../passwordgen';
+import { type DirObject, type PolicyRules, type Row, type SchemaAttribute, type SchemaClass, ApiError, security } from '../api';
+import { describeRules, generatePassword } from '../passwordgen';
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
 import { BrowseContainers } from './ContainerChooser';
@@ -389,6 +389,14 @@ export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClos
   const [shown, setShown] = useState<string | null>(null);
   const [made, setMade] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
+  // the policy that governs this user, and its rules: shown under the field, and what Generate builds from
+  const [policy, setPolicy] = useState<{ name: string; rules: PolicyRules } | null | undefined>(undefined);
+  useEffect(() => {
+    const sec = security(me.directory);
+    sec.policyFor(obj.guid)
+      .then(async (f) => (f.governing?.guid ? { name: f.governing.name, rules: (await sec.policy(f.governing.guid)).rules } : null))
+      .then(setPolicy, () => setPolicy(null));
+  }, [me.directory, obj.guid]);
   // a random password from the rules of the policy that governs this user, confirmed by NMAS (a few tries)
   const generate = async () => {
     setMaking(true);
@@ -396,8 +404,8 @@ export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClos
     setMade(null);
     try {
       const sec = security(me.directory);
-      const governing = (await sec.policyFor(obj.guid)).governing;
-      const rules = governing?.guid ? (await sec.policy(governing.guid)).rules : { minLength: 12, numericAllowed: true, specialAllowed: true, numericLast: true, specialLast: true };
+      const governing = policy ? { name: policy.name } : null;
+      const rules = policy ? policy.rules : { minLength: 12, numericAllowed: true, specialAllowed: true, numericLast: true, specialLast: true };
       let candidate = '';
       let ok = false;
       for (let i = 0; i < 5 && !ok; i++) {
@@ -405,14 +413,14 @@ export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClos
         ok = (await sec.passwordCheck(obj.guid, candidate)).passes;
       }
       if (!ok) {
-        throw new Error('NMAS refused five generated passwords: the policy may need rules the generator cannot see (such as excluded attribute values).');
+        throw new Error(`NMAS refused five generated passwords under ${policy?.name ?? 'the policy'}: it may have rules the generator cannot see (such as excluded attribute values).`);
       }
       setPw(candidate);
       setAgain(candidate);
       setShown(candidate);
       setMade(governing ? `Made from ${governing.name}, and checked against it.` : 'No password policy governs this user; made 12 or more characters long.');
     } catch (e) {
-      setError(e);
+      setError(policy && e instanceof Error && !(e instanceof ApiError) ? new Error(`${policy.name}: ${e.message}`) : e);
     } finally {
       setMaking(false);
     }
@@ -424,6 +432,13 @@ export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClos
     setBusy(true);
     setError(null);
     try {
+      // NMAS says which rule a refused password breaks, in words; eDirectory's own refusal on setting gives only a code
+      const check = await security(me.directory).passwordCheck(obj.guid, pw).catch(() => null);
+      if (check && !check.passes) {
+        const name = check.policy.governing?.name ?? policy?.name;
+        setError(new Error(`${name ? `${name} refuses it` : 'The policy refuses it'}: ${check.reason}.`));
+        return;
+      }
       await tree.password(obj.guid, pw, mustChange);
       setPw('');
       setAgain('');
@@ -450,14 +465,21 @@ export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClos
             </Flex>
             {shown && <ClipboardCopy isReadOnly hoverTip="Copy" clickTip="Copied" className="dc-tab-body dc-mono">{shown}</ClipboardCopy>}
             {made && <FormHelperText><HelperText><HelperTextItem>{made} Copy it before you set it: it is not shown again.</HelperTextItem></HelperText></FormHelperText>}
+            {!made && policy !== undefined && (
+              <FormHelperText><HelperText><HelperTextItem>
+                {policy
+                  ? <><strong>{policy.name}</strong> policy: {describeRules(policy.rules).join(' · ') || 'no character rules'}</>
+                  : 'No password policy governs this user.'}
+              </HelperTextItem></HelperText></FormHelperText>
+            )}
           </FormGroup>
           <FormGroup label="Type it again" fieldId="pw2" isRequired>
             <TextInput id="pw2" type="password" autoComplete="new-password" value={again} onChange={(_e, v) => { setAgain(v); setShown(null); }} validated={mismatch ? 'error' : 'default'} />
             {mismatch && <FormHelperText><HelperText><HelperTextItem variant="error">The passwords differ</HelperTextItem></HelperText></FormHelperText>}
           </FormGroup>
           <Checkbox id="must-change" label="Must change it at the next login" isChecked={mustChange} onChange={(_e, v) => setMustChange(v)} />
-          <HelperText><HelperTextItem>The directory's password policy applies; a refusal shows its reason here.</HelperTextItem></HelperText>
-          <ProblemAlert error={error} />
+          <HelperText><HelperTextItem>{policy ? `The ${policy.name} policy applies` : 'The directory\'s password policy applies'}; a refusal shows its reason here.</HelperTextItem></HelperText>
+          <ProblemAlert error={error} title={error && !(error instanceof ApiError) ? 'Not set' : undefined} />
         </Form>
       </ModalBody>
       <ModalFooter>
