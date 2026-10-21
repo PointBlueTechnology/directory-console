@@ -122,6 +122,17 @@ A parameter's value is checked against the job's own definition (a list is an ar
 choices); only each changed `<value>` is rewritten. `scope: []` removes the objects unless the job type needs
 some. A password-ref parameter's value is the name of the job's named password, set with the passwords route.
 
+## Passwords, new in 0.3.14
+
+```
+POST /api/v2/trees/{tree}/security/objects/{guid}/password-check   {"password"}: {passes, code, reason, policy}
+GET  /api/v2/trees/{tree}/security/objects/{guid}/password-policy  {own, containers, loginPolicy, governing}
+```
+
+The check is NMAS's Password Policy Check (`2.16.840.1.113719.1.39.42.100.17`): nothing is set and nobody signs in.
+`code` is NMAS's or eDirectory's (0 when it passes; -216 too short, -16000 too long, -16057 digits or special
+characters the policy does not allow, and so on).
+
 ## Console settings
 
 ```
