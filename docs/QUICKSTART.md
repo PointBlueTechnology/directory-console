@@ -1,6 +1,7 @@
 # Directory Console quickstart
 
-Directory Console runs as one container. You need:
+This quickstart runs Directory Console with Docker, the recommended way (for Kubernetes, or without a container,
+see [DEPLOYING.md](DEPLOYING.md)). You need:
 
 - **Docker:** Docker Desktop on Windows or macOS, or Docker Engine with the compose plugin on Linux.
 - **Your eDirectory tree:** one of its servers' address, with LDAPS (normally port 636) reachable from this

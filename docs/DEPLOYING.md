@@ -1,6 +1,7 @@
 # Deploying Directory Console
 
-How to run the console as a lasting service in a container: on a server with Docker, or on Kubernetes, and
+How to run the console as a lasting service: in a container on a server with Docker, or on Kubernetes (both
+recommended), or as a plain Java program without a container (possible, but discouraged; section 10), and
 signing people in either with their eDirectory password or through an OpenID Connect provider (single sign-on).
 [QUICKSTART.md](QUICKSTART.md) is the short version for trying it out on your own machine.
 

@@ -4,7 +4,8 @@
 > edges and changes between versions. Try it on a non-production tree first, and see
 > [docs/STATUS.md](docs/STATUS.md) for what works and what does not yet.
 
-A web console for NetIQ/OpenText **eDirectory** and **Identity Manager**. It runs as one container.
+A web console for NetIQ/OpenText **eDirectory** and **Identity Manager**: one Java 21 server. It is published as a
+container image, the recommended way to run it.
 
 - **Directory objects:** browse, search, edit and manage objects.
 - **eDirectory administration:** schema, partitions and replicas, indexes, LDAP servers, auditing, SNMP, encryption, password policies and certificates.
@@ -12,14 +13,22 @@ A web console for NetIQ/OpenText **eDirectory** and **Identity Manager**. It run
 
 Every action runs with the signed-in person's own eDirectory rights, and every change is audited.
 
-- **Install:** [docs/QUICKSTART.md](docs/QUICKSTART.md), including Docker Desktop on Windows.
+- **Install:** [docs/QUICKSTART.md](docs/QUICKSTART.md) to try it with Docker (Docker Desktop on Windows too);
+  [docs/DEPLOYING.md](docs/DEPLOYING.md) for a lasting install.
 - **Upgrade:** [docs/UPGRADING.md](docs/UPGRADING.md).
 - **What works today, and what does not yet:** [docs/STATUS.md](docs/STATUS.md).
 
 ## Install
 
-You need Docker and an eDirectory tree whose LDAPS port the console can reach. Get
-[`compose.yaml`](compose.yaml) (also attached to each [release](../../releases/latest)), then:
+You need an eDirectory tree whose LDAPS port the console can reach, and one of these:
+
+| Way | For | Guide |
+|---|---|---|
+| **Docker** (with compose) | Recommended: trying it, and a lasting install on a server | below, then [QUICKSTART](docs/QUICKSTART.md) and [DEPLOYING](docs/DEPLOYING.md#2-run-it-on-a-server-with-docker) |
+| **Kubernetes** | Clusters | [DEPLOYING](docs/DEPLOYING.md#3-run-it-on-kubernetes), with [`kubernetes.yaml`](container/kubernetes.yaml) |
+| **Plain Java 21**, no container | Possible, but strongly discouraged: every update is a manual job, and Java and the hardening are yours to keep | [DEPLOYING](docs/DEPLOYING.md#10-without-a-container-not-recommended) |
+
+With Docker: get [`compose.yaml`](compose.yaml) (also attached to each [release](../../releases/latest)), then:
 
 ```bash
 docker compose up -d
@@ -29,10 +38,8 @@ docker compose logs console
 The log prints a setup link. Open it, check the certificate fingerprint it shows, and sign in to your tree
 as an administrator. That tree becomes the console's first directory, and that administrator its break-glass
 account. You can add more directories (dev, test, production) later under **Settings > Directories**. The
-[quickstart](docs/QUICKSTART.md) walks through every step. To run it as a lasting service on a server or on
-Kubernetes, with or without single sign-on, see [DEPLOYING.md](docs/DEPLOYING.md). It can also run without a
-container, as a plain Java program, but that is strongly discouraged: every update becomes a manual job
-([how, if you must](docs/DEPLOYING.md#10-without-a-container-not-recommended)).
+[quickstart](docs/QUICKSTART.md) walks through every step; [DEPLOYING.md](docs/DEPLOYING.md) covers a lasting
+install, with or without single sign-on.
 
 The image is `ghcr.io/pointbluetechnology/directory-console`, for amd64 and arm64. Tags:
 - `latest` and `<version>`: each release;
@@ -111,28 +118,32 @@ docker compose up -d
   - **Audit log:** hash-chained, so tampering shows, and can be forwarded to syslog as CEF.
   - **Writes:** each one is audited with attribute names, never values.
 - **Hardened container:** distroless Java 21 as a non-root user, with a read-only root file system. Everything
-  the console keeps is in the `/data` volume.
+  the console keeps is in one data folder (the `/data` volume in the container).
 
 ## Configuration
 
-Almost everything is configured in the console itself. The container takes a few environment variables:
+Almost everything is configured in the console itself. The server takes a few environment variables (set in
+`compose.yaml`, the Kubernetes manifest, or the service's environment without a container):
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `CONSOLE_PUBLIC_URL` | `https://localhost:8443` | How browsers reach the console; its host name goes into the console's certificate. |
-| `CONSOLE_PORT` | `8443` | The HTTPS port inside the container. |
-| `CONSOLE_DATA` | `/data` | Where the configuration, certificates and audit log are kept. |
+| `CONSOLE_PORT` | `8443` | The HTTPS port it listens on (inside the container, when in one). |
+| `CONSOLE_DATA` | `/data` | Where the configuration, certificates and audit log are kept: owner-only, and only one console at a time. |
 | `HTTPS_PROXY` | none | A proxy for the release check and webhooks. |
 | `CONSOLE_UPDATE_URL` | GitHub's latest-release API | Where the release check looks; for a mirror. |
 
 The console's outbound connections are listed in [UPGRADING.md](docs/UPGRADING.md#outbound-connections-and-air-gapped-consoles).
 
-Commands for the host, run in the folder with `compose.yaml`:
+Administration commands. With compose, run them in the folder with `compose.yaml`:
 
 ```bash
 docker compose exec console java -jar /app/console.jar admin verify-audit      # check the audit chain
 docker compose exec console java -jar /app/console.jar admin reset-bootstrap   # set up again on the next start
 ```
+
+On Kubernetes, the same through `kubectl exec`; without a container, `java -jar console.jar admin …` with the same
+`CONSOLE_DATA` ([DEPLOYING](docs/DEPLOYING.md)).
 
 ## Building from source
 
