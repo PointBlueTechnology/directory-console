@@ -236,6 +236,14 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Export CSV or Export JSON saves every match, not only this page, up to 10,000: the DN, name and class, then the columns. In CSV a value a spreadsheet would run as a formula is kept as text.',
         ],
       },
+      {
+        title: 'Saved searches',
+        list: [
+          'Save this search keeps the whole form (where, class, conditions or LDAP filter, sort and columns) under a name. Saving under a name already used replaces it.',
+          'Choose a saved search to fill in the form and run it.',
+          'Saved searches are kept in this browser, for this directory only: another browser or computer does not have them.',
+        ],
+      },
     ],
   },
   schema: {

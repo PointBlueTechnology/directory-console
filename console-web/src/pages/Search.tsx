@@ -14,12 +14,13 @@ import { RowsTable } from '../components/RowsTable';
 import { ProblemAlert } from '../components/Problem';
 import { BrowseContainers } from '../components/ContainerChooser';
 import { ConditionsEditor, EMPTY_CONDITION } from '../components/Conditions';
+import { type SavedSearch, loadSearches, removeSearch, saveSearch } from '../savedSearches';
 import { columnList, reportCsv, reportJson, valueText, valuesOf } from '../report';
 
 
 /** A structured search: conditions on attributes, never filter text (unless the advanced filter is chosen). */
 export function Search() {
-  const { tree } = useSession();
+  const { tree, me } = useSession();
   const { query } = useLocation();
   const selected = query.get('object');
   const [classes, setClasses] = useState<SchemaClass[]>([]);
@@ -91,29 +92,75 @@ export function Search() {
     }
   };
 
-  const run = (e: React.FormEvent) => {
-    e.preventDefault();
+  // the form as it stands, as a saved search holds it
+  const current = (name = ''): SavedSearch => ({ name, base, scope, objectClass, conditions, join, advanced, ldapFilter, sort, columns: columnsText,
+    savedAt: new Date().toISOString() });
+
+  const search = (v: SavedSearch) => {
     setError(null);
     try {
-      const r: SearchRequest = { scope, sort: { attribute: sort.trim() || 'cn' } };
-      const cols = columnList(columnsText);
+      const r: SearchRequest = { scope: v.scope, sort: { attribute: v.sort.trim() || 'cn' } };
+      const cols = columnList(v.columns);
       if (cols.length) {
         r.attributes = cols;
       }
       setColumns(cols);
       setExportNote(null);
-      if (base.trim()) {
-        r.base = { dn: base.trim() };
+      if (v.base.trim()) {
+        r.base = { dn: v.base.trim() };
       }
-      if (advanced) {
-        r.ldapFilter = ldapFilter.trim();
+      if (v.advanced) {
+        r.ldapFilter = v.ldapFilter.trim();
       } else {
-        r.filter = toFilter(conditions, join, objectClass || undefined);
+        r.filter = toFilter(v.conditions, v.join, v.objectClass || undefined);
       }
       setPageNo(1);
       setRequest(r);
     } catch (x) {
       setError(x);
+    }
+  };
+  const run = (e: React.FormEvent) => {
+    e.preventDefault();
+    search(current());
+  };
+
+  // this browser's saved searches for this directory
+  const [saved, setSaved] = useState<SavedSearch[]>(() => loadSearches(me.directory));
+  const [chosen, setChosen] = useState('');
+  const [naming, setNaming] = useState<string | null>(null);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
+  const open = (name: string) => {
+    setChosen(name);
+    const v = saved.find((x) => x.name === name);
+    if (!v) {
+      return;
+    }
+    setBase(v.base); setScope(v.scope); setObjectClass(v.objectClass); setConditions(v.conditions.length ? v.conditions : [{ ...EMPTY_CONDITION }]);
+    setJoin(v.join); setAdvanced(v.advanced); setLdapFilter(v.ldapFilter); setSort(v.sort); setColumnsText(v.columns);
+    search(v);
+  };
+  const keep = () => {
+    const name = (naming ?? '').trim();
+    if (!name) {
+      return;
+    }
+    try {
+      setSaved(saveSearch(me.directory, current(name)));
+      setChosen(name);
+      setNaming(null);
+      setSavedNote(`Saved as ${name}, in this browser.`);
+    } catch {
+      setSavedNote('This browser would not keep it (private window or blocked storage).');
+    }
+  };
+  const forget = () => {
+    try {
+      setSaved(removeSearch(me.directory, chosen));
+      setSavedNote(`${chosen} is no longer saved.`);
+      setChosen('');
+    } catch {
+      setSavedNote('This browser would not change its saved searches.');
     }
   };
 
@@ -126,6 +173,28 @@ export function Search() {
       <Title headingLevel="h1">Search</Title>
       <Card isCompact>
         <CardBody>
+          <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsSm' }} className="dc-saved-searches">
+            <FlexItem>
+              <FormSelect id="saved" aria-label="Saved searches" value={chosen} onChange={(_e, v) => open(v)} isDisabled={saved.length === 0}>
+                <FormSelectOption value="" label={saved.length ? 'Saved searches…' : 'No saved searches yet'} isPlaceholder />
+                {saved.map((x) => <FormSelectOption key={x.name} value={x.name} label={x.name} />)}
+              </FormSelect>
+            </FlexItem>
+            {naming === null ? (
+              <>
+                <FlexItem><Button variant="secondary" size="sm" onClick={() => { setNaming(chosen); setSavedNote(null); }}>Save this search</Button></FlexItem>
+                {chosen && <FlexItem><Button variant="link" size="sm" isDanger onClick={forget}>Delete {chosen}</Button></FlexItem>}
+              </>
+            ) : (
+              <>
+                <FlexItem><TextInput aria-label="Name for the search" placeholder="A name, such as Sales staff" value={naming} autoFocus
+                  onChange={(_e, v) => setNaming(v)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); keep(); } }} /></FlexItem>
+                <FlexItem><Button size="sm" onClick={keep} isDisabled={!naming.trim()}>Save</Button></FlexItem>
+                <FlexItem><Button variant="link" size="sm" onClick={() => setNaming(null)}>Cancel</Button></FlexItem>
+              </>
+            )}
+            {savedNote && <FlexItem><span className="dc-subtle">{savedNote}</span></FlexItem>}
+          </Flex>
           <Form onSubmit={run} isWidthLimited>
             <datalist id="attribute-names">{attributes.map((a) => <option key={a.name} value={a.name} />)}</datalist>
             <FormGroup label="Search under" fieldId="base">
