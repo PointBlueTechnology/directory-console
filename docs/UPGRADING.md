@@ -1,7 +1,9 @@
 # Upgrading Directory Console
 
 Directory Console keeps everything it needs in its data volume: settings, certificates, trust and the
-audit log. Upgrading replaces the container with a newer image and keeps the volume.
+audit log. Upgrading replaces the container with a newer image and keeps the volume. This page covers compose
+and `docker run` installs, and [Kubernetes](#upgrade-on-kubernetes); an install without a container is upgraded by
+hand ([DEPLOYING.md](DEPLOYING.md#updating-and-going-back)).
 
 Administrators see a banner when a newer release is out, if the daily update check is on
 (**Settings > Updates**). From version 0.3.4, your current version is at the foot of the navigation (in 0.3.3, in the user menu, top right).
@@ -47,7 +49,7 @@ its encrypted configuration.
 and backup**, encrypted with a passphrase of their choosing. It holds the configuration and its history, the trust
 store, the console's TLS key and certificate, the configuration key and, optionally, the audit log. To restore one,
 choose the file there and give its passphrase: it is checked, then applied when the console next starts
-(`docker compose restart`). A backup's audit log is restored only onto a console whose audit log is empty, such as a
+(`docker compose restart`, or restart the pod or service). A backup's audit log is restored only onto a console whose audit log is empty, such as a
 new volume. A volume backup, as above, is still the one to take before an upgrade.
 
 ## Upgrade with compose
@@ -91,6 +93,23 @@ docker run -d --name directory-console --read-only --tmpfs /tmp --cap-drop ALL -
 ```
 
 Removing the container does not remove the `console-data` volume.
+
+## Upgrade on Kubernetes
+
+Back up first: a volume snapshot of the `console-data` claim, or a backup from **Settings > History and backup**.
+Then change the image tag to the new version (pin versions on Kubernetes rather than following `latest`):
+
+```bash
+kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.3.16
+```
+
+```bash
+kubectl -n directory-console rollout status deploy/directory-console
+```
+
+The deployment's `Recreate` strategy stops the old pod before the new one starts, so the two never share the
+volume; expect a minute without the console. Going back is the same command with the earlier version, after
+restoring the backup if the release notes say the configuration format changed. Kubernetes needs 0.3.10 or later.
 
 ## Choosing when to upgrade: pin a version
 
@@ -187,12 +206,17 @@ The console makes these outbound connections:
   choose) and **your webhooks** (HTTPS), only when certificate expiry notices are set up.
 - **Your syslog server** (6514 over TLS, or 514 over TCP or UDP), only when forwarding is on.
 - **Your ACME CA** (HTTPS) and **your DNS server** (TCP 53, dynamic updates), only when the console gets its own certificate by ACME.
+- **Your single sign-on provider** (HTTPS: its discovery document, keys and token endpoint), only for a directory with
+  single sign-on set up.
 
 If the console cannot reach the internet, turn off the update check in **Settings > Updates**, or leave it on:
 a failed check only shows a notice, and nothing else is affected. If your network uses a proxy, give it to the
 container as `HTTPS_PROXY`, for example in `compose.yaml` under `environment:`. `HTTPS_PROXY` is used for the
-release check and webhooks. Mail and syslog connect directly. The mail server and webhooks need certificates from
-a public CA. A syslog server's certificate may also come from a CA in the console's trust store.
+release check, webhooks and the ACME CA. Mail, syslog, the single sign-on provider and DNS updates connect directly.
 
-To upgrade without internet access, copy the image across with `docker save` and `docker load`, then follow the
-steps above.
+Certificates: the mail server and webhooks need certificates from a public CA. The single sign-on provider, the ACME
+CA and a syslog server over TLS may also use a certificate from a CA in the console's trust store
+(**Settings > Trusted certificates**).
+
+To upgrade without internet access, copy the image across with `docker save` and `docker load` (or push it to
+your own registry for Kubernetes), then follow the steps above.
