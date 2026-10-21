@@ -13,6 +13,10 @@ container image, the recommended way to run it.
 
 Every action runs with the signed-in person's own eDirectory rights, and every change is audited.
 
+![Browsing the tree, with a user open beside the list](docs/images/browse.png)
+
+More screenshots: [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
+
 - **Install:** [docs/QUICKSTART.md](docs/QUICKSTART.md) to try it with Docker (Docker Desktop on Windows too);
   [docs/DEPLOYING.md](docs/DEPLOYING.md) for a lasting install.
 - **Upgrade:** [docs/UPGRADING.md](docs/UPGRADING.md).
@@ -191,7 +195,7 @@ Sign in as `cn=admin,o=system` / `admin-pw`, or `viewer` / `viewer-pw` for the r
 | `console-auth` | OpenID Connect sign-in and merged TLS trust; also used by DirXMLDevWeb. |
 | `console-theme` | Point Blue's PatternFly design tokens; also used by DirXMLDevWeb. |
 | `container` | The image and its build script. |
-| `docs` | The [quickstart](docs/QUICKSTART.md), [upgrading](docs/UPGRADING.md), [status](docs/STATUS.md) and [API notes](docs/API.md). |
+| `docs` | The [quickstart](docs/QUICKSTART.md), [deploying](docs/DEPLOYING.md), [upgrading](docs/UPGRADING.md), [status](docs/STATUS.md), [API notes](docs/API.md) and [screenshots](docs/SCREENSHOTS.md). |
 
 ### Lab checks
 
