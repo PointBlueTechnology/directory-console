@@ -1,6 +1,6 @@
 {
   "name": "directory-console-web",
-  "version": "0.3.14",
+  "version": "0.3.15",
   "private": true,
   "type": "module",
   "description": "Directory Console's web UI: PatternFly 6, served by console-server.",
