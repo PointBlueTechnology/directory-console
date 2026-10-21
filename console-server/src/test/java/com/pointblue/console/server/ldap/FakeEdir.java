@@ -152,16 +152,16 @@ public final class FakeEdir implements AutoCloseable {
             @Override
             public ExtendedResult processExtendedOperation(InMemoryRequestHandler handler, int messageID, ExtendedRequest request) {
                 try {
+                    // {version 1, DN, {flags, {password}}}, as eDirectory's libnmasldap reads it
                     com.unboundid.asn1.ASN1Element[] e = com.unboundid.asn1.ASN1Sequence.decodeAsSequence(request.getValue().getValue()).elements();
-                    byte[] dn = e[1].getValue();
-                    byte[] pw = e[2].getValue();
-                    // NMAS's strings end with NUL; a request without one is not what NMAS's library sends
-                    if (ASN1Integer.decodeAsInteger(e[0]).intValue() != 1 || dn[dn.length - 1] != 0 || pw[pw.length - 1] != 0) {
+                    com.unboundid.asn1.ASN1Element[] inner = com.unboundid.asn1.ASN1Sequence.decodeAsSequence(e[2]).elements();
+                    if (ASN1Integer.decodeAsInteger(e[0]).intValue() != 1 || ASN1Integer.decodeAsInteger(inner[0]).intValue() != 0) {
                         return new ExtendedResult(messageID, ResultCode.PROTOCOL_ERROR, "not an NMAS policy check", null, null, null, null, null);
                     }
-                    policyChecks.add(new String(dn, 0, dn.length - 1, StandardCharsets.UTF_8));
-                    int code = pw.length - 1 < 8 ? -216 : 0;
-                    return new ExtendedResult(messageID, ResultCode.SUCCESS, null, null, null, "2.16.840.1.113719.1.39.42.100.28",
+                    byte[] pw = com.unboundid.asn1.ASN1Sequence.decodeAsSequence(inner[1]).elements()[0].getValue();
+                    policyChecks.add(new String(e[1].getValue(), StandardCharsets.UTF_8));
+                    int code = pw.length < 8 ? -216 : 0;
+                    return new ExtendedResult(messageID, ResultCode.SUCCESS, null, null, null, "2.16.840.1.113719.1.39.42.100.18",
                         new ASN1OctetString(new com.unboundid.asn1.ASN1Sequence(new ASN1Integer(1), new ASN1Integer(code)).encode()), null);
                 } catch (Exception x) {
                     return new ExtendedResult(messageID, ResultCode.PROTOCOL_ERROR, x.getMessage(), null, null, null, null, null);

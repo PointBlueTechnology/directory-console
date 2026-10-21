@@ -159,6 +159,68 @@ public final class LivePkiStep {
                     d.put("If-Match", "*");
                     show(call("DELETE", t + "/objects/" + ou + "?subtree=true", null, d));
                 }
+                // NMAS's password policy check for a user, with candidates that are never set: short, long, fits
+                case "pw-check" -> {
+                    String g = guid(t, h, args[3]);
+                    Map<String, String> candidates = new java.util.LinkedHashMap<>();
+                    candidates.put("3 characters", "Ab1");
+                    candidates.put("15 characters", "Abcdefgh1234567");
+                    candidates.put("8 characters", "Abc12345");
+                    for (int i = 4; i < args.length; i++) {
+                        candidates.put("given " + (i - 3), args[i]);
+                    }
+                    for (Map.Entry<String, String> c : candidates.entrySet()) {
+                        LiveSetupCheck.Reply r = call("POST", t + "/security/objects/" + g + "/password-check", Map.of("password", c.getValue()), h);
+                        System.out.println(c.getKey() + ": [" + r.status() + "] passes=" + r.body().get("passes") + " code=" + r.body().get("code")
+                            + " reason=" + r.body().get("reason") + (r.status() == 200 ? " governing=" + Json.asMap(Json.asMap(r.body().get("policy")).get("governing")).get("name") : " " + r.body()));
+                    }
+                }
+                // a throwaway policy with strict rules, assigned to the test OU only: one candidate per rule broken, then removed
+                case "pw-rules" -> {
+                    String ou = guid(t, h, args[3]);
+                    String user = guid(t, h, args[4]);
+                    Map<String, Object> rules = new java.util.LinkedHashMap<>();
+                    if (args.length > 5) {   // a rule set as JSON, and only the candidates named after it
+                        rules.putAll(Json.asMap(Json.parse(args[5])));
+                    } else {
+                    rules.put("minLength", 8); rules.put("maxLength", 16); rules.put("minUpper", 1); rules.put("minLower", 1);
+                    rules.put("minNumeric", 1); rules.put("minSpecial", 1); rules.put("numericFirst", false); rules.put("specialLast", false);
+                    rules.put("maxRepeated", 2); rules.put("maxConsecutive", 1); rules.put("minUnique", 6); rules.put("excludeList", List.of("acme"));
+                    rules.put("maxUpper", 4);
+                    }
+                    java.util.Set<String> only = args.length > 6 ? java.util.Set.of(args[6].split(",")) : null;
+                    LiveSetupCheck.Reply made = call("POST", t + "/security/password-policies", Map.of("name", "dc-pwtest-policy", "rules", rules), h);
+                    show(made);
+                    String policy = (String) made.body().get("guid");
+                    try {
+                        show(call("POST", t + "/security/password-policies/" + policy + "/assignments", Map.of("target", ou), h));
+                        Map<String, String> c = new java.util.LinkedHashMap<>();
+                        c.put("fits", "Kp7#mwqz");
+                        c.put("no upper", "kp7#mwqz");
+                        c.put("no lower", "KP7#MWQZ");
+                        c.put("too many upper", "KPRSTW7#mz");
+                        c.put("no digit", "Kpx#mwqz");
+                        c.put("no special", "Kp7rmwqz");
+                        c.put("digit first", "7Kp#mwqz");
+                        c.put("special last", "Kp7mwqz#");
+                        c.put("same twice in a row", "Kp7#mwqq");
+                        c.put("one character 3 times", "Kp7#mama");
+                        c.put("too few unique", "Kp7#KpK7");
+                        c.put("excluded word", "Kp7#acmeX");
+                        c.put("too long", "Kp7#mwqzabcdefghj");
+                        for (Map.Entry<String, String> e : c.entrySet()) {
+                            if (only != null && !only.contains(e.getKey())) {
+                                continue;
+                            }
+                            LiveSetupCheck.Reply r = call("POST", t + "/security/objects/" + user + "/password-check", Map.of("password", e.getValue()), h);
+                            System.out.println(e.getKey() + ": passes=" + r.body().get("passes") + " code=" + r.body().get("code") + " governing="
+                                + (r.status() == 200 ? Json.asMap(Json.asMap(r.body().get("policy")).get("governing")).get("name") : r.body()));
+                        }
+                    } finally {
+                        show(call("DELETE", t + "/security/password-policies/" + policy + "/assignments/" + ou, null, h));
+                        show(call("DELETE", t + "/security/password-policies/" + policy, null, h));
+                    }
+                }
                 // READ-ONLY: any GET under the tree's API, such as schema/attributes/cefConfiguration
                 case "get" -> show(call("GET", t + "/" + args[3], null, h));
                 // WRITE then RESTORE: a CEF configuration on one server, read back, then removed (eDirectory's defaults again)

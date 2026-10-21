@@ -3,7 +3,8 @@ import { breaks, generatePassword } from './passwordgen';
 
 describe('generated passwords', () => {
   it('keep the policy\'s rules', () => {
-    const rules = { minLength: 12, maxLength: 20, minUpper: 2, minLower: 2, minNumeric: 2, minSpecial: 1, maxSpecial: 2, numericFirst: false, specialFirst: false,
+    const rules = { minLength: 12, maxLength: 20, minUpper: 2, minLower: 2, minNumeric: 2, minSpecial: 1, maxSpecial: 2, numericAllowed: true, specialAllowed: true,
+      numericFirst: false, specialFirst: false,
       specialLast: false, maxRepeated: 1, maxConsecutive: 1, minUnique: 10, excludeList: ['acme'] };
     for (let i = 0; i < 200; i++) {
       const pw = generatePassword(rules, 14);
@@ -12,7 +13,8 @@ describe('generated passwords', () => {
     }
   });
 
-  it('leave out what the policy does not allow', () => {
+  it('leave out what the policy does not allow, or leaves unset (NMAS does not allow it then)', () => {
+    expect(generatePassword({ minLength: 8 })).toMatch(/^[A-Za-z]+$/);
     const rules = { minLength: 8, numericAllowed: false, specialAllowed: false };
     for (let i = 0; i < 50; i++) {
       expect(generatePassword(rules)).toMatch(/^[A-Za-z]+$/);
@@ -30,7 +32,10 @@ describe('generated passwords', () => {
 
   it('notice broken rules', () => {
     expect(breaks('short', { minLength: 8 })).toBe('too short');
-    expect(breaks('1abcdefgh', { numericFirst: false })).toBe('digit first');
+    expect(breaks('1abcdefgh', { numericAllowed: true, numericFirst: false })).toBe('digit first');
+    expect(breaks('abcdefgh1', {})).toBe('digits not allowed');
+    expect(breaks('a1bcdefgh', { numericAllowed: true })).toBeNull();
+    expect(breaks('1abcdefgh', { numericAllowed: true })).toBe('digit first');
     expect(breaks('aabcdefg', { maxConsecutive: 1 })).toBe('a character repeats in a row');
     expect(breaks('helloAcmeX', { excludeList: ['acme'] })).toBe('contains an excluded word');
   });

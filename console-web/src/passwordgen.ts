@@ -10,7 +10,8 @@ type Kind = 'upper' | 'lower' | 'digit' | 'special';
 const SETS: Record<Kind, string> = { upper: UPPER, lower: LOWER, digit: DIGITS, special: SPECIAL };
 
 const num = (r: PolicyRules, k: string): number | undefined => (typeof r[k] === 'number' ? (r[k] as number) : typeof r[k] === 'string' && /^\d+$/.test(r[k] as string) ? Number(r[k]) : undefined);
-const flag = (r: PolicyRules, k: string, dflt: boolean): boolean => (typeof r[k] === 'boolean' ? (r[k] as boolean) : dflt);
+// unset, NMAS treats digits and special characters as not allowed (lab, eDirectory 9.2.8); unset positions are avoided too
+const flag = (r: PolicyRules, k: string, dflt = false): boolean => (typeof r[k] === 'boolean' ? (r[k] as boolean) : dflt);
 
 function randomInt(n: number, random: (n: number) => number): number {
   return random(n);
@@ -39,14 +40,14 @@ export function breaks(pw: string, r: PolicyRules): string | null {
   for (const [k, lo, hi] of pairs) {
     if (count(k) < min(lo) || count(k) > max(hi)) return `${k} characters out of range`;
   }
-  if (!flag(r, 'numericAllowed', true) && count('digit')) return 'digits not allowed';
-  if (!flag(r, 'specialAllowed', true) && count('special')) return 'special characters not allowed';
+  if (!flag(r, 'numericAllowed') && count('digit')) return 'digits not allowed';
+  if (!flag(r, 'specialAllowed') && count('special')) return 'special characters not allowed';
   const first = pw[0];
   const last = pw[pw.length - 1];
-  if (!flag(r, 'numericFirst', true) && kindOf(first) === 'digit') return 'digit first';
-  if (!flag(r, 'numericLast', true) && kindOf(last) === 'digit') return 'digit last';
-  if (!flag(r, 'specialFirst', true) && kindOf(first) === 'special') return 'special first';
-  if (!flag(r, 'specialLast', true) && kindOf(last) === 'special') return 'special last';
+  if (!flag(r, 'numericFirst') && kindOf(first) === 'digit') return 'digit first';
+  if (!flag(r, 'numericLast') && kindOf(last) === 'digit') return 'digit last';
+  if (!flag(r, 'specialFirst') && kindOf(first) === 'special') return 'special first';
+  if (!flag(r, 'specialLast') && kindOf(last) === 'special') return 'special last';
   const repeated = max('maxRepeated');
   const seen = new Map<string, number>();
   for (const c of pw) seen.set(c, (seen.get(c) ?? 0) + 1);
@@ -71,7 +72,7 @@ export function breaks(pw: string, r: PolicyRules): string | null {
 export function generatePassword(r: PolicyRules, length = 16, random: (n: number) => number = cryptoRandom): string {
   const min = (k: string) => num(r, k) ?? 0;
   const maxOf = (k: string) => { const v = num(r, k); return v === undefined || v === 0 ? Infinity : v; };
-  const allowed: Record<Kind, boolean> = { upper: true, lower: true, digit: flag(r, 'numericAllowed', true), special: flag(r, 'specialAllowed', true) };
+  const allowed: Record<Kind, boolean> = { upper: true, lower: true, digit: flag(r, 'numericAllowed'), special: flag(r, 'specialAllowed') };
   const mins: Record<Kind, number> = { upper: min('minUpper'), lower: min('minLower'), digit: allowed.digit ? min('minNumeric') : 0, special: allowed.special ? min('minSpecial') : 0 };
   const maxs: Record<Kind, number> = { upper: maxOf('maxUpper'), lower: maxOf('maxLower'), digit: allowed.digit ? maxOf('maxNumeric') : 0, special: allowed.special ? maxOf('maxSpecial') : 0 };
   const required = Object.values(mins).reduce((a, b) => a + b, 0);

@@ -528,6 +528,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Choose a user and type a password, or Generate one from this policy\'s rules. Test asks NMAS whether the policy that governs that user accepts it.',
           'Nothing is set and nobody signs in, so a test never counts as a failed login. The audit log records that a test was made, never the password.',
           'NMAS uses the policy governing the user: their own, else the nearest container\'s, else the Login Policy\'s. If that is another policy, the result says so.',
+          'When a policy does not say whether digits or special characters are allowed, NMAS does not allow them: tick those rules if passwords may have them.',
         ],
       },
     ],

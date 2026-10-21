@@ -397,7 +397,7 @@ export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClos
     try {
       const sec = security(me.directory);
       const governing = (await sec.policyFor(obj.guid)).governing;
-      const rules = governing?.guid ? (await sec.policy(governing.guid)).rules : { minLength: 12 };
+      const rules = governing?.guid ? (await sec.policy(governing.guid)).rules : { minLength: 12, numericAllowed: true, specialAllowed: true, numericLast: true, specialLast: true };
       let candidate = '';
       let ok = false;
       for (let i = 0; i < 5 && !ok; i++) {

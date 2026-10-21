@@ -312,33 +312,30 @@ public final class Ldap implements AutoCloseable {
         return r.getEncodedValue();
     }
 
-    /** NMAS's Password Policy Check extended request, and its response. */
-    static final String NMAS_POLICY_CHECK = "2.16.840.1.113719.1.39.42.100.27";
+    /** NMAS's Password Policy Check extended request (its response is .18), as libnmasldap registers it. */
+    static final String NMAS_POLICY_CHECK = "2.16.840.1.113719.1.39.42.100.17";
 
     /**
      * Whether {@code password} meets the password policy that governs {@code dn}, without setting it or signing in:
-     * NMAS's answer, 0 when it passes, else an NMAS or eDirectory error code (such as -216, too short). The request is
-     * {version 1, the DN, the password}, each string with its terminating NUL, as NMAS's own library sends them.
+     * NMAS's answer, 0 when it passes, else an NMAS or eDirectory error code. The request, as eDirectory's
+     * libnmasldap decodes it (its operation 10): {version 1, the DN, {flags 0, {the password}}}; flag 1 would leave the
+     * password out. Verified on a lab tree (eDirectory 9.2.8, 2026-10-21).
      */
     public int passwordPolicyCheck(String dn, char[] password) throws NamingException {
         byte[] pw = new String(password).getBytes(StandardCharsets.UTF_8);
-        try {
-            byte[] request = Ber.tlv(0x30, Ber.concat(Ber.integer(0x02, 1),
-                Ber.tlv(0x04, nul(dn.getBytes(StandardCharsets.UTF_8))), Ber.tlv(0x04, nul(pw))));
-            byte[] response = extended(NMAS_POLICY_CHECK, request);
-            if (response == null) {
-                throw new NamingException("NMAS gave no answer to the password policy check");
-            }
-            // {serverVersion, result}
-            List<Ber.Element> seq = Ber.read(response).get(0).children();
-            return (int) seq.get(seq.size() > 1 ? 1 : 0).integer();
-        } finally {
-            java.util.Arrays.fill(pw, (byte) 0);
+        byte[] secret = Ber.tlv(0x30, Ber.tlv(0x04, pw));
+        byte[] request = Ber.tlv(0x30, Ber.concat(Ber.integer(0x02, 1), Ber.tlv(0x04, dn.getBytes(StandardCharsets.UTF_8)),
+            Ber.tlv(0x30, Ber.concat(Ber.integer(0x02, 0), secret))));
+        java.util.Arrays.fill(pw, (byte) 0);
+        java.util.Arrays.fill(secret, (byte) 0);
+        byte[] response = extended(NMAS_POLICY_CHECK, request);
+        java.util.Arrays.fill(request, (byte) 0);
+        if (response == null) {
+            throw new NamingException("NMAS gave no answer to the password policy check");
         }
-    }
-
-    private static byte[] nul(byte[] s) {
-        return java.util.Arrays.copyOf(s, s.length + 1);
+        List<Ber.Element> seq = Ber.read(response).get(0).children();
+        // {version, result}, as eDirectory 9.2.8 answers (lab, 2026-10-21)
+        return (int) seq.get(seq.size() > 1 ? 1 : 0).integer();
     }
 
     /**
