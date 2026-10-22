@@ -100,7 +100,7 @@ Back up first: a volume snapshot of the `console-data` claim, or a backup from *
 Then change the image tag to the new version (pin versions on Kubernetes rather than following `latest`):
 
 ```bash
-kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.3.16
+kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.3.17
 ```
 
 ```bash
@@ -117,10 +117,10 @@ restoring the backup if the release notes say the configuration format changed. 
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.3.16
+    image: ghcr.io/pointbluetechnology/directory-console:0.3.17
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.16 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.17 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -140,6 +140,10 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.3.17:** nothing to change in `compose.yaml`. Settings > Single sign-on can now limit password sign-in to the
+  break-glass accounts and a list of allowed accounts (kept in the directory's `login.allowed`). Going back to 0.3.16
+  needs no restore, but 0.3.16 ignores that list: with password sign-in limited, only the break-glass accounts could
+  then use a password.
 - **0.3.16:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.15
   needs no restore. Help only: it now covers the server Identity Manager uses, Browse in Move, what the trusted
   certificates are also used for, and role assignments.
