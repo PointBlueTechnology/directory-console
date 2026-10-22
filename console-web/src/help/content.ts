@@ -817,6 +817,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         list: [
           'Search bases are where a short name is looked for; none searches the whole directory. This needs the service account.',
           'When a name matches several people, they choose their account, or are asked for their full name.',
+          'With password sign-in limited to single sign-on (Settings > Single sign-on), a short name is looked for only among the accounts still allowed a password.',
         ],
       },
     ],
@@ -835,7 +836,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         ],
       },
       { title: 'Where', paragraphs: ['A mapping can be limited to containers. eDirectory\'s own rights still apply on top.'] },
-      { title: 'Break-glass accounts', paragraphs: ['The directory administrators who set the console up. They can always sign in as admins, even when no mapping applies.'] },
+      { title: 'Break-glass accounts', paragraphs: ['The directory administrators who set the console up. They can always sign in as admins, even when no mapping applies, and always with a password, even when password sign-in is limited to single sign-on.'] },
     ],
   },
   'settings.presets': {
