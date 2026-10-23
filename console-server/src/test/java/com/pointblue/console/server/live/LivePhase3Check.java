@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
  * service account, a fake identity provider on loopback vouches for a test user made for the run, and
  * the console must act with that user's own eDirectory rights (RFC 4370). In a new container under
  * {@code parent}: a user with a uid, then sign-in through the provider, reads, a write the admin can
- * make and the user cannot, and a disabled account. No password is set or used for the test user; no
+ * make and the user cannot, Identity Manager under the user's rights, and a disabled account. No password is set or used for the test user; no
  * rights or IRFs are written. The container is deleted at the end. Not a JUnit test.
  *
  *   java -cp … LivePhase3Check <environments.properties> <env> <parent DN>
@@ -95,6 +95,24 @@ public final class LivePhase3Check {
                 asUser.status() == 403 && "insufficient-rights".equals(asUser.body().get("title")), asUser.status() + detail(asUser));
             LiveSetupCheck.Reply asAdmin = call("PATCH", "/api/v2/trees/" + TREE + "/objects/" + container, change, withEtag(admin, container));
             ok("the same write as the admin succeeds", asAdmin.status() == 200, asAdmin.status() + detail(asAdmin));
+
+            // Identity Manager: the session's own engine connection, as the service account acting as the user
+            LiveSetupCheck.Reply idm = call("GET", "/api/v2/trees/" + TREE + "/idm", null, me);
+            ok("Identity Manager is available to the single sign-on session", Boolean.TRUE.equals(idm.body().get("available")),
+                "engine " + idm.body().get("engineVersion") + (idm.body().get("problem") == null ? "" : " problem: " + idm.body().get("problem")));
+            List<?> sets = (List<?>) call("GET", "/api/v2/trees/" + TREE + "/idm/driversets", null, admin).body().get("items");
+            if (sets != null && !sets.isEmpty()) {
+                String set = String.valueOf(Json.asMap(sets.get(0)).get("guid"));
+                Map<String, Object> asAdminSet = call("GET", "/api/v2/trees/" + TREE + "/idm/driversets/" + set, null, admin).body();
+                List<?> drivers = (List<?>) asAdminSet.get("drivers");
+                String drv = String.valueOf(Json.asMap(drivers.get(0)).get("guid"));
+                LiveSetupCheck.Reply asAdminDrv = call("GET", "/api/v2/trees/" + TREE + "/idm/drivers/" + drv, null, admin);
+                ok("the admin reads a driver's state", asAdminDrv.status() == 200, asAdminDrv.body().get("state"));
+                LiveSetupCheck.Reply asUserDrv = call("GET", "/api/v2/trees/" + TREE + "/idm/drivers/" + drv, null, me);
+                ok("the user's engine requests are decided with the user's rights (refused, or no state)",
+                    asUserDrv.status() != 200 || asUserDrv.body().get("state") == null || "unknown".equals(asUserDrv.body().get("state")),
+                    asUserDrv.status() + " state=" + asUserDrv.body().get("state") + detail(asUserDrv));
+            }
 
             LiveSetupCheck.Reply account = call("GET", "/api/v2/trees/" + TREE + "/objects/" + userGuid + "/account", null, admin);
             Map<String, String> h = new HashMap<>(admin);

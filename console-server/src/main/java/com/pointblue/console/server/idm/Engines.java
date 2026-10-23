@@ -25,6 +25,15 @@ public interface Engines {
      */
     Opened open(Ldap ldap, TrustStore trust, Ldap.Target target, String dn, char[] password) throws Exception;
 
+    /**
+     * For a single sign-on session: the engine connection bound as the console's service account, every
+     * engine request carrying the RFC 4370 proxied-authorization control for {@code personDn}, so the
+     * engine decides with the person's rights. {@code ldap} is the session's own (proxied) connection.
+     * The connection belongs to this one person: eDirectory's engine keeps the last identity it was given
+     * on a connection (seen on ig4, 2026-10-23), so it is never shared.
+     */
+    Opened openAs(Ldap ldap, TrustStore trust, Ldap.Target target, String serviceDn, char[] servicePassword, String personDn) throws Exception;
+
     /** The job types the engine on {@code ldap}'s server offers, as its DiscoverJobs answers, for the driver or driver set {@code dn}. */
     default byte[] discoverJobs(Ldap ldap, String dn) throws javax.naming.NamingException {
         return JobCatalog.discover(ldap.context(), dn);
@@ -48,7 +57,37 @@ public interface Engines {
                 Vault v = Vault.open(ldap.context(), target.host(), target.port(), Ldap.socketFactory(trust, target, null), dn, password);
                 return new Opened(Operate.vaultEngine(v), v);
             }
+
+            @Override
+            public Opened openAs(Ldap ldap, TrustStore trust, Ldap.Target target, String serviceDn, char[] servicePassword, String personDn) throws Exception {
+                Vault v = Vault.open(ldap.context(), target.host(), target.port(), Ldap.socketFactory(trust, target, null), serviceDn, servicePassword);
+                try {
+                    actAs(v, personDn);
+                } catch (Exception | LinkageError e) {
+                    v.close();
+                    throw e;
+                }
+                return new Opened(Operate.vaultEngine(v), v);
+            }
         };
+    }
+
+    /**
+     * Make every request on {@code v}'s extended-operation connection carry the proxied-authorization
+     * control for {@code personDn}, as the connection's default constraints. DirXMLDev's Vault has no
+     * public way to reach that connection yet, so its {@code ops} field is read here; a test checks the
+     * field is still there, and a missing one fails the sign-in's engine (never runs unproxied).
+     */
+    static void actAs(Vault v, String personDn) throws ReflectiveOperationException, com.novell.ldap.LDAPException {
+        java.lang.reflect.Field f = Vault.class.getDeclaredField("ops");
+        f.setAccessible(true);
+        com.novell.ldap.LDAPConnection ops = (com.novell.ldap.LDAPConnection) f.get(v);
+        if (ops == null) {
+            throw new IllegalStateException("the engine connection is not open");
+        }
+        com.novell.ldap.LDAPSearchConstraints c = ops.getSearchConstraints();
+        c.setControls(new com.novell.ldap.LDAPControl(Ldap.PROXIED_AUTHZ, true, ("dn:" + personDn).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        ops.setConstraints(c);
     }
 
     static Engines none(String why) {
@@ -60,6 +99,11 @@ public interface Engines {
 
             @Override
             public Opened open(Ldap ldap, TrustStore trust, Ldap.Target target, String dn, char[] password) {
+                throw new IllegalStateException(why);
+            }
+
+            @Override
+            public Opened openAs(Ldap ldap, TrustStore trust, Ldap.Target target, String serviceDn, char[] servicePassword, String personDn) {
                 throw new IllegalStateException(why);
             }
         };

@@ -111,7 +111,8 @@ docker compose up -d
 - **Your own rights:** the console signs in to eDirectory as the person using it, over LDAPS, so eDirectory
   applies their own rights. Single sign-on finds the person with a service account, then acts as them
   with the LDAP proxied-authorization control.
-- **Identity Manager:** the console talks to the engine on the server you signed in to, with
+- **Identity Manager:** the console talks to the engine on the server you signed in to, as you (under
+  single sign-on too, through the same proxied authorization), with
   [DirXMLDev](https://github.com/PointBlueTechnology/DirXMLDev) over the open-source JLDAP library.
   Nothing needs to be installed or mounted, and the image contains no OpenText code.
 - **Trust:** the console makes its own TLS certificate on first start, and prints its fingerprint so you

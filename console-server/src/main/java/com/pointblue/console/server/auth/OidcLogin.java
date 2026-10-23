@@ -39,9 +39,6 @@ public final class OidcLogin {
     public record SignedIn(Sessions.Principal principal, Ldap connection, String next) {
     }
 
-    /** IDM's engine binds with a password; a single sign-on session has none. */
-    public static final String NO_ENGINE = "Identity Manager operations need a direct sign-in: the engine connection cannot yet act for a person signed in through single sign-on";
-
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final DateTimeFormatter GENERALIZED = DateTimeFormatter.ofPattern("yyyyMMddHHmmss'Z'").withZone(ZoneOffset.UTC);
 

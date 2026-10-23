@@ -388,6 +388,10 @@ final class Idm {
                     default -> throw new Http.Problem(404, "not-found", method + " " + path);
                 }
             } catch (Vault.VaultException | UnsupportedOperationException e) {
+                if (refused(e)) {
+                    // the engine decided with the person's rights (their own bind, or acting as them under single sign-on)
+                    throw new Http.Problem(403, "insufficient-rights", String.valueOf(e.getMessage()));
+                }
                 throw new Http.Problem(502, "engine-error", String.valueOf(e.getMessage()));
             } catch (IllegalArgumentException e) {
                 throw new Http.Problem(400, "bad-request", e.getMessage());
@@ -395,6 +399,19 @@ final class Idm {
                 throw new Http.Problem(502, "directory-error", Ldap.Failure.of(e).getMessage());
             }
         }
+    }
+
+    /** Whether the engine refused for lack of rights (LDAP 50, eDirectory -672). */
+    static boolean refused(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof com.novell.ldap.LDAPException l && l.getResultCode() == com.novell.ldap.LDAPException.INSUFFICIENT_ACCESS_RIGHTS) {
+                return true;
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        return false;
     }
 
     /**

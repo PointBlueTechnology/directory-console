@@ -81,6 +81,13 @@ public final class FakeEngine implements Operate.Engine {
             }
 
             @Override
+            public Opened openAs(com.pointblue.console.server.ldap.Ldap ldap, com.pointblue.console.server.tls.TrustStore trust,
+                                 com.pointblue.console.server.ldap.Ldap.Target target, String serviceDn, char[] servicePassword, String personDn) {
+                self.actions.add("act-as " + personDn);
+                return new Opened(self, () -> { });
+            }
+
+            @Override
             public byte[] discoverJobs(com.pointblue.console.server.ldap.Ldap ldap, String dn) {
                 self.actions.add("discover-jobs " + dn);
                 return JOB_TYPES.getBytes(java.nio.charset.StandardCharsets.UTF_8);

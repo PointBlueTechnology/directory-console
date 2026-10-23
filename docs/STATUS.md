@@ -21,7 +21,7 @@ It is a beta release. It has been tested against lab trees running eDirectory 9.
 
 ## Limits
 
-- **Identity Manager and other sign-in types:** Identity Manager needs a direct sign-in. People who sign in with single sign-on, or to a directory they typed in, can do everything else.
+- **Identity Manager and directories typed in:** Identity Manager is not available on a directory a person types in at sign-in; they can do everything else there. With single sign-on it works as with a direct sign-in: the console's service account opens the engine connection and every request acts as the person, so the engine decides with their rights.
 - **Identity Manager is per server:** it works on the engine of the server you signed in to. Driver state, jobs, caches and passwords apply to that server. Server, on the driver set's and driver's pages, names it, and offers the other servers that run the driver set.
 - **Driver properties are read-only, by design:** they are changed in Designer. The trace level is the exception.
 - **Job named passwords are per server:** each server that runs a job keeps its own copy. The console sets one on every server in the job's Runs on list; a server added later needs it set again (the job shows where it is set).

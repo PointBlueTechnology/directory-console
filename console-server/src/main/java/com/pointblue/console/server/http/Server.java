@@ -644,9 +644,37 @@ public final class Server {
                 throw new Http.Problem(503, "unavailable", "the console's service account could not sign in to " + where.name());
             }
             l.actAs(s.principal.dn());
-            Sessions.ServerConnection made = new Sessions.ServerConnection(where.dn(), where.name(), l, null, com.pointblue.console.server.auth.OidcLogin.NO_ENGINE);
+            SsoEngine e = ssoEngine(d, l, new com.pointblue.console.server.ldap.Ldap.Target(d.id(), where.host(), where.port()), s.principal.dn(), where.name());
+            Sessions.ServerConnection made = new Sessions.ServerConnection(where.dn(), where.name(), l, e.engine(), e.problem());
             s.servers.put(guid, made);
-            return new On(made.dn(), l, null, made.engineProblem());
+            return new On(made.dn(), l, e.engine() == null ? null : e.engine().engine(), made.engineProblem());
+        }
+    }
+
+    record SsoEngine(com.pointblue.console.server.idm.Engines.Opened engine, String problem) {
+    }
+
+    /**
+     * Identity Manager for a single sign-on session on {@code l}'s server: its own engine connection,
+     * as the service account, acting as {@code personDn} on every request (see {@link
+     * com.pointblue.console.server.idm.Engines#openAs}). A failure leaves the session without it.
+     */
+    SsoEngine ssoEngine(DirectoryConfig d, com.pointblue.console.server.ldap.Ldap l, com.pointblue.console.server.ldap.Ldap.Target target, String personDn, String where) {
+        String problem = login.engines().unavailable();
+        if (problem != null) {
+            return new SsoEngine(null, problem);
+        }
+        String pw = config.secret(d.serviceAccountPasswordPath());
+        if (d.serviceAccountDn() == null || pw == null) {
+            return new SsoEngine(null, "the console's service account is not configured");
+        }
+        char[] p = pw.toCharArray();
+        try {
+            return new SsoEngine(login.engines().openAs(l, trust, target, d.serviceAccountDn(), p, personDn), null);
+        } catch (Exception | LinkageError e) {
+            return new SsoEngine(null, "the Identity Manager engine connection" + (where == null ? "" : " to " + where) + " could not be opened: " + e.getMessage());
+        } finally {
+            java.util.Arrays.fill(p, '\0');
         }
     }
 
@@ -757,7 +785,8 @@ public final class Server {
             : oidc.finish(d, config.secret(d.oidcSecretPath()), config.secret(d.serviceAccountPasswordPath()), q);
         if (o instanceof com.pointblue.console.server.auth.OidcLogin.SignedIn si) {
             failedByClient.clear(client);
-            Sessions.Session session = sessions.create(si.principal(), si.connection(), null, com.pointblue.console.server.auth.OidcLogin.NO_ENGINE);
+            SsoEngine engine = ssoEngine(d, si.connection(), d.target(), si.principal().dn(), null);
+            Sessions.Session session = sessions.create(si.principal(), si.connection(), engine.engine(), engine.problem());
             audit.log(new AuditLog.Actor(si.principal().subject(), si.principal().dn(), "oidc"), "sign-in", dirId,
                 Map.of("roles", si.principal().roles().stream().map(Role::id).sorted().toList(), "client", client), "ok");
             ex.getResponseHeaders().add("Set-Cookie", COOKIE + "=" + session.id + "; Path=/; Secure; HttpOnly; SameSite=Strict");

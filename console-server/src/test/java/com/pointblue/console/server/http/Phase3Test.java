@@ -307,6 +307,8 @@ public class Phase3Test {
 
     @Test
     public void singleSignOnActsAsTheMappedPerson() throws Exception {
+        com.pointblue.console.server.idm.FakeEngine engine = new com.pointblue.console.server.idm.FakeEngine(edir);
+        server.login.engines(engine.engines());
         assertEquals("Acme SSO", Json.asMap(((List<?>) call("GET", "/api/v2/directories", null, Map.of()).body().get("list")).get(0)).get("sso"));
         Reply cb = sso("alice", "/browse");
         assertEquals(302, cb.status());
@@ -325,9 +327,10 @@ public class Phase3Test {
         assertEquals(200, patch(h, self, patch).status());
         assertEquals("the scope still applies", 403, patch(h, bob, patch).status());
         assertEquals("the modify carried the proxied-authorization control", "dn:cn=alice,ou=Sales,o=acme", edir.lastProxied);
+        // Identity Manager too: its own engine connection, as the service account, acting as alice
         Reply idm = call("GET", "/api/v2/trees/acme/idm", null, h);
-        assertEquals(false, idm.body().get("available"));
-        assertTrue(String.valueOf(idm.body().get("problem")).contains("direct sign-in"));
+        assertEquals(String.valueOf(idm.body()), true, idm.body().get("available"));
+        assertTrue(engine.actions.contains("act-as cn=alice,ou=Sales,o=acme"));
         assertTrue(audit().contains("\"via\":\"oidc\""));
     }
 
