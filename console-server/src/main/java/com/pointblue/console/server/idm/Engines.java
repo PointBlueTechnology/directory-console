@@ -60,31 +60,30 @@ public interface Engines {
 
             @Override
             public Opened openAs(Ldap ldap, TrustStore trust, Ldap.Target target, String serviceDn, char[] servicePassword, String personDn) throws Exception {
-                Vault v = Vault.open(ldap.context(), target.host(), target.port(), Ldap.socketFactory(trust, target, null), serviceDn, servicePassword);
+                com.novell.ldap.LDAPConnection ops = new com.novell.ldap.LDAPConnection(
+                    new com.novell.ldap.LDAPJSSESecureSocketFactory(Ldap.socketFactory(trust, target, null)));
+                byte[] pw = new String(servicePassword).getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 try {
-                    actAs(v, personDn);
-                } catch (Exception | LinkageError e) {
-                    v.close();
+                    ops.connect(target.host(), target.port());
+                    ops.bind(com.novell.ldap.LDAPConnection.LDAP_V3, serviceDn, pw);
+                    actAs(ops, personDn);
+                } catch (Exception e) {
+                    ops.disconnect();
                     throw e;
+                } finally {
+                    java.util.Arrays.fill(pw, (byte) 0);
                 }
+                Vault v = Vault.open(ldap.context(), ops);
                 return new Opened(Operate.vaultEngine(v), v);
             }
         };
     }
 
     /**
-     * Make every request on {@code v}'s extended-operation connection carry the proxied-authorization
-     * control for {@code personDn}, as the connection's default constraints. DirXMLDev's Vault has no
-     * public way to reach that connection yet, so its {@code ops} field is read here; a test checks the
-     * field is still there, and a missing one fails the sign-in's engine (never runs unproxied).
+     * Make every request on the engine connection {@code ops} carry the proxied-authorization control
+     * for {@code personDn}, as the connection's default constraints.
      */
-    static void actAs(Vault v, String personDn) throws ReflectiveOperationException, com.novell.ldap.LDAPException {
-        java.lang.reflect.Field f = Vault.class.getDeclaredField("ops");
-        f.setAccessible(true);
-        com.novell.ldap.LDAPConnection ops = (com.novell.ldap.LDAPConnection) f.get(v);
-        if (ops == null) {
-            throw new IllegalStateException("the engine connection is not open");
-        }
+    static void actAs(com.novell.ldap.LDAPConnection ops, String personDn) throws com.novell.ldap.LDAPException {
         com.novell.ldap.LDAPSearchConstraints c = ops.getSearchConstraints();
         c.setControls(new com.novell.ldap.LDAPControl(Ldap.PROXIED_AUTHZ, true, ("dn:" + personDn).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         ops.setConstraints(c);

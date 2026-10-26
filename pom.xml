@@ -28,7 +28,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- The DirXMLDev release these modules build on (its Json helper today, its DN library
              next). Install it with `mvn -o install -DskipTests` in the DirXMLDev checkout. -->
-        <dirxmldev.version>0.37.0</dirxmldev.version>
+        <dirxmldev.version>0.52.0</dirxmldev.version>
         <simulator.version>1.7.0</simulator.version>
         <bouncycastle.version>1.80</bouncycastle.version>
     </properties>
