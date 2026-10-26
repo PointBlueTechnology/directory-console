@@ -693,6 +693,9 @@ public class ServerTest {
             Map<String, String> w = signedIn(id, "cn=admin,o=system", "admin-pw");
             String url = "http://127.0.0.1:" + hook.getAddress().getPort() + "/hook";
             assertEquals("not plain http elsewhere", 400, call("PUT", "/api/v2/console/expiry", Map.of("webhooks", List.of(Map.of("url", "http://example.test/hook"))), w).status());
+            assertEquals("the banner's window, before any is set", 30, Json.asInt(call("GET", "/api/v2/trust/certificates", null, w).body().get("warnDays"), 0));
+            assertEquals(200, call("PUT", "/api/v2/console/expiry", Map.of("warnDays", 45), w).status());
+            assertEquals("the banner follows Settings > Certificate expiry", 45, Json.asInt(call("GET", "/api/v2/trust/certificates", null, w).body().get("warnDays"), 0));
             assertEquals(400, call("PUT", "/api/v2/console/expiry", Map.of("email", Map.of("host", "127.0.0.1", "security", "none", "user", "u", "password", "p",
                 "from", "console@example.test", "to", List.of("ops@example.test"))), w).status());
             Map<String, Object> mail = new java.util.HashMap<>(Map.of("host", "127.0.0.1", "port", smtp.getLocalPort(), "security", "none",

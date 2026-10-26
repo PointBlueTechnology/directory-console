@@ -36,6 +36,7 @@ import javax.naming.NamingException;
  *                                               (direct false needs single sign-on; then only break-glass and allowed
  *                                               accounts sign in with a password)
  * PUT  /api/v2/directories/{id}/service-account {"dn", "password"} (checked by signing in as it), or null for none
+ * GET  /api/v2/directories/{id}/service-account/check  its rights for sign-in and single sign-on, on a sample of people
  * PUT  /api/v2/directories/{id}/session         {"idleMinutes": 5-240, "maxHours": 1-24}: applies at once, to sessions already open too
  * </pre>
  *
@@ -92,6 +93,7 @@ final class Settings {
                 });
             }
             case "PUT service-account" -> serviceAccount(ex, s, d);
+            case "GET service-account/check" -> checkServiceAccount(ex, s, d);
             default -> throw new Http.Problem(404, "not-found", method + " " + path);
         }
     }
@@ -413,6 +415,27 @@ final class Settings {
             }
         }
         return out;
+    }
+
+    /** What the service account's rights allow, read as itself (see {@link ServiceAccountCheck}). */
+    private void checkServiceAccount(HttpExchange ex, Sessions.Session s, DirectoryConfig d) throws IOException {
+        String pw = server.config.secret(d.serviceAccountPasswordPath());
+        if (d.serviceAccountDn() == null || pw == null) {
+            throw new Http.Problem(409, "no-service-account", "no service account is configured for this directory");
+        }
+        Map<String, Object> out;
+        try (Ldap l = Ldap.connect(server.trust, d.target(), null, d.serviceAccountDn(), pw.toCharArray(), java.time.Duration.ofSeconds(10))) {
+            out = ServiceAccountCheck.run(l, d);
+        } catch (Ldap.BadCredentials e) {
+            throw new Http.Problem(409, "service-account-refused", "the service account could not sign in: its password may have changed");
+        } catch (Ldap.Untrusted e) {
+            throw new Http.Problem(409, "untrusted-certificate", e.getMessage());
+        } catch (javax.naming.NamingException e) {
+            throw new Http.Problem(502, "directory-error", Ldap.Failure.of(e).getMessage());
+        }
+        server.audit.log(new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via()), "settings.service-account.check", d.id(),
+            Map.of("result", out.get("result")), "ok");
+        Http.json(ex, 200, out);
     }
 
     /** The console's service account, proven by signing in as it; its password is sealed. Null removes it. */

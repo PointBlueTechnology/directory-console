@@ -96,6 +96,14 @@ public final class LivePhase3Check {
             LiveSetupCheck.Reply asAdmin = call("PATCH", "/api/v2/trees/" + TREE + "/objects/" + container, change, withEtag(admin, container));
             ok("the same write as the admin succeeds", asAdmin.status() == 200, asAdmin.status() + detail(asAdmin));
 
+            // the service account's rights, read as itself (here the environment's account: expect "more than needed")
+            LiveSetupCheck.Reply rights = call("GET", "/api/v2/directories/" + TREE + "/service-account/check", null, admin);
+            ok("service account check answers", rights.status() == 200, rights.body().get("result"));
+            for (Object o : (List<?>) rights.body().getOrDefault("checks", List.of())) {
+                Map<String, Object> f = Json.asMap(o);
+                System.out.println("    " + f.get("purpose") + " | " + f.get("where") + " | " + f.get("check") + " | " + f.get("result") + " | " + f.get("detail"));
+            }
+
             // Identity Manager: the session's own engine connection, as the service account acting as the user
             LiveSetupCheck.Reply idm = call("GET", "/api/v2/trees/" + TREE + "/idm", null, me);
             ok("Identity Manager is available to the single sign-on session", Boolean.TRUE.equals(idm.body().get("available")),

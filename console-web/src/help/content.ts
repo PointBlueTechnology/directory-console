@@ -791,7 +791,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'What else uses it',
         paragraphs: ['Single sign-on providers, ACME certificate authorities and syslog servers over TLS are accepted with a certificate from a public CA (Java\'s own list) or from a certificate authority trusted here. Add an internal CA here for those; a CA trusted for one directory also covers that directory\'s single sign-on provider. It applies from the next connection, without a restart.'],
       },
-      { title: 'Expiry', paragraphs: ['A banner on every page warns admins of trusted certificates that have expired or expire within 30 days.'] },
+      { title: 'Expiry', paragraphs: ['A banner on every page warns admins of trusted certificates that have expired or expire within the warning window set in Settings > Certificate expiry (30 days unless changed).'] },
       { title: 'Changes', paragraphs: ['Adding or removing trust needs a sign-in within the last 10 minutes.'] },
     ],
   },
@@ -810,7 +810,10 @@ export const CONTENT: Record<string, HelpTopic> = {
       { title: 'Sessions', paragraphs: ['Idle sign-out and the longest session apply to everyone on this directory, at once. People are warned two minutes before an idle sign-out, and told when the longest session will end.'] },
       {
         title: 'Service account',
-        paragraphs: ['The account the console uses to find people by a short name at sign-in, and for single sign-on. It needs to read the people it finds. Without one, people sign in with their full name (DN).'],
+        paragraphs: [
+          'The account the console uses to find people by a short name at sign-in, and for single sign-on. It needs to read the people it finds. Without one, people sign in with their full name (DN).',
+          'Check its rights reads the account\'s own effective rights on a few people under each container: Browse, Compare and Read for sign-in; Supervisor for single sign-on (and Identity Manager under it). It also flags more than it needs: Supervisor over the whole tree, or over a break-glass account. A sample stands for each container, so a pass is a good sign, not a proof for every account.',
+        ],
       },
       {
         title: 'Finding people at sign-in',
@@ -862,6 +865,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Provider groups map groups in the provider\'s groups claim to console roles and task presets, as role mappings do for eDirectory groups.',
           'Under these containers limits who can sign in this way. The service account needs Supervisor over those people, and nobody else.',
           'Try the mapping shows which account a claim value finds. No match, several matches, or a never-act-as account means the sign-in is refused.',
+          'Check its rights (at the top) shows whether the service account can act as people under these containers, which single sign-on and Identity Manager under it need.',
         ],
       },
       {
@@ -937,7 +941,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       },
       {
         title: 'The warning window',
-        paragraphs: ['Warn this many days ahead (1 to 365) sets when these notices go out, and nothing else. The banner on every page, the alerts on Security > Certificates and the default-certificate check always warn 30 days ahead.'],
+        paragraphs: ['Warn this many days ahead (1 to 365) sets when these notices go out, and when the banner at the top of every page starts warning. The alerts on Security > Certificates and the default-certificate check always warn 30 days ahead.'],
       },
       {
         title: 'When notices go out',

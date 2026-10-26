@@ -193,7 +193,7 @@ secret. A webhook URL is `https://`; `http://` is accepted only for this host.
 | `/api/v2/trees/{tree}/idm/…` | `Idm.java`, with `Jobs`, `JobTypes`, `Associations`, `Trace`, `MappingTables`, `DriverProperties`, `Cache`, `Statistics`, `Versions` |
 | `/api/v2/trees/{tree}/edir/…` | `Edir.java`, with `LdapObjects` and `Monitoring`: partitions, replicas, servers, indexes, schema changes, LDAP servers and groups, CEF auditing, SNMP, encryption policies, replica filters |
 | `/api/v2/trees/{tree}/security/…` | `Security.java`: certificates, the CA, PKCS#12 export and import, trusted roots, password and login policies, password checks |
-| `/api/v2/directories/{id}/…` | `Settings.java`: a directory's tier, session limits, service account, sign-in options, roles, presets, single sign-on |
+| `/api/v2/directories/{id}/…` | `Settings.java` (and `ServiceAccountCheck.java`): a directory's tier, session limits, service account and the check of its rights, sign-in options, roles, presets, single sign-on |
 | `/api/v2/console/trees` | `Trees.java`: the directories people choose from at sign-in, added, renamed and removed |
 | `/api/v2/console/version`, `/updates` | `Updates.java` |
 | `/api/v2/console/expiry` | `Expiry.java` |

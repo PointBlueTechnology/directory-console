@@ -5,7 +5,7 @@ import {
 } from '@patternfly/react-core';
 import { DownloadIcon, PlusIcon, UploadIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type AcmeState, type ConfigVersion, type RestorePending, records, type DirectorySettings, type ExpirySettings, type ExpiryState, type SyslogState, acme, expiry, syslog, type OidcSettings, type Preset, type RoleMappingJson, type UpdateState, UPGRADING_URL, consoleSettings, settings, updates } from '../api';
+import { type AcmeState, type ConfigVersion, type RestorePending, records, type DirectorySettings, type ServiceAccountCheck, type ExpirySettings, type ExpiryState, type SyslogState, acme, expiry, syslog, type OidcSettings, type Preset, type RoleMappingJson, type UpdateState, UPGRADING_URL, consoleSettings, settings, updates } from '../api';
 import { useSession } from '../session';
 import { HeadingLevel, useHeading } from '../heading';
 import { ProblemAlert } from '../components/Problem';
@@ -66,7 +66,7 @@ export function SettingsPage() {
               <PresetsSection s={s} etag={etag} save={(v) => api.presets(v, etag)} exportAll={api.exportPresets} onSaved={saved} />
             </Tab>
             <Tab eventKey="sso" title={<TabTitleText>Single sign-on</TabTitleText>}>
-              <SsoSection s={s} save={(v) => api.oidc(v, etag)} test={api.testMapping} onSaved={saved} />
+              <SsoSection s={s} save={(v) => api.oidc(v, etag)} test={api.testMapping} check={api.checkServiceAccount} onSaved={saved} />
               {s.oidc && s.serviceAccount && <PasswordSignInSection s={s} save={(v) => api.login(v, etag)} onSaved={saved} />}
             </Tab>
             <Tab eventKey="trees" title={<TabTitleText>Directories</TabTitleText>}>
@@ -178,6 +178,7 @@ function DirectorySection({ s, api, etag, onSaved }: {
               'Single sign-on stops, and so does finding people by a short name at sign-in, until a service account is set again.', 'Remove',
               () => go('The service account is removed.', () => api.serviceAccount(null, etag)))}>Remove it</Button>}
           </ActionGroup>
+          {s.serviceAccount && <ServiceAccountRights check={api.checkServiceAccount} />}
         </FormSection>
         <FormSection title="Finding people at sign-in" titleElement="h3">
           <FormGroup label="Search bases" fieldId="dir-bases">
@@ -679,7 +680,7 @@ function ExpirySection() {
         <Checkbox id="expiry-on" label="Check once a day" isChecked={draft.enabled} onChange={(_e, v) => setDraft({ ...draft, enabled: v })} />
         <FormGroup label="Warn this many days ahead" fieldId="expiry-days" labelHelp={<FieldHelp label="Warn this many days ahead">{explain('warnDays')}</FieldHelp>}>
           <TextInput id="expiry-days" type="number" min={1} max={365} value={String(draft.warnDays)} onChange={(_e, v) => setDraft({ ...draft, warnDays: Number(v) })} style={{ maxWidth: '8rem' }} />
-          <FormHelperText><HelperText><HelperTextItem>1 to 365. This sets when notices go out; the banner, Security &gt; Certificates and the default-certificate check always warn 30 days ahead.</HelperTextItem></HelperText></FormHelperText>
+          <FormHelperText><HelperText><HelperTextItem>1 to 365. This sets when notices go out, and when the banner at the top of every page starts warning; Security &gt; Certificates and the default-certificate check always warn 30 days ahead.</HelperTextItem></HelperText></FormHelperText>
         </FormGroup>
         <FormSection title="E-mail" titleElement="h3">
           <FormGroup label="Mail server" fieldId="expiry-host">
@@ -974,8 +975,9 @@ function PresetsSection({ s, save, exportAll, onSaved }: {
   );
 }
 
-function SsoSection({ s, save, test, onSaved }: {
+function SsoSection({ s, save, test, check, onSaved }: {
   s: DirectorySettings; save: Saver<OidcSettings | null>; test: (v: string) => Promise<{ matches: string[]; neverProxy: boolean }>;
+  check: () => Promise<ServiceAccountCheck>;
   onSaved: (r: { data: DirectorySettings; etag?: string }) => void;
 }) {
   const blank: OidcSettings = { issuer: '', clientId: '', label: 'single sign-on', claim: 'preferred_username', attribute: 'uid', groupsClaim: 'groups', roles: [] };
@@ -1012,6 +1014,7 @@ function SsoSection({ s, save, test, onSaved }: {
   };
   return (
     <div className="dc-tab-body">
+      <ServiceAccountRights check={check} />
       <Form onSubmit={submit} isWidthLimited>
         <FormSection title="Identity provider" titleElement="h2">
           <FormGroup label="Redirect URI to register at the provider" fieldId="sso-redirect">
@@ -1145,5 +1148,59 @@ function PasswordSignInSection({ s, save, onSaved }: {
       </Form>
       {dialog}
     </div>
+  );
+}
+
+const FINDING: Record<ServiceAccountCheck['checks'][number]['result'], { color: 'green' | 'red' | 'orange' | 'grey'; text: string }> = {
+  ok: { color: 'green', text: 'ok' },
+  missing: { color: 'red', text: 'missing' },
+  broad: { color: 'orange', text: 'more than needed' },
+  unknown: { color: 'grey', text: 'not known' },
+};
+
+/**
+ * Checks the service account's own rights: finding people at sign-in, and acting as them for single
+ * sign-on (Identity Manager too), on a few people under each container; and whether it has more than it needs.
+ */
+function ServiceAccountRights({ check }: { check: () => Promise<ServiceAccountCheck> }) {
+  const [result, setResult] = useState<ServiceAccountCheck | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const run = () => {
+    setBusy(true);
+    setError(null);
+    check().then(setResult, setError).finally(() => setBusy(false));
+  };
+  const level = useHeading();
+  return (
+    <section className="dc-tab-body" aria-label="The service account's rights">
+      <p className="dc-subtle">
+        Checks what the service account can do, as itself, on a few people under each container: find them at sign-in, and act as
+        them for single sign-on. It also says when it has more rights than it needs.
+      </p>
+      <Button variant="secondary" isLoading={busy} isDisabled={busy} onClick={run}>Check its rights</Button>
+      <ProblemAlert error={error} />
+      {result && (
+        <>
+          <Alert component={level} isInline isPlain className="dc-tab-body"
+            variant={result.result === 'ok' ? 'success' : result.result === 'warnings' ? 'warning' : 'danger'}
+            title={result.result === 'ok' ? `${result.account} has the rights it needs, on the people checked.`
+              : result.result === 'warnings' ? `${result.account} has the rights it needs, and more.` : `${result.account} is missing rights.`} />
+          <Table variant="compact" aria-label="Service account rights">
+            <Thead><Tr><Th>For</Th><Th>Where</Th><Th>Check</Th><Th>Result</Th></Tr></Thead>
+            <Tbody>
+              {result.checks.map((c, i) => (
+                <Tr key={i}>
+                  <Td dataLabel="For">{c.purpose}</Td>
+                  <Td dataLabel="Where" className="dc-mono">{c.where}</Td>
+                  <Td dataLabel="Check">{c.check}<div className="dc-subtle">{c.detail}</div></Td>
+                  <Td dataLabel="Result"><Label isCompact color={FINDING[c.result].color}>{FINDING[c.result].text}</Label></Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </>
+      )}
+    </section>
   );
 }

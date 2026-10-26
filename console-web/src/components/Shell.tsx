@@ -244,13 +244,17 @@ function route(path: string) {
   return <NotFound />;
 }
 
-/** Administrators are told of changed pinned certificates, and of trusted ones expired or expiring within WARN_DAYS. */
+/**
+ * Administrators are told of changed pinned certificates, and of trusted ones expired or expiring within
+ * the warning window set in Settings > Certificate expiry (WARN_DAYS until one is set).
+ */
 function ExpiryBanner() {
-  const [soon, setSoon] = useState<{ expired: number; expiring: number; changed: number } | null>(null);
+  const [soon, setSoon] = useState<{ expired: number; expiring: number; changed: number; within: number } | null>(null);
   useEffect(() => {
     trust.list().then((t) => {
+      const within = t.warnDays ?? WARN_DAYS;
       const days = t.certificates.map((c) => daysUntil(c.notAfter));
-      setSoon({ expired: days.filter((d) => d < 0).length, expiring: days.filter((d) => d >= 0 && d <= WARN_DAYS).length, changed: t.alerts.length });
+      setSoon({ expired: days.filter((d) => d < 0).length, expiring: days.filter((d) => d >= 0 && d <= within).length, changed: t.alerts.length, within });
     }).catch(() => setSoon(null));
   }, []);
   if (!soon || (soon.expired === 0 && soon.expiring === 0 && soon.changed === 0)) {
@@ -259,7 +263,7 @@ function ExpiryBanner() {
   const parts = [
     soon.changed && `${soon.changed} pinned ${soon.changed === 1 ? 'certificate has' : 'certificates have'} changed`,
     soon.expired && `${soon.expired} expired`,
-    soon.expiring && `${soon.expiring} expiring within ${WARN_DAYS} days`,
+    soon.expiring && `${soon.expiring} expiring within ${soon.within} day${soon.within === 1 ? '' : 's'}`,
   ].filter(Boolean).join(', ');
   return (
     <PageSection padding={{ default: 'noPadding' }}>

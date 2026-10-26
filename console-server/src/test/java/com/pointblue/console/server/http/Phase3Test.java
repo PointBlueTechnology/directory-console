@@ -423,4 +423,32 @@ public class Phase3Test {
         assertEquals(true, call("PUT", at + "/login", Map.of("direct", true), h).body().get("directLogin"));
         signIn("cn=help,ou=Sales,o=acme", "help-pw");
     }
+
+    @Test
+    public void theServiceAccountsRightsAreCheckedAsItself() throws Exception {
+        Map<String, String> h = withCsrf(signIn("cn=admin,o=system", "admin-pw"));
+        String at = "/api/v2/directories/acme/service-account/check";
+
+        edir.privileges = 0x1f;   // every right everywhere: enough, and more than needed
+        edir.privilegeRequests.clear();
+        Map<String, Object> all = call("GET", at, null, h).body();
+        assertEquals("cn=console,o=system", all.get("account"));
+        assertEquals(String.valueOf(all), "warnings", all.get("result"));
+        List<Map<String, Object>> checks = ((List<?>) all.get("checks")).stream().map(Json::asMap).toList();
+        assertTrue(checks.stream().anyMatch(c -> "single sign-on".equals(c.get("purpose")) && "act as them".equals(c.get("check")) && "ok".equals(c.get("result"))));
+        assertTrue(checks.stream().anyMatch(c -> "scope".equals(c.get("purpose")) && "cn=admin,o=system".equals(c.get("where")) && "broad".equals(c.get("result"))));
+        assertTrue("the service account itself is not a sample", checks.stream().noneMatch(c -> "cn=console,o=system".equalsIgnoreCase(String.valueOf(c.get("where")))));
+        assertTrue("asked as itself", edir.privilegeRequests.stream().allMatch(r -> r[1].equalsIgnoreCase("cn=console,o=system")));
+
+        edir.privileges = 0x03;   // Browse and Add; Compare and Read on attributes; no Supervisor
+        Map<String, Object> some = call("GET", at, null, h).body();
+        assertEquals("problems", some.get("result"));
+        checks = ((List<?>) some.get("checks")).stream().map(Json::asMap).toList();
+        assertTrue(checks.stream().anyMatch(c -> "act as them".equals(c.get("check")) && "missing".equals(c.get("result"))));
+        assertTrue("sign-in still works", checks.stream().filter(c -> "sign-in".equals(c.get("purpose"))).allMatch(c -> "ok".equals(c.get("result"))));
+
+        Map<String, String> ed = withCsrf(signIn("cn=ed,ou=Sales,o=acme", "ed-pw"));
+        assertEquals(403, call("GET", at, null, ed).status());
+        assertTrue(audit().contains("settings.service-account.check"));
+    }
 }

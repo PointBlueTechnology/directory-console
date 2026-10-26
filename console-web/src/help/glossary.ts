@@ -125,7 +125,7 @@ export const GLOSSARY = {
   claim: 'The part of the provider\'s identity token that says who the person is, such as their user name.',
   claimAttribute: 'The eDirectory attribute whose value must equal the claim.',
   neverActAs: 'Accounts that may not sign in through single sign-on, such as administrators and the service account.',
-  warnDays: 'How many days before expiry the daily check first sends a notice.',
+  warnDays: 'How many days before expiry the daily check first sends a notice, and the banner at the top of every page starts warning.',
   syslogFacility: 'The syslog facility the console\'s messages carry, for routing on the syslog server.',
   directoryName: 'The directory\'s name as the console shows it in the sign-in list and in Settings, not its eDirectory tree name.',
 } as const;

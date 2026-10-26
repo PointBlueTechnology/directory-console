@@ -837,7 +837,8 @@ public final class Server {
         for (TrustStore.Alert a : trust.alerts()) {
             alerts.add(a.json());
         }
-        Http.json(ex, 200, Map.of("certificates", out, "hostExceptions", exceptions, "alerts", alerts));
+        // the warning window set in Settings > Certificate expiry, for the banner
+        Http.json(ex, 200, Map.of("certificates", out, "hostExceptions", exceptions, "alerts", alerts, "warnDays", expiry.settings().get("warnDays")));
     }
 
     private void trustProbe(HttpExchange ex) throws IOException {

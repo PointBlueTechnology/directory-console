@@ -818,6 +818,21 @@ export interface OidcSettings {
   neverProxy?: string[];
 }
 
+/** One finding of the service account check: ok, missing (something fails), broad (more than needed), unknown. */
+export interface ServiceAccountFinding {
+  purpose: 'sign-in' | 'single sign-on' | 'scope';
+  where: string;
+  check: string;
+  result: 'ok' | 'missing' | 'broad' | 'unknown';
+  detail: string;
+}
+
+export interface ServiceAccountCheck {
+  account: string;
+  result: 'ok' | 'warnings' | 'problems';
+  checks: ServiceAccountFinding[];
+}
+
 export interface DirectorySettings {
   id: string;
   name: string;
@@ -850,6 +865,8 @@ export function settings(id: string) {
     login: (login: { searchBases?: string[]; duplicates?: 'choose' | 'error'; direct?: boolean; allowed?: string[] }, etag?: string) => put('login', login, etag),
     /** Checked by signing in as it; null removes it. */
     serviceAccount: (account: { dn: string; password: string } | null, etag?: string) => put('service-account', account, etag),
+    /** The service account's rights for sign-in and single sign-on, read as itself on a few people. */
+    checkServiceAccount: () => request<ServiceAccountCheck>('GET', `${base}/service-account/check`).then((r) => r.data),
     /** Idle timeout and longest session for this tree; applies at once, to open sessions too. */
     sessionLimits: (limits: { idleMinutes: number; maxHours: number }, etag?: string) => put('session', limits, etag),
   };
@@ -1457,6 +1474,8 @@ export interface TrustState {
   certificates: TrustedCertificate[];
   hostExceptions: HostExceptionInfo[];
   alerts: TrustAlert[];
+  /** Settings > Certificate expiry's warning window, in days (the banner uses it). */
+  warnDays?: number;
 }
 
 /** The console's trust store (administrators; changes need a recent sign-in). */

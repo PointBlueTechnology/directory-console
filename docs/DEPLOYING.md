@@ -173,6 +173,9 @@ broader rights. Proxied authorization needs that right.
 5. **Groups claim** and **Provider groups:** map the provider's groups to console roles, as role mappings do for
    eDirectory groups. A dotted path such as `realm_access.roles` works for nested claims.
 6. **Try the mapping:** enter a claim value and see which account it finds. Then sign in with the button.
+   **Check its rights** (at the top of the page, and under Settings > Directory) reads the service account's own
+   rights on a few people under each container: whether it can find them and act as them, and whether it has more
+   than it needs (Supervisor over the whole tree, or over a break-glass account).
 7. **Password sign-in** (optional): choose **Single sign-on only, except the accounts below** to stop everyone else
    signing in with a password. The break-glass accounts always may; list any other accounts that should (for example
    administrators who need a way in when the provider is down), one DN per line. They keep the roles their groups
