@@ -1,6 +1,6 @@
 # Status
 
-Where Directory Console stands as of version 0.3.17 (October 2026): what works, what has limits, and what is not built yet.
+Where Directory Console stands as of version 0.3.18 (October 2026): what works, what has limits, and what is not built yet.
 It is a beta release. It has been tested against lab trees running eDirectory 9.2 and 9.3, and Identity Manager 4.8.
 
 ## Works
