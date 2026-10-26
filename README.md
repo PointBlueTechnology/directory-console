@@ -4,7 +4,7 @@
 > edges and changes between versions. Try it on a non-production tree first, and see
 > [docs/STATUS.md](docs/STATUS.md) for what works and what does not yet.
 
-A web console for NetIQ/OpenText **eDirectory** and **Identity Manager**: one Java 21 server. It is published as a
+A web console for NetIQ/OpenText **eDirectory** and **Identity Manager**: It is published as a
 container image, the recommended way to run it.
 
 - **Directory objects:** browse, search, edit and manage objects.
