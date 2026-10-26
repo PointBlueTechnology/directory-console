@@ -100,7 +100,7 @@ Back up first: a volume snapshot of the `console-data` claim, or a backup from *
 Then change the image tag to the new version (pin versions on Kubernetes rather than following `latest`):
 
 ```bash
-kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.3.19
+kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.3.20
 ```
 
 ```bash
@@ -117,10 +117,10 @@ restoring the backup if the release notes say the configuration format changed. 
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.3.19
+    image: ghcr.io/pointbluetechnology/directory-console:0.3.20
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.19 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.20 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -140,6 +140,9 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.3.20:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.19
+  needs no restore. Settings > Directory (and Single sign-on) can check the service account's rights. The certificate
+  banner now warns within Settings > Certificate expiry's window instead of a fixed 30 days.
 - **0.3.19:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.18
   needs no restore. Built on DirXMLDev 0.52.0; Identity Manager under single sign-on works as in 0.3.18.
 - **0.3.18:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.17
