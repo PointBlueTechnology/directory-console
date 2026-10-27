@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Breadcrumb, BreadcrumbItem, Button, Card, CardBody, CardTitle, Dropdown, DropdownItem, DropdownList, EmptyState, EmptyStateBody, Flex, MenuToggle,
+  Alert, AlertActionLink, Breadcrumb, BreadcrumbItem, Button, Card, CardBody, CardTitle, Dropdown, DropdownItem, DropdownList, EmptyState, EmptyStateBody, Flex, MenuToggle,
   PageSection, Pagination, SearchInput, Spinner, Title, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
 import { InfoCircleIcon, PlusIcon } from '@patternfly/react-icons';
-import type { DirObject, Page, Row, SchemaClass } from '../api';
+import { ApiError, type DirObject, type Page, type Row, type SchemaClass } from '../api';
 import { useSession } from '../session';
 import { navigate, useLocation } from '../router';
 import { ContainerTree } from '../components/ContainerTree';
@@ -79,6 +79,8 @@ export function Browser({ container }: { container?: string }) {
     load();
   };
 
+  // an address for a container that no longer exists (deleted, or remembered from another directory)
+  const gone = !!container && error instanceof ApiError && error.status === 404;
   const total = page ? (page.total >= 0 ? page.total : page.offset - 1 + page.count + (page.count === perPage ? 1 : 0)) : 0;
   const up = async (dn: string) => {
     try {
@@ -117,8 +119,13 @@ export function Browser({ container }: { container?: string }) {
                 </>
               )}
               {!container && <Title headingLevel="h1">Top of the directory</Title>}
-              <ProblemAlert error={error} onRetry={load} />
-              {container && (
+              {gone ? (
+                <Alert variant="info" isInline title="This container is not in the directory"
+                  actionLinks={<AlertActionLink onClick={() => navigate('/browse')}>Go to the top of the directory</AlertActionLink>}>
+                  It may have been deleted or moved, or the link came from another directory or an earlier session.
+                </Alert>
+              ) : <ProblemAlert error={error} onRetry={load} />}
+              {container && !gone && (
                 <Toolbar>
                   <ToolbarContent>
                     <ToolbarItem>
