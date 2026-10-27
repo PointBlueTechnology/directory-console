@@ -228,7 +228,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Basic',
         list: [
-          'Type the start of a name: it is matched against cn, fullName, givenName, sn, mail and uid. Leave it empty to list everything of the kind chosen.',
+          'Type the start of a name: it is matched against cn, fullName, givenName, sn, mail and uid. * is a wildcard (j*son, *admin). Leave it empty, or type *, to list everything of the kind chosen.',
           'People, Groups and Containers choose what to find; Everything finds any kind of object.',
           'Search under a container to look only below it; use Browse to pick it.',
         ],

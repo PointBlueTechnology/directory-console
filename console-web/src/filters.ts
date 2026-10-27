@@ -60,7 +60,7 @@ export function toFilter(conditions: Condition[], join: 'and' | 'or', objectClas
 }
 
 /** A value escaped for an LDAP filter (RFC 4515): \, *, (, ) and NUL as \5c, \2a, \28, \29 and \00. */
-function escape(v: string): string {
+export function escape(v: string): string {
   return v.replace(/[\\*()\0]/g, (ch) => `\\${ch.charCodeAt(0).toString(16).padStart(2, '0')}`);
 }
 

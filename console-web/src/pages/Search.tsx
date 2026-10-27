@@ -6,7 +6,7 @@ import {
 } from '@patternfly/react-core';
 import { DownloadIcon, HistoryIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { ApiError, type DirObject, type Filter, type Page, type Row, type SchemaAttribute, type SchemaClass, type SearchRequest } from '../api';
+import { ApiError, type DirObject, type Page, type Row, type SchemaAttribute, type SchemaClass, type SearchRequest } from '../api';
 import { useSession } from '../session';
 import { navigate, useLocation } from '../router';
 import { type FilterNode, attributeAt, checkFilter, classAt, fromText, newGroup, toStructured, toText } from '../filterTree';
@@ -22,30 +22,14 @@ import {
   type BasicKind, type SavedSearch, clearHistory, loadHistory, loadSearches, remember, removeSearch, saveSearch,
 } from '../savedSearches';
 import { columnList, valueText, valuesOf } from '../report';
+import { NAME_ATTRIBUTES, basicQuery } from '../basicSearch';
 
-/** The attributes a basic search matches a name against (the start of any of them). */
-export const NAME_ATTRIBUTES = ['cn', 'fullName', 'givenName', 'sn', 'mail', 'uid'];
-
-const KINDS: { kind: BasicKind; label: string; classes: string[] }[] = [
-  { kind: 'people', label: 'People', classes: ['inetOrgPerson'] },
-  { kind: 'groups', label: 'Groups', classes: ['groupOfNames', 'dynamicGroup'] },
-  { kind: 'containers', label: 'Containers', classes: ['organizationalUnit', 'organization', 'locality', 'country', 'domain'] },
-  { kind: 'everything', label: 'Everything', classes: [] },
+const KINDS: { kind: BasicKind; label: string }[] = [
+  { kind: 'people', label: 'People' },
+  { kind: 'groups', label: 'Groups' },
+  { kind: 'containers', label: 'Containers' },
+  { kind: 'everything', label: 'Everything' },
 ];
-
-/** The basic search's filter: what is typed matched at the start of the name attributes, and the kind's classes. */
-export function basicFilter(find: string, kind: BasicKind): Filter | undefined {
-  const parts: Filter[] = [];
-  const classes = KINDS.find((k) => k.kind === kind)?.classes ?? [];
-  if (classes.length) {
-    parts.push(classes.length === 1 ? { eq: { objectClass: classes[0] } } : { or: classes.map((c) => ({ eq: { objectClass: c } })) });
-  }
-  const name = find.trim();
-  if (name) {
-    parts.push({ or: NAME_ATTRIBUTES.map((a) => ({ prefix: { [a]: name } })) });
-  }
-  return parts.length === 0 ? undefined : parts.length === 1 ? parts[0] : { and: parts };
-}
 
 const DEPTHS: { scope: SavedSearch['scope']; label: string }[] = [
   { scope: 'subtree', label: 'Everything below' },
@@ -141,7 +125,7 @@ export function Search() {
         r.base = { dn: v.base.trim() };
       }
       if (v.mode === 'basic') {
-        r.filter = basicFilter(v.find ?? '', v.kind ?? 'everything');
+        Object.assign(r, basicQuery(v.find ?? '', v.kind ?? 'everything'));
       } else if (v.filterMode === 'write') {
         const problem = checkFilter(v.ldapFilter);
         if (problem) {
@@ -316,7 +300,7 @@ export function Search() {
                 <FormGroup label="Name" fieldId="find">
                   <TextInput id="find" value={find} onChange={(_e, v) => setFind(v)} autoFocus placeholder="the start of a name, such as smi" />
                   <FormHelperText><HelperText><HelperTextItem>
-                    Matches the start of {NAME_ATTRIBUTES.join(', ')}. Leave it empty to list everything of the kind chosen.
+                    Matches the start of {NAME_ATTRIBUTES.join(', ')}. * is a wildcard (j*son); leave it empty, or type *, to list everything of the kind chosen.
                   </HelperTextItem></HelperText></FormHelperText>
                 </FormGroup>
                 <FormGroup label="Find" fieldId="kind" role="radiogroup" isInline>
