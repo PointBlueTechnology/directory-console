@@ -5,6 +5,23 @@ import { Session, sessionState } from './session';
 import { Shell } from './components/Shell';
 import { SignIn } from './pages/SignIn';
 import { SetupRequired } from './pages/SetupRequired';
+import { navigate } from './router';
+
+/** Which directory this tab's address belongs to: signing in to another one starts at the top. */
+const PAGE_DIRECTORY_KEY = 'dc.pageDirectory';
+
+function startInRightDirectory(me: Me) {
+  const now = `${me.directory}@${me.address ?? ''}`;
+  try {
+    const before = sessionStorage.getItem(PAGE_DIRECTORY_KEY);
+    if (before !== null && before !== now) {
+      navigate('/browse', true);
+    }
+    sessionStorage.setItem(PAGE_DIRECTORY_KEY, now);
+  } catch {
+    // no session storage: the address is kept
+  }
+}
 
 type State = { kind: 'loading' } | { kind: 'signed-out'; reason?: string } | { kind: 'setup' } | { kind: 'signed-in'; me: Me };
 
@@ -13,6 +30,7 @@ export function App() {
 
   const signedIn = useCallback((me: Me) => {
     setCsrf(me.csrf);
+    startInRightDirectory(me);
     setState({ kind: 'signed-in', me });
   }, []);
 
@@ -33,6 +51,8 @@ export function App() {
   const signOut = useCallback(() => {
     session.signOut().catch(() => undefined).finally(() => {
       setCsrf(null);
+      // the next sign-in may be to another directory: do not keep this one's page
+      navigate('/', true);
       setState({ kind: 'signed-out' });
     });
   }, []);
