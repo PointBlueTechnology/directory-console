@@ -12,6 +12,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         list: [
           'A container\'s name opens it; clicking anywhere else on a row shows the object\'s details beside the list.',
           'To view or edit a container itself, use the details button at the end of its row, or Details beside the open container\'s name.',
+          'Export as LDIF… in an object\'s actions saves it, a container\'s children, or a container and everything below it (as LDIF, CSV or JSON).',
           'The label at the top of the page names the directory you are signed in to; hover over it for its address. It is red for a production directory.',
           'The number after a container\'s name is how many objects it holds, as eDirectory reports it.',
           'Everything, Containers and Other objects filter the list. Other objects are the leaves: users, groups and the like.',
@@ -222,32 +223,46 @@ export const CONTENT: Record<string, HelpTopic> = {
   // ---- Search and schema -----------------------------------------------------------------------
   search: {
     title: 'Searching',
-    summary: 'Find objects by class and attribute values, anywhere under a starting point.',
+    summary: 'Find objects by name (Basic), or by any filter (Advanced), anywhere under a starting point; export what you find.',
     sections: [
       {
-        title: 'Building a search',
+        title: 'Basic',
         list: [
-          'Search under a container (or the whole directory): everything below it, or only what is directly inside. Type its DN, or use Browse to pick it from the directory\'s containers.',
-          '"All of these" matches objects meeting every condition; "Any of these" those meeting at least one.',
+          'Type the start of a name: it is matched against cn, fullName, givenName, sn, mail and uid. Leave it empty to list everything of the kind chosen.',
+          'People, Groups and Containers choose what to find; Everything finds any kind of object.',
+          'Search under a container to look only below it; use Browse to pick it.',
+        ],
+      },
+      {
+        title: 'Advanced',
+        list: [
+          'Depth: everything below the starting point, only what is directly inside it, or only that object.',
+          '"Build it" makes the filter from items: conditions (attribute, test, value) in groups that need all or any of what they hold. Groups go inside groups to any depth; put a condition or a group inside NOT to match what does not match it.',
+          '"Write LDAP filter text" takes an RFC 4515 filter. It is checked as you type, and attribute names are offered as you write them. In values, write \\28 for (, \\29 for ), \\2a for * and \\5c for \\.',
+          'Switching between the two carries the filter across. A filter the builder has no test for (a*b*c, or an extensible match) stays as text.',
           '"Sounds like" matches names that sound alike; "is at least" and "is at most" compare in order.',
-          'Or type an LDAP filter. Escape parentheses and asterisks in values as \\28, \\29 and \\2a.',
           'Sort by names an attribute; eDirectory sorts large results itself.',
+          'Columns names the attributes each result shows, in order (Choose… picks them from the schema). * is every attribute, + the operational ones.',
         ],
       },
       { title: 'Results', paragraphs: ['Large results are sorted and paged by eDirectory, and their total is an estimate.'] },
       {
-        title: 'Columns and export',
+        title: 'Export',
         list: [
-          'Columns names attributes to show for each result (commas between them); several values share a cell, separated by semicolons.',
-          'Export CSV or Export JSON saves every match, not only this page, up to 10,000: the DN, name and class, then the columns. In CSV a value a spreadsheet would run as a formula is kept as text.',
+          'Export… saves every match, not only this page: as LDIF, CSV or JSON, all of them or at most a number you choose.',
+          'The console writes the file as it reads the directory, with your own rights, so a large export takes as long as reading it. Each export is in the audit log, with how many objects it held.',
+          'LDIF has every attribute you can read (or the columns chosen), base64 for binary values and anything not plain ASCII, lines folded at 76 characters unless you choose otherwise.',
+          'CSV has the DN, name and class, then the columns; choose the separators, the quote, line endings, whether cells a spreadsheet would run as formulas are kept as text, and a UTF-8 mark for Excel.',
+          'Passwords, private keys and other secrets are never written: LDIF notes that they were left out.',
+          'Your choices are remembered in this browser for the next export.',
         ],
       },
       {
-        title: 'Saved searches',
+        title: 'Saved and recent searches',
         list: [
-          'Save this search keeps the whole form (where, class, conditions or LDAP filter, sort and columns) under a name. Saving under a name already used replaces it.',
-          'Choose a saved search to fill in the form and run it.',
-          'Saved searches are kept in this browser, for this directory only: another browser or computer does not have them.',
+          'Save this search keeps the whole form under a name. Saving under a name already used replaces it.',
+          'Choose a saved search, or one from Recent, to fill in the form and run it. Recent holds the last 20 searches run.',
+          'Both are kept in this browser, for this directory only: another browser or computer does not have them. Searches saved by versions before 0.3.23 open in the Advanced builder.',
         ],
       },
     ],

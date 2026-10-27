@@ -503,6 +503,81 @@ public class ObjectsTest {
         assertEquals(400, call("POST", "/api/v2/trees/acme/search", Map.of("filter", Map.of("eq", Map.of("cn)(x", "y"))), h).status());
     }
 
+    private HttpResponse<String> export(Map<String, String> h, Map<String, Object> body) throws Exception {
+        HttpRequest.Builder b = ServerClient.request(URI.create(base + "/api/v2/trees/acme/export"))
+            .POST(HttpRequest.BodyPublishers.ofString(Json.compact(body))).header("Content-Type", "application/json");
+        h.forEach(b::header);
+        return http.send(b.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private String auditText() throws Exception {
+        StringBuilder b = new StringBuilder();
+        try (var files = Files.list(dataPath.resolve("audit"))) {
+            for (Path f : files.toList()) {
+                b.append(Files.readString(f));
+            }
+        }
+        return b.toString();
+    }
+
+    @Test
+    public void exportsStreamLdifCsvAndJsonPageByPage() throws Exception {
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String smith = (String) resolve(h, "cn=Smith\\, John,ou=Users,o=acme").body().get("guid");
+        Reply got = call("GET", "/api/v2/trees/acme/objects/" + smith, null, h);
+        Map<String, String> hm = new HashMap<>(h);
+        hm.put("If-Match", got.etag());
+        assertEquals(200, call("PATCH", "/api/v2/trees/acme/objects/" + smith, Map.of("changes", List.of(
+            Map.of("op", "replace", "attribute", "description", "values", List.of("Müller")),
+            Map.of("op", "replace", "attribute", "title", "values", List.of("=SUM(A1) " + "x".repeat(90))))), hm).status());
+
+        int before = Objects.exportPage;
+        Objects.exportPage = 2;
+        try {
+            HttpResponse<String> ldif = export(h, Map.of("base", Map.of("dn", "ou=Users,o=acme"), "format", "ldif"));
+            assertEquals(200, ldif.statusCode());
+            assertTrue(ldif.headers().firstValue("Content-Disposition").orElseThrow().contains("Users-"));
+            String l = ldif.body();
+            assertTrue(l, l.startsWith("version: 1\n\ndn: "));
+            assertEquals("every entry under the base, across pages of two", 5, l.lines().filter(x -> x.startsWith("dn: ")).count());
+            assertTrue(l, l.contains("dn: cn=Smith\\, John,ou=Users,o=acme\nobjectClass: inetOrgPerson"));
+            assertTrue("not ASCII: base64", l.contains("description:: " + java.util.Base64.getEncoder().encodeToString("Müller".getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+            assertTrue("folded at 76", l.lines().allMatch(x -> x.length() <= 76) && l.contains("\n x"));
+            assertTrue("a password is never written", l.contains("# userPassword: withheld (1 value)") && !l.contains("viewer-pw"));
+
+            HttpResponse<String> csv = export(h, Map.of("base", Map.of("dn", "ou=Users,o=acme"), "scope", "one", "format", "csv",
+                "filter", Map.of("eq", Map.of("objectClass", "inetOrgPerson")), "attributes", List.of("sn", "title"),
+                "options", Map.of("delimiter", ";", "valueDelimiter", "|", "eol", "lf")));
+            assertEquals(200, csv.statusCode());
+            List<String> rows = csv.body().lines().toList();
+            assertEquals("dn;name;objectClass;sn;title", rows.get(0));
+            assertTrue(rows.toString(), rows.contains("cn=Smith\\, John,ou=Users,o=acme;Smith, John;inetOrgPerson;Smith;'=SUM(A1) " + "x".repeat(90)));
+            assertEquals(4, rows.size());
+
+            HttpResponse<String> json = export(h, Map.of("filter", Map.of("eq", Map.of("objectClass", "organizationalUnit")), "format", "json",
+                "attributes", List.of("ou"), "limit", 2));
+            List<?> list = (List<?>) Json.parse(json.body());
+            assertEquals("limit", 2, list.size());
+            assertTrue(Json.asMap(Json.asMap(list.get(0)).get("attributes")).containsKey("ou"));
+
+            assertEquals("a bad filter is refused before anything is sent", 400, export(h, Map.of("ldapFilter", "(ou=a)(ou=b)")).statusCode());
+            assertEquals(400, export(h, Map.of("format", "xml")).statusCode());
+            assertEquals(400, export(h, Map.of("format", "csv", "options", Map.of("delimiter", "\"", "quote", "\""))).statusCode());
+        } finally {
+            Objects.exportPage = before;
+        }
+        String audit = auditText();
+        assertTrue(audit, audit.contains("objects.export") && audit.contains("\"count\":5"));
+    }
+
+    @Test
+    public void viewersMayExportWhatTheyCanRead() throws Exception {
+        Map<String, String> h = signIn("cn=viewer,ou=Users,o=acme", "viewer-pw");
+        HttpResponse<String> r = export(h, Map.of("base", Map.of("dn", "ou=Groups,o=acme"), "format", "ldif"));
+        assertEquals(200, r.statusCode());
+        assertTrue(r.body(), r.body().contains("dn: cn=Viewers,ou=Groups,o=acme"));
+    }
+
     @Test
     public void writesNeedTheEditorRoleAndACurrentEtag() throws Exception {
         Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");

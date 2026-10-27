@@ -30,6 +30,8 @@ import javax.naming.ldap.ExtendedRequest;
 import javax.naming.ldap.ExtendedResponse;
 import javax.naming.ldap.InitialLdapContext;
 import javax.naming.ldap.LdapContext;
+import javax.naming.ldap.PagedResultsControl;
+import javax.naming.ldap.PagedResultsResponseControl;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 
@@ -262,6 +264,49 @@ public final class Ldap implements AutoCloseable {
             r.close();
         }
         return out;
+    }
+
+    /** One page of a paged search, and the cookie for the next (null after the last page). */
+    public record Paged(List<Entry> entries, byte[] cookie) {
+    }
+
+    /**
+     * One page of up to {@code size} entries (simple paged results, RFC 2696), continuing from
+     * {@code cookie} (null for the first). The lock is held for one page only, so a long export does not
+     * hold up the session's other requests. A server that ignores the control returns everything at once,
+     * with no cookie.
+     */
+    public synchronized Paged page(String base, String filter, Object[] args, int scope, String[] attrs, int size, byte[] cookie) throws NamingException {
+        try {
+            controls(new PagedResultsControl(size, cookie, Control.NONCRITICAL));
+        } catch (java.io.IOException e) {
+            throw new NamingException("paged results: " + e.getMessage());
+        }
+        SearchControls sc = new SearchControls();
+        sc.setSearchScope(scope);
+        sc.setReturningAttributes(attrs);
+        sc.setReturningObjFlag(false);
+        List<Entry> out = new ArrayList<>();
+        NamingEnumeration<SearchResult> r = args == null ? ctx.search(base, filter, sc) : ctx.search(base, filter, args, sc);
+        try {
+            while (r.hasMore()) {
+                SearchResult e = r.next();
+                out.add(entry(e.getNameInNamespace(), e.getAttributes()));
+            }
+        } finally {
+            r.close();
+        }
+        byte[] next = null;
+        Control[] rc = ctx.getResponseControls();
+        if (rc != null) {
+            for (Control c : rc) {
+                if (c instanceof PagedResultsResponseControl p && p.getCookie() != null && p.getCookie().length > 0) {
+                    next = p.getCookie();
+                }
+            }
+        }
+        controls();
+        return new Paged(out, next);
     }
 
     /** One entry's attributes; null when it does not exist. */

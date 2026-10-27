@@ -243,6 +243,31 @@ export interface SearchRequest {
   page?: { offset?: number; count?: number; startAt?: string };
 }
 
+/** How an export is written (see the server's Export.Options); each part is optional. */
+export interface ExportOptions {
+  eol?: 'lf' | 'crlf';
+  /** LDIF line width; 0 for no folding. */
+  wrap?: number;
+  /** LDIF's "version: 1" line. */
+  version?: boolean;
+  delimiter?: string;
+  valueDelimiter?: string;
+  quote?: string;
+  /** Keep a cell a spreadsheet would run as a formula (=, +, -, @) as text. */
+  formulaGuard?: boolean;
+  /** A UTF-8 byte-order mark, for Excel. */
+  bom?: boolean;
+}
+
+export type ExportFormat = 'ldif' | 'csv' | 'json';
+
+export interface ExportRequest extends Omit<SearchRequest, 'sort' | 'page'> {
+  format: ExportFormat;
+  /** At most this many entries; 0 or absent for all. */
+  limit?: number;
+  options?: ExportOptions;
+}
+
 export interface Reply<T> {
   data: T;
   etag?: string;
@@ -357,6 +382,8 @@ export function tree(id: string) {
     removeSubtree: (guid: string, etag: string, count: number) =>
       request<{ deleted: number }>('DELETE', `${obj(guid)}?subtree=true`, undefined, { 'If-Match': etag, 'X-Confirm-Count': String(count) }).then((r) => r.data),
     search: (s: SearchRequest) => request<Page<Row | DirObject>>('POST', `${base}/search`, s).then((r) => r.data),
+    /** The query's results as a file (LDIF, CSV or JSON), streamed by the server and saved; answers the file's name. */
+    exportResults: (e: ExportRequest) => download('POST', `${base}/export`, e),
     modify: (guid: string, etag: string, changes: Change[]) => request<DirObject>('PATCH', obj(guid), { changes }, { 'If-Match': etag }),
     create: (parent: string, objectClass: string | string[], name: Rdn, attributes: Record<string, unknown[]>) =>
       request<DirObject>('POST', `${obj(parent)}/children`, { objectClass, name, attributes }),
@@ -1652,8 +1679,8 @@ export interface RestorePending { createdAt?: string; consoleVersion?: string; a
 
 const auditQuery = (f: AuditFilter) => Object.entries(f).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&');
 
-/** Download what a POST answers as a file (the browser keeps the session's cookie and CSRF header). */
-async function download(method: string, path: string, body?: unknown): Promise<void> {
+/** Download what a request answers as a file (the browser keeps the session's cookie and CSRF header); answers the file's name. */
+async function download(method: string, path: string, body?: unknown): Promise<string> {
   const r = await fetch(path, {
     method,
     credentials: 'same-origin',
@@ -1662,14 +1689,19 @@ async function download(method: string, path: string, body?: unknown): Promise<v
   });
   if (!r.ok) {
     const p = await r.json().catch(() => ({ title: 'error', detail: `HTTP ${r.status}` }));
+    if (r.status === 401) {
+      onSignedOut();
+    }
     throw new ApiError(r.status, p as Problem);
   }
+  lastAnswer = Date.now();
   const name = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') ?? '')?.[1] ?? 'download';
   const a = document.createElement('a');
   a.href = URL.createObjectURL(await r.blob());
   a.download = name;
   a.click();
-  URL.revokeObjectURL(a.href);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  return name;
 }
 
 /** The console's own records: the audit log, the configuration's history, backups. */

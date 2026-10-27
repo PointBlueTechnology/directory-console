@@ -63,6 +63,7 @@ GET    /api/v2/trees/{tree}/objects/{guid}               read, with an ETag
 GET    /api/v2/trees/{tree}/objects/{guid}/children      ?offset=&count=&startAt=&kind=containers|leaves|all
 GET    /api/v2/trees/{tree}/objects/{guid}/rights        the signed-in person's effective rights
 POST   /api/v2/trees/{tree}/search                       structured filter, or one ldapFilter expression
+POST   /api/v2/trees/{tree}/export                       the same query as a file: {format: ldif|csv|json, limit, options}, streamed
 PATCH  /api/v2/trees/{tree}/objects/{guid}               {"changes": [{"op", "attribute", "values"}]}
 POST   /api/v2/trees/{tree}/objects/{guid}/children      create: {"objectClass", "name": {"type", "value"}, "attributes"}
 POST   /api/v2/trees/{tree}/objects/{guid}/rename        {"name"}

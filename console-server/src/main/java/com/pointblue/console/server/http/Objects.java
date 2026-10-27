@@ -46,6 +46,7 @@ import javax.naming.ldap.Rdn;
  * GET    /api/v2/trees/{tree}/objects/{guid}/children       ?offset=&count=&startAt=&kind=containers|leaves|all
  * GET    /api/v2/trees/{tree}/objects/{guid}/rights         the signed-in person's effective rights
  * POST   /api/v2/trees/{tree}/search                        structured search
+ * POST   /api/v2/trees/{tree}/export                        the same query streamed as LDIF, CSV or JSON
  * PATCH  /api/v2/trees/{tree}/objects/{guid}                {"changes": [{"op", "attribute", "values"}]}, If-Match
  * POST   /api/v2/trees/{tree}/objects/{guid}/children       create
  * POST   /api/v2/trees/{tree}/objects/{guid}/rename         {"name"}, If-Match
@@ -125,7 +126,7 @@ final class Objects {
                 return;
             }
             String guid = p.length > 2 && p[1].equals("objects") ? p[2] : null;
-            boolean write = !method.equals("GET") && !route.equals("POST search") && !route.matches("POST objects/\\{guid}/presets/.+");
+            boolean write = !method.equals("GET") && !route.equals("POST search") && !route.equals("POST export") && !route.matches("POST objects/\\{guid}/presets/.+");
             if (write) {
                 // the editor role, and (for a scoped grant) the object under one of its containers
                 if (!s.principal.has(Role.EDITOR)) {
@@ -153,6 +154,7 @@ final class Objects {
                 case "POST objects/{guid}/members" -> tasks.changeMembers(ex, l, s, guid);
                 case "GET objects/{guid}/subtree" -> tasks.subtree(ex, l, guid);
                 case "POST search" -> search(ex, l, schema);
+                case "POST export" -> export(ex, l, s);
                 case "PATCH objects/{guid}" -> modify(ex, l, schema, s, guid);
                 case "POST objects/{guid}/children" -> create(ex, l, schema, s, guid);
                 case "POST objects/{guid}/rename" -> rename(ex, l, schema, s, guid, false);
@@ -609,8 +611,11 @@ final class Objects {
         return p;
     }
 
-    private void search(HttpExchange ex, Ldap l, Schema schema) throws IOException, NamingException {
-        Map<String, Object> b = Http.body(ex);
+    /** What a search or an export asks for: base, depth, filter and the attributes named (empty: none named). */
+    private record Query(String base, int scope, String filter, Object[] args, List<String> attributes) {
+    }
+
+    private Query query(Map<String, Object> b, Ldap l) throws NamingException {
         String base = "";
         if (b.get("base") instanceof Map<?, ?> m) {
             if (m.get("guid") != null) {
@@ -642,15 +647,26 @@ final class Objects {
             filter = "(objectClass=*)";
             args = null;
         }
-        String[] attrs = ROW;
-        if (b.get("attributes") instanceof List<?> al && !al.isEmpty()) {
-            List<String> a = new ArrayList<>(List.of(ROW));
+        List<String> attributes = new ArrayList<>();
+        if (b.get("attributes") instanceof List<?> al) {
             for (Object o : al) {
-                if (!Names.attributeName(String.valueOf(o)) && !"*".equals(o)) {
+                String a = String.valueOf(o);
+                if (!Names.attributeName(a) && !"*".equals(a) && !"+".equals(a)) {
                     throw new Http.Problem(400, "bad-field", "not an attribute name: " + o);
                 }
-                a.add(String.valueOf(o));
+                attributes.add(a);
             }
+        }
+        return new Query(base, scope, filter, args, attributes);
+    }
+
+    private void search(HttpExchange ex, Ldap l, Schema schema) throws IOException, NamingException {
+        Map<String, Object> b = Http.body(ex);
+        Query q = query(b, l);
+        String[] attrs = ROW;
+        if (!q.attributes().isEmpty()) {
+            List<String> a = new ArrayList<>(List.of(ROW));
+            a.addAll(q.attributes());
             attrs = a.toArray(new String[0]);
         }
         Map<String, String> page = new LinkedHashMap<>();
@@ -664,7 +680,92 @@ final class Objects {
                 page.put("order", String.valueOf(sm.get("order")));
             }
         }
-        window(ex, l, schema, base, filter, args, scope, attrs, List.of(sort), page, Map.of());
+        window(ex, l, schema, q.base(), q.filter(), q.args(), q.scope(), attrs, List.of(sort), page, Map.of());
+    }
+
+    // entries per page of an export (tests make it small to exercise paging)
+    static int exportPage = 500;
+
+    /**
+     * POST export: the search's base, depth, filter and attributes, written out as LDIF, CSV or JSON while
+     * it is read, page by page, with the person's own rights. {@code limit} caps the entries (0 or absent:
+     * all). The first page is read before anything is sent, so a bad filter or base is a problem response;
+     * a failure later ends the file early (noted in LDIF and JSON). Audited with the count written.
+     */
+    private void export(HttpExchange ex, Ldap l, Sessions.Session s) throws IOException, NamingException {
+        Map<String, Object> b = Http.body(ex);
+        Query q = query(b, l);
+        Export.Format format;
+        try {
+            format = Export.Format.valueOf(String.valueOf(b.getOrDefault("format", "ldif")).toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new Http.Problem(400, "bad-field", "format is ldif, csv or json");
+        }
+        Export.Options options = Export.Options.of(format, b.get("options"));
+        int limit = Math.max(0, Json.asInt(b.get("limit"), 0));
+        List<String> named = q.attributes();
+        List<String> read = new ArrayList<>(List.of("objectClass"));
+        read.addAll(named.isEmpty() ? (format == Export.Format.LDIF ? List.of("*") : List.of()) : named);
+        List<String> columns = named.stream().filter(a -> !"*".equals(a) && !"+".equals(a)).toList();
+        if (format == Export.Format.LDIF && !named.isEmpty()) {
+            columns = named;
+        }
+        String[] attrs = read.toArray(new String[0]);
+        int pageSize = limit > 0 ? Math.min(exportPage, limit) : exportPage;
+        Ldap.Paged first = l.page(q.base(), q.filter(), q.args(), q.scope(), attrs, pageSize, null);
+
+        String what = q.base().isEmpty() ? "directory" : Export.name(q.base()).replaceAll("[^A-Za-z0-9._-]+", "_");
+        String file = what + "-" + java.time.LocalDate.now() + "." + format.name().toLowerCase(java.util.Locale.ROOT);
+        Http.finishReading(ex);
+        ex.getResponseHeaders().set("Content-Type", switch (format) {
+            case LDIF -> "text/x-ldif; charset=utf-8";
+            case CSV -> "text/csv; charset=utf-8";
+            case JSON -> "application/json; charset=utf-8";
+        });
+        ex.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + file + "\"");
+        ex.sendResponseHeaders(200, 0);
+        String stopped = null;
+        java.io.Writer w = new java.io.BufferedWriter(new java.io.OutputStreamWriter(ex.getResponseBody(), java.nio.charset.StandardCharsets.UTF_8));
+        Export out = new Export(format, options, columns, w);
+        try {
+            out.begin();
+            Ldap.Paged page = first;
+            outer:
+            while (true) {
+                for (Ldap.Entry e : page.entries()) {
+                    if (limit > 0 && out.written() >= limit) {
+                        break outer;
+                    }
+                    out.entry(e);
+                }
+                if (page.cookie() == null || (limit > 0 && out.written() >= limit)) {
+                    break;
+                }
+                page = l.page(q.base(), q.filter(), q.args(), q.scope(), attrs, pageSize, page.cookie());
+            }
+        } catch (NamingException e) {
+            stopped = Ldap.Failure.of(e).getMessage();
+        }
+        try {
+            out.end(stopped);
+        } finally {
+            ex.close();
+        }
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("base", q.base());
+        d.put("scope", String.valueOf(b.getOrDefault("scope", "subtree")));
+        String shown = q.filter();
+        for (int i = 0; q.args() != null && i < q.args().length; i++) {
+            shown = shown.replace("{" + i + "}", String.valueOf(q.args()[i]));
+        }
+        d.put("filter", shown);
+        d.put("format", format.name().toLowerCase(java.util.Locale.ROOT));
+        d.put("attributes", named);
+        d.put("count", out.written());
+        if (stopped != null) {
+            d.put("stopped", stopped);
+        }
+        audit(s, "objects.export", q.base().isEmpty() ? "(whole tree)" : q.base(), d, null);
     }
 
     // ---- writes ---------------------------------------------------------------------------------

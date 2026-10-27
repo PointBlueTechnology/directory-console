@@ -215,3 +215,34 @@
 .dc-saved-searches {
   margin-block-end: var(--pf-t--global--spacer--md);
 }
+
+/* the advanced search's filter builder: nested groups, each with a rule down its left side */
+.dc-filter-group {
+  display: grid;
+  gap: var(--pf-t--global--spacer--sm);
+  padding: var(--pf-t--global--spacer--sm) 0 var(--pf-t--global--spacer--xs) var(--pf-t--global--spacer--md);
+  border-left: 3px solid var(--pf-t--global--border--color--default);
+}
+
+.dc-filter-not {
+  border-left-color: var(--pf-t--global--border--color--status--warning--default);
+}
+
+.dc-filter-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--pf-t--global--spacer--sm);
+}
+
+.dc-filter-add {
+  display: flex;
+  gap: var(--pf-t--global--spacer--sm);
+}
+
+.dc-filter-offers {
+  margin-top: var(--pf-t--global--spacer--xs);
+}
+
+.dc-attr-picker {
+  margin-top: var(--pf-t--global--spacer--sm);
+}

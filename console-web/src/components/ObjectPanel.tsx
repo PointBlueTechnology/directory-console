@@ -4,6 +4,7 @@ import {
   Divider, Dropdown, DropdownGroup, DropdownItem, DropdownList, Flex, FlexItem, Label, LabelGroup, MenuToggle, Spinner, Switch, Tab, Tabs, TabTitleText, Title,
 } from '@patternfly/react-core';
 import { EllipsisVIcon } from '@patternfly/react-icons';
+import { ExportModal } from './ExportModal';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { ApiError, type DirObject, type Preset, edir, isGroup, isUser, isWithheld, presets } from '../api';
 import { useConfirmed } from './Confirm';
@@ -22,7 +23,7 @@ import { HeadingLevel } from '../heading';
 import { Hint, useHelpTopic } from '../help/Help';
 import { explain } from '../help/glossary';
 
-type Dialog = null | { kind: 'attr'; attribute?: string } | { kind: 'rename' } | { kind: 'move' } | { kind: 'delete' }
+type Dialog = null | { kind: 'attr'; attribute?: string } | { kind: 'rename' } | { kind: 'move' } | { kind: 'delete' } | { kind: 'export' }
   | { kind: 'password' } | { kind: 'aux' } | { kind: 'preset'; preset: Preset };
 
 interface Props {
@@ -119,7 +120,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
             {obj.container && <Label>container</Label>}
           </LabelGroup>
         </FlexItem>
-        {(editor || tasks.length > 0) && (
+        {(
           <FlexItem>
             <Dropdown isOpen={menu} onOpenChange={setMenu} popperProps={{ position: 'right', appendTo: 'inline' }}
               toggle={(ref) => <Hint text={explain('actions')}><MenuToggle ref={ref} variant="plain" aria-label="Actions" isExpanded={menu} onClick={() => setMenu(!menu)} icon={<EllipsisVIcon />} /></Hint>}>
@@ -154,6 +155,11 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
                 )}
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'delete' }); }} isDanger>Delete</DropdownItem>
               </DropdownList>}
+              {(tasks.length > 0 || editor) && <Divider component="li" />}
+              <DropdownList>
+                <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'export' }); }}
+                  description={obj.container ? 'This object, its children, or everything below it' : undefined}>Export as LDIF…</DropdownItem>
+              </DropdownList>
             </Dropdown>
           </FlexItem>
         )}
@@ -247,6 +253,12 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
           onDone={(changed) => { setDialog(null); setNotice(changed.length ? `${dialog.preset.name}: done.` : `${dialog.preset.name}: nothing to change.`); refreshed(); }} />
       )}
       {dialog?.kind === 'aux' && <AuxClassModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDone={done} />}
+      {dialog?.kind === 'export' && (
+        <ExportModal title={`Export ${obj.name}`} format="ldif" onClose={() => setDialog(null)} query={{ base: { guid: obj.guid } }}
+          scopes={obj.container
+            ? [{ scope: 'base', label: 'This object' }, { scope: 'one', label: 'Its children (not this object)' }, { scope: 'subtree', label: 'This object and everything below it' }]
+            : [{ scope: 'base', label: 'This object' }]} />
+      )}
       {dialog?.kind === 'delete' && (
         <DeleteModal obj={obj} etag={etag} onClose={() => setDialog(null)} onDeleted={() => { setDialog(null); onChanged?.(null); }} />
       )}
