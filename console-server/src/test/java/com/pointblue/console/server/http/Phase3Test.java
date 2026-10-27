@@ -168,6 +168,9 @@ public class Phase3Test {
         Map<String, String> h = withCsrf(signIn("cn=ed,ou=Sales,o=acme", "ed-pw"));
         Map<String, Object> me = call("GET", "/api/v2/session", null, h).body();
         assertEquals(List.of("editor"), me.get("roles"));
+        assertEquals("the masthead names the directory", "Acme", me.get("directoryName"));
+        assertEquals("127.0.0.1:" + edir.port(), me.get("address"));
+        assertEquals("lab", me.get("tier"));
         assertEquals(List.of("ou=Sales,o=acme"), Json.asMap(((List<?>) me.get("grants")).get(0)).get("scopes"));
 
         String alice = guid(h, "cn=alice,ou=Sales,o=acme");

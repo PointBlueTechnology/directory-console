@@ -32,6 +32,10 @@ export interface Me {
   name: string;
   dn: string;
   directory: string;
+  /** The directory's display name, address (host:port) and tier. */
+  directoryName?: string;
+  address?: string;
+  tier?: 'production' | 'lab';
   roles: RoleId[];
   grants: Grant[];
   via: 'direct' | 'break-glass' | 'oidc' | 'user-directory';

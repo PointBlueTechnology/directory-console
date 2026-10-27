@@ -11,6 +11,8 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Finding your way',
         list: [
           'A container\'s name opens it; clicking anywhere else on a row shows the object\'s details beside the list.',
+          'To view or edit a container itself, use the details button at the end of its row, or Details beside the open container\'s name.',
+          'The label at the top of the page names the directory you are signed in to; hover over it for its address. It is red for a production directory.',
           'The number after a container\'s name is how many objects it holds, as eDirectory reports it.',
           'Everything, Containers and Other objects filter the list. Other objects are the leaves: users, groups and the like.',
           '"Go to a name" jumps to the first name at or after what you type, in alphabetical order.',

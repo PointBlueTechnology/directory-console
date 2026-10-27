@@ -455,6 +455,13 @@ public final class Server {
         m.put("name", s.principal.name());
         m.put("dn", s.principal.dn());
         m.put("directory", s.principal.directoryId());
+        // which directory this session is in, for the masthead
+        DirectoryConfig d = directoryOf(s);
+        if (d != null) {
+            m.put("directoryName", d.name());
+            m.put("address", d.host() + ":" + d.port());
+            m.put("tier", d.tier());
+        }
         m.put("roles", s.principal.roles().stream().map(Role::id).sorted().toList());
         m.put("grants", s.principal.grants().stream().map(g -> {
             Map<String, Object> gm = new LinkedHashMap<>();

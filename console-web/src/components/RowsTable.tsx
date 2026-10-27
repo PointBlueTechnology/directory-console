@@ -1,11 +1,12 @@
-import { Button, Label } from '@patternfly/react-core';
+import { Button, Label, Tooltip } from '@patternfly/react-core';
+import { InfoCircleIcon } from '@patternfly/react-icons';
 import { objectIcon } from './ObjectIcon';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import type { Row } from '../api';
 import { explain } from '../help/glossary';
 import { Hint } from '../help/Help';
 
-/** Objects in a list: a container's name opens it, any row shows its details. */
+/** Objects in a list: a container's name opens it, any row (or a container's details button) shows its details. */
 export function RowsTable({ rows, selected, onOpen, onDetails, label, highlight, narrow }: {
   rows: Row[];
   selected?: string | null;
@@ -23,6 +24,7 @@ export function RowsTable({ rows, selected, onOpen, onDetails, label, highlight,
           <Th>Name</Th>
           <Th>Class</Th>
           {!narrow && <Th>DN</Th>}
+          <Th screenReaderText="Details" />
         </Tr>
       </Thead>
       <Tbody>
@@ -36,6 +38,14 @@ export function RowsTable({ rows, selected, onOpen, onDetails, label, highlight,
             </Td>
             <Td dataLabel="Class">{r.objectClass}</Td>
             {!narrow && <Td dataLabel="DN"><span className="dc-mono dc-subtle">{r.dn}</span></Td>}
+            <Td isActionCell>
+              {r.container && (
+                <Tooltip content="View and edit this container">
+                  <Button variant="plain" size="sm" aria-label={`Details of ${r.name}`} icon={<InfoCircleIcon />}
+                    onClick={(e) => { e.stopPropagation(); onDetails(r); }} />
+                </Tooltip>
+              )}
+            </Td>
           </Tr>
         ))}
       </Tbody>

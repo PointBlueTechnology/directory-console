@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Breadcrumb, BreadcrumbItem, Button, Card, CardBody, CardTitle, Dropdown, DropdownItem, DropdownList, EmptyState, EmptyStateBody, MenuToggle,
+  Breadcrumb, BreadcrumbItem, Button, Card, CardBody, CardTitle, Dropdown, DropdownItem, DropdownList, EmptyState, EmptyStateBody, Flex, MenuToggle,
   PageSection, Pagination, SearchInput, Spinner, Title, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
-import { PlusIcon } from '@patternfly/react-icons';
+import { InfoCircleIcon, PlusIcon } from '@patternfly/react-icons';
 import type { DirObject, Page, Row, SchemaClass } from '../api';
 import { useSession } from '../session';
 import { navigate, useLocation } from '../router';
@@ -109,7 +109,11 @@ export function Browser({ container }: { container?: string }) {
                     ))}
                     <BreadcrumbItem isActive>{here.name}</BreadcrumbItem>
                   </Breadcrumb>
-                  <Title headingLevel="h1">{here.name}</Title>
+                  <Flex alignItems={{ default: 'alignItemsBaseline' }} gap={{ default: 'gapMd' }}>
+                    <Title headingLevel="h1">{here.name}</Title>
+                    <Button variant="link" isInline icon={<InfoCircleIcon />} isDisabled={selected === container}
+                      aria-label={`Details of ${here.name}`} onClick={() => navigate(`${location.pathname}?object=${container}`)}>Details</Button>
+                  </Flex>
                 </>
               )}
               {!container && <Title headingLevel="h1">Top of the directory</Title>}

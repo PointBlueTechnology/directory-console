@@ -2,9 +2,9 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import {
   Dropdown, DropdownItem, DropdownList, Masthead, MastheadBrand, MastheadContent, MastheadLogo, MastheadMain,
   MastheadToggle, MenuToggle, Nav, NavItem, NavList, Page, PageSidebar, PageSidebarBody, PageToggleButton,
-  Alert, AlertActionLink, Bullseye, Button, Drawer, DrawerContent, DrawerContentBody, Tooltip, PageSection, Spinner, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarGroup, ToolbarItem,
+  Alert, AlertActionLink, Bullseye, Button, Drawer, DrawerContent, DrawerContentBody, Label, Tooltip, PageSection, Spinner, ToggleGroup, ToggleGroupItem, Toolbar, ToolbarContent, ToolbarGroup, ToolbarItem,
 } from '@patternfly/react-core';
-import { MoonIcon, OutlinedQuestionCircleIcon, SunIcon, UserIcon } from '@patternfly/react-icons';
+import { DatabaseIcon, MoonIcon, OutlinedQuestionCircleIcon, SunIcon, UserIcon } from '@patternfly/react-icons';
 import { HelpContext, HelpPanel, useHelpState } from '../help/Help';
 import { topicForPath } from '../help/topics';
 import { useSession } from '../session';
@@ -82,6 +82,14 @@ export function Shell() {
           <ToolbarContent>
             <ToolbarGroup align={{ default: 'alignEnd' }} gap={{ default: 'gapMd' }}>
               <ToolbarItem>
+                <Tooltip content={<div>Signed in to {me.directoryName ?? me.directory}{me.address && <> at {me.address}</>}
+                  {me.via === 'user-directory' ? ' (a directory you entered)' : me.tier === 'production' ? ' (production)' : me.tier === 'lab' ? ' (lab)' : ''}</div>}>
+                  <Label color={me.tier === 'production' ? 'red' : 'blue'} icon={<DatabaseIcon />} textMaxWidth="24ch" data-testid="masthead-directory">
+                    {me.directoryName ?? me.directory}
+                  </Label>
+                </Tooltip>
+              </ToolbarItem>
+              <ToolbarItem>
                 <Tooltip content="Help for this page">
                   <Button variant={help.open ? 'secondary' : 'plain'} aria-label="Help for this page" aria-expanded={help.open}
                     icon={<OutlinedQuestionCircleIcon />} onClick={() => help.setOpen(!help.open)} />
@@ -101,7 +109,7 @@ export function Shell() {
                     </MenuToggle>
                   )}>
                   <DropdownList>
-                    <DropdownItem key="who" isDisabled description={me.via === 'user-directory' ? 'a directory you entered · your own rights' : `${me.directory} · ${me.roles.join(', ')}`}>{me.dn}</DropdownItem>
+                    <DropdownItem key="who" isDisabled description={me.via === 'user-directory' ? 'a directory you entered · your own rights' : `${me.directoryName ?? me.directory}${me.address ? ` (${me.address})` : ''} · ${me.roles.join(', ')}`}>{me.dn}</DropdownItem>
                     {version && (
                       <DropdownItem key="version" isDisabled description={version.update?.newer ? `${version.update.latest} is available`
                         : version.update?.enabled && version.update.error ? 'Cannot check for new versions' : undefined}>
