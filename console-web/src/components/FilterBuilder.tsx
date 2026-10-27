@@ -5,41 +5,48 @@ import { EllipsisVIcon, PlusCircleIcon } from '@patternfly/react-icons';
 import { useState } from 'react';
 import { type FilterNode, newCondition, newGroup } from '../filterTree';
 import { OPS } from '../filters';
+import { type NameOption, NameInput } from './NameInput';
 
 /**
  * The advanced search's filter as items: groups that need all or any of what they hold, NOT around one
  * item, and conditions (attribute, test, value). Groups nest to any depth.
  */
-export function FilterBuilder({ node, onChange, listId }: {
+export function FilterBuilder({ node, onChange, attributes, classes }: {
   node: FilterNode;
   onChange: (n: FilterNode) => void;
-  /** A datalist of attribute names for the attribute boxes. */
-  listId: string;
+  /** Offered as attribute names are typed, and class names as an objectClass value is. */
+  attributes: NameOption[];
+  classes: NameOption[];
 }) {
+  const names = { attributes, classes };
   // the top is always a group, so there is somewhere to add items
   const top: FilterNode = node.kind === 'and' || node.kind === 'or' ? node : { kind: 'and', children: [node] };
-  return <Item node={top} onChange={onChange} listId={listId} path="f" />;
+  return <Item node={top} onChange={onChange} names={names} path="f" />;
 }
 
-function Item({ node, onChange, onRemove, onWrap, listId, path }: {
+type Names = { attributes: NameOption[]; classes: NameOption[] };
+
+function Item({ node, onChange, onRemove, onWrap, names, path }: {
   node: FilterNode;
   onChange: (n: FilterNode) => void;
   onRemove?: () => void;
   onWrap?: () => void;
-  listId: string;
+  names: Names;
   path: string;
 }) {
   if (node.kind === 'cond') {
     const needs = OPS.find((o) => o.op === node.op)?.needsValue;
     return (
       <div className="dc-filter-row">
-        <TextInput id={`${path}-attr`} aria-label="Attribute" list={listId} value={node.attribute} placeholder="attribute"
-          onChange={(_e, v) => onChange({ ...node, attribute: v })} />
+        <NameInput id={`${path}-attr`} ariaLabel="Attribute" options={names.attributes} value={node.attribute} placeholder="attribute"
+          onChange={(v) => onChange({ ...node, attribute: v })} />
         <FormSelect aria-label="Test" value={node.op} onChange={(_e, v) => onChange({ ...node, op: v as typeof node.op })}>
           {OPS.map((o) => <FormSelectOption key={o.op} value={o.op} label={o.label} />)}
         </FormSelect>
-        <TextInput aria-label="Value" value={node.value} isDisabled={!needs} placeholder={needs ? 'value' : ''}
-          onChange={(_e, v) => onChange({ ...node, value: v })} />
+        {node.attribute.trim().toLowerCase() === 'objectclass' && needs
+          ? <NameInput ariaLabel="Value" options={names.classes} value={node.value} placeholder="a class" onChange={(v) => onChange({ ...node, value: v })} />
+          : <TextInput aria-label="Value" value={node.value} isDisabled={!needs} placeholder={needs ? 'value' : ''}
+            onChange={(_e, v) => onChange({ ...node, value: v })} />}
         <ItemMenu label="this condition" onRemove={onRemove} onWrap={onWrap} />
       </div>
     );
@@ -52,7 +59,7 @@ function Item({ node, onChange, onRemove, onWrap, listId, path }: {
           <span className="dc-subtle">matches what does not match:</span>
           <ItemMenu label="this NOT" onRemove={onRemove} onUnwrap={() => onChange(node.child)} />
         </div>
-        <Item node={node.child} listId={listId} path={`${path}-n`} onChange={(c) => onChange({ ...node, child: c })} />
+        <Item node={node.child} names={names} path={`${path}-n`} onChange={(c) => onChange({ ...node, child: c })} />
       </div>
     );
   }
@@ -68,7 +75,7 @@ function Item({ node, onChange, onRemove, onWrap, listId, path }: {
         {(onRemove || onWrap) && <ItemMenu label="this group" onRemove={onRemove} onWrap={onWrap} />}
       </div>
       {node.children.map((c, i) => (
-        <Item key={i} node={c} listId={listId} path={`${path}-${i}`} onChange={(n) => set(i, n)}
+        <Item key={i} node={c} names={names} path={`${path}-${i}`} onChange={(n) => set(i, n)}
           onRemove={() => remove(i)} onWrap={() => set(i, { kind: 'not', child: c })} />
       ))}
       {node.children.length === 0 && <p className="dc-subtle">Empty: add a condition or a group.</p>}

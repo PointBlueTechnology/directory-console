@@ -6,10 +6,10 @@ import {
 } from '@patternfly/react-core';
 import { DownloadIcon, HistoryIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { ApiError, type DirObject, type Filter, type Page, type Row, type SchemaAttribute, type SearchRequest } from '../api';
+import { ApiError, type DirObject, type Filter, type Page, type Row, type SchemaAttribute, type SchemaClass, type SearchRequest } from '../api';
 import { useSession } from '../session';
 import { navigate, useLocation } from '../router';
-import { type FilterNode, attributeAt, checkFilter, fromText, newGroup, toStructured, toText } from '../filterTree';
+import { type FilterNode, attributeAt, checkFilter, classAt, fromText, newGroup, toStructured, toText } from '../filterTree';
 import { ObjectDrawer } from '../components/ObjectDrawer';
 import { RowsTable } from '../components/RowsTable';
 import { ProblemAlert } from '../components/Problem';
@@ -17,6 +17,7 @@ import { BrowseContainers } from '../components/ContainerChooser';
 import { FilterBuilder } from '../components/FilterBuilder';
 import { AttributePicker } from '../components/AttributePicker';
 import { ExportModal } from '../components/ExportModal';
+import { type NameOption, NameInput, attributeOptions, classOptions, matches } from '../components/NameInput';
 import {
   type BasicKind, type SavedSearch, clearHistory, loadHistory, loadSearches, remember, removeSearch, saveSearch,
 } from '../savedSearches';
@@ -76,6 +77,7 @@ export function Search() {
   const { query } = useLocation();
   const selected = query.get('object');
   const [attributes, setAttributes] = useState<SchemaAttribute[]>([]);
+  const [classes, setClasses] = useState<SchemaClass[]>([]);
   const [mode, setMode] = useState<'basic' | 'advanced'>('basic');
   const [base, setBase] = useState('');
   // basic
@@ -103,7 +105,10 @@ export function Search() {
 
   useEffect(() => {
     tree.attributes().then((a) => setAttributes(a.filter((x) => !x.binary).sort((x, y) => x.name.localeCompare(y.name)))).catch(() => undefined);
+    tree.classes().then((c) => setClasses(c.filter((x) => x.kind !== 'abstract').sort((x, y) => x.name.localeCompare(y.name)))).catch(() => undefined);
   }, [tree]);
+  const attrOffers = attributeOptions(attributes);
+  const classOffers = classOptions(classes);
 
   useEffect(() => {
     if (!request) {
@@ -327,7 +332,6 @@ export function Search() {
             </Tab>
             <Tab eventKey="advanced" title={<TabTitleText>Advanced</TabTitleText>}>
               <Form onSubmit={run} className="dc-tab-body">
-                <datalist id="attribute-names">{attributes.map((a) => <option key={a.name} value={a.name} />)}</datalist>
                 {baseField}
                 <FormGroup label="Depth" fieldId="scope" role="radiogroup" isInline>
                   <ToggleGroup aria-label="Depth">
@@ -342,17 +346,17 @@ export function Search() {
                   {switchNote && <HelperText><HelperTextItem variant="warning">{switchNote}</HelperTextItem></HelperText>}
                   <div className="dc-tab-body">
                     {filterMode === 'build'
-                      ? <FilterBuilder node={filterTree} onChange={setFilterTree} listId="attribute-names" />
-                      : <FilterText value={ldapFilter} onChange={setLdapFilter} attributes={attributes} />}
+                      ? <FilterBuilder node={filterTree} onChange={setFilterTree} attributes={attrOffers} classes={classOffers} />
+                      : <FilterText value={ldapFilter} onChange={setLdapFilter} attributes={attrOffers} classes={classOffers} />}
                   </div>
                 </FormGroup>
                 <FormGroup label="Sort by" fieldId="sort">
-                  <TextInput id="sort" list="attribute-names" value={sort} onChange={(_e, v) => setSort(v)} />
+                  <NameInput id="sort" options={attrOffers} value={sort} onChange={setSort} />
                 </FormGroup>
                 <FormGroup label="Columns" fieldId="columns">
                   <Flex flexWrap={{ default: 'nowrap' }} spaceItems={{ default: 'spaceItemsSm' }}>
                     <FlexItem grow={{ default: 'grow' }}>
-                      <TextInput id="columns" list="attribute-names" value={columnsText} onChange={(_e, v) => setColumnsText(v)} placeholder="optional: mail, title, telephoneNumber" />
+                      <NameInput id="columns" list options={attrOffers} value={columnsText} onChange={setColumnsText} placeholder="optional: mail, title, telephoneNumber" />
                     </FlexItem>
                     <FlexItem><Button variant="secondary" onClick={() => setPicking(true)}>Choose…</Button></FlexItem>
                   </Flex>
@@ -406,12 +410,14 @@ export function Search() {
 }
 
 /** LDAP filter text, checked as it is typed, with attribute names offered at the cursor. */
-function FilterText({ value, onChange, attributes }: { value: string; onChange: (v: string) => void; attributes: SchemaAttribute[] }) {
+function FilterText({ value, onChange, attributes, classes }: { value: string; onChange: (v: string) => void; attributes: NameOption[]; classes: NameOption[] }) {
   const [cursor, setCursor] = useState(0);
   const area = useRef<HTMLTextAreaElement>(null);
   const problem = value.trim() ? checkFilter(value) : null;
-  const at = attributeAt(value, cursor);
-  const offers = at ? attributes.filter((a) => a.name.toLowerCase().startsWith(at.token.toLowerCase()) && a.name.toLowerCase() !== at.token.toLowerCase()).slice(0, 8) : [];
+  // an attribute name where one starts, a class name after objectClass=
+  const cls = classAt(value, cursor);
+  const at = cls ?? attributeAt(value, cursor);
+  const offers = cls ? (cls.token ? matches(classes, cls.token) : []).slice(0, 8) : at ? matches(attributes, at.token).slice(0, 8) : [];
   const take = (name: string) => {
     if (!at) {
       return;
@@ -429,7 +435,7 @@ function FilterText({ value, onChange, attributes }: { value: string; onChange: 
         validated={problem ? 'error' : value.trim() ? 'success' : 'default'}
         onChange={(e, v) => { onChange(v); setCursor(e.currentTarget.selectionStart); }} onKeyUp={track} onClick={track} onSelect={track} />
       {offers.length > 0 && (
-        <Flex spaceItems={{ default: 'spaceItemsXs' }} className="dc-filter-offers" aria-label="Attribute names">
+        <Flex spaceItems={{ default: 'spaceItemsXs' }} className="dc-filter-offers" aria-label={cls ? 'Class names' : 'Attribute names'}>
           {offers.map((a) => <FlexItem key={a.name}><Label isCompact onClick={() => take(a.name)}><span className="dc-mono">{a.name}</span></Label></FlexItem>)}
         </Flex>
       )}

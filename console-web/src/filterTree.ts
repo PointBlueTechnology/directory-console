@@ -264,3 +264,9 @@ export function attributeAt(text: string, cursor: number): { token: string; star
   const token = text.slice(start, cursor);
   return /^[A-Za-z][A-Za-z0-9-]*$/.test(token) ? { token, start } : null;
 }
+
+/** The class name being typed as an objectClass value at {@code cursor}, and where it starts; null elsewhere. */
+export function classAt(text: string, cursor: number): { token: string; start: number } | null {
+  const m = /\(objectClass=([A-Za-z0-9-]*)$/i.exec(text.slice(0, cursor));
+  return m ? { token: m[1], start: cursor - m[1].length } : null;
+}

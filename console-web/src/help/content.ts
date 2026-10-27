@@ -241,6 +241,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           '"Write LDAP filter text" takes an RFC 4515 filter. It is checked as you type, and attribute names are offered as you write them. In values, write \\28 for (, \\29 for ), \\2a for * and \\5c for \\.',
           'Switching between the two carries the filter across. A filter the builder has no test for (a*b*c, or an extensible match) stays as text.',
           '"Sounds like" matches names that sound alike; "is at least" and "is at most" compare in order.',
+          'Attribute names, and class names in an objectClass condition, are offered as you type them: arrow down to choose one, Enter to take it.',
           'Sort by names an attribute; eDirectory sorts large results itself.',
           'Columns names the attributes each result shows, in order (Choose… picks them from the schema). * is every attribute, + the operational ones.',
         ],

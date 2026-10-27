@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attributeAt, checkFilter, fromText, toStructured, toText } from './filterTree';
+import { attributeAt, checkFilter, classAt, fromText, toStructured, toText } from './filterTree';
 
 describe('checkFilter', () => {
   it('accepts every RFC 4515 form', () => {
@@ -66,5 +66,13 @@ describe('attributeAt', () => {
     expect(attributeAt('(&(objectCl', 11)).toEqual({ token: 'objectCl', start: 3 });
     expect(attributeAt('(cn=smi', 7)).toBeNull();
     expect(attributeAt('(', 1)).toBeNull();
+  });
+});
+
+describe('classAt', () => {
+  it('finds the class name being typed as an objectClass value', () => {
+    expect(classAt('(&(objectclass=inetOrg', 22)).toEqual({ token: 'inetOrg', start: 15 });
+    expect(classAt('(objectClass=', 13)).toEqual({ token: '', start: 13 });
+    expect(classAt('(cn=inet', 8)).toBeNull();
   });
 });

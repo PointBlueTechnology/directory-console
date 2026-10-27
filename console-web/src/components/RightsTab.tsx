@@ -9,6 +9,7 @@ import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { type Acl, type DirObject, type Rights, type Row, isAcl } from '../api';
 import { useSession } from '../session';
 import { ProblemAlert } from './Problem';
+import { type NameOption, NameInput, attributeOptions } from './NameInput';
 import { ReferenceLink } from './ValueView';
 import { ObjectPicker } from './ObjectPicker';
 import { Target } from './Edit';
@@ -106,6 +107,8 @@ function AclModal({ obj, etag, mode, initial, onClose, onDone }: {
   obj: DirObject; etag: string; mode: 'trustee' | 'irf'; initial?: Acl; onClose: () => void; onDone: () => void;
 }) {
   const { tree } = useSession();
+  const [attrOffers, setAttrOffers] = useState<NameOption[]>([]);
+  useEffect(() => { tree.attributes().then((a) => setAttrOffers(attributeOptions(a))).catch(() => undefined); }, [tree]);
   const [trustee, setTrustee] = useState<{ dn?: string; name?: string; special?: string } | null>(
     mode === 'irf' ? { special: MASK } : initial ? ('special' in initial.trustee ? { special: initial.trustee.special } : { dn: initial.trustee.dn, name: initial.trustee.name }) : null);
   const [appliesTo, setAppliesTo] = useState(initial?.attribute ?? '[Entry Rights]');
@@ -182,7 +185,7 @@ function AclModal({ obj, etag, mode, initial, onClose, onDone }: {
           </FormGroup>
           {kind === 'one' && (
             <FormGroup label="Attribute" fieldId="attr" isRequired>
-              <TextInput id="attr" value={attribute} onChange={(_e, v) => { setAttribute(v); setAppliesTo(v); }} list="attribute-names-acl" />
+              <NameInput id="attr" options={attrOffers} value={attribute} onChange={(v) => { setAttribute(v); setAppliesTo(v); }} />
             </FormGroup>
           )}
           <FormGroup role="group" label={mode === 'irf' ? 'Rights allowed to flow down' : 'Rights'} fieldId="rights" isInline>
