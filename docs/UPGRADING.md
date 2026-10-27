@@ -100,7 +100,7 @@ Back up first: a volume snapshot of the `console-data` claim, or a backup from *
 Then change the image tag to the new version (pin versions on Kubernetes rather than following `latest`):
 
 ```bash
-kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.3.21
+kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.3.22
 ```
 
 ```bash
@@ -117,10 +117,10 @@ restoring the backup if the release notes say the configuration format changed. 
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.3.21
+    image: ghcr.io/pointbluetechnology/directory-console:0.3.22
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.21 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.22 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -140,6 +140,9 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.3.22:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.21
+  needs no restore. Signing out returns to the start, and signing in to a different directory starts at Browse instead
+  of the previous directory's page.
 - **0.3.21:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.20
   needs no restore. The top of the page names the directory you are signed in to, and a container's own details open
   from a button on its row or Details beside its name.
