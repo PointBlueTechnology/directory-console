@@ -100,7 +100,7 @@ Back up first: a volume snapshot of the `console-data` claim, or a backup from *
 Then change the image tag to the new version (pin versions on Kubernetes rather than following `latest`):
 
 ```bash
-kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.3.22
+kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.3.23
 ```
 
 ```bash
@@ -117,10 +117,10 @@ restoring the backup if the release notes say the configuration format changed. 
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.3.22
+    image: ghcr.io/pointbluetechnology/directory-console:0.3.23
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.22 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.23 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -140,6 +140,10 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.3.23:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.22
+  needs no restore. Search has Basic and Advanced tabs; searches saved in the browser by earlier versions open in the
+  Advanced builder (after going back, searches saved by 0.3.23 do not open in 0.3.22). Exports (LDIF, CSV, JSON) are written
+  by the server, with no 10,000 cap, and are recorded in the audit log as `objects.export`.
 - **0.3.22:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.21
   needs no restore. Signing out returns to the start, and signing in to a different directory starts at Browse instead
   of the previous directory's page.
