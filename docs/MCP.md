@@ -73,13 +73,19 @@ The console keeps only a SHA-256 of the key, with:
   (`Ldap.actAs`, and `Engines.openAs` for Identity Manager). It needs no OpenID provider and no OSP, and the key
   never stands for a password.
 - **What that gives for free:**
-  - **Disabled or expired accounts:** eDirectory refuses the control for them, so a key stops working with the
-    account. To be checked live: whether it also refuses it for an account locked by intruder detection.
+  - **Disabled or expired accounts:** eDirectory refuses the control for them (-672), so a key stops working with
+    the account. Checked on the lab (eDirectory 9.3.3) for `loginDisabled` and a past `loginExpirationTime`.
   - **Accounts never acted as:** the service account, the break-glass accounts and the `neverProxy` list. They
     cannot make keys.
   - **Other servers:** a key reaches another server's replica the way single sign-on does. There is no
     `server-sign-in-required` step.
   - **Identity Manager:** the engine connection is the service account's, acting as the person on every request.
+- **What the console must check itself:** eDirectory **accepts** the control for an account locked by intruder
+  detection. On the lab, an account with `lockedByIntruder: TRUE` could not bind with its own correct password
+  (53), yet a proxied read as that account succeeded. Single sign-on has the same gap today. On every use, the
+  console therefore reads the person's `lockedByIntruder` together with their grants, and refuses the key while the
+  account is locked. An expired password with no grace logins left could not be produced on the lab: the account
+  still bound. It stays to be checked.
 - **What it needs:** the directory's service account, with Supervisor over the people who make keys.
   `ServiceAccountCheck` already checks this for single sign-on. Without a service account, keys are off for that
   directory.
@@ -171,10 +177,19 @@ needs OSP. A directory without it works as above, and the Identity Applications 
     definitions a person can start.
   - **Writes:** approve or deny a task; request a role or a resource; start a request definition.
   - **Production:** writes follow the production rule above.
-- **To check live on the lab:**
-  - OSP's refresh-token lifetime and whether it can be set;
-  - whether a refresh writes `oidpInstanceData`;
-  - whether an approval made with the person's token is recorded as theirs.
+- **Checked on the lab** (Identity Applications 24.4, 2026-10-30):
+  - **Lifetimes:** OSP sets them in `ism-configuration.properties`. `com.netiq.idm.osp.oauth.refreshTokenTTL` is
+    2592000 s (30 days) for a client with a secret, such as `rbpmrest`. `…public.refreshTokenTTL` is 2700 s for public
+    clients, and `accessTokenTTL` is 120 s, which matches the `expires_in` of 120 seen live. The console's
+    re-authorization therefore comes at most every 30 days, matching the default key life.
+  - **`oidpInstanceData`:** a password grant added 280 bytes to the person's value; two refreshes added nothing.
+  - **The refresh token is not rotated:** a refresh returns only an access token, and the same refresh token
+    works again.
+  - **The refresh token alone is not enough:** a refresh with a wrong client secret is refused (401).
+  - **Approvals are recorded as the person:** a task denied over REST with the person's token reads
+    `"user": "<their DN>"` on the comment, and "User task denied by reviewer <their full name>" on the engine's
+    entry. The OAuth client appears nowhere. On the lab the requester and the reviewer were the same account.
+  - **Still to check:** whether a refresh token works after OSP's session TTL (`sessionTTL`, 2700 s) has passed.
 
 ## Not in scope
 
@@ -191,7 +206,7 @@ needs OSP. A directory without it works as above, and the Identity Applications 
    keys a shorter longest life (say 14 days).
 4. **Production writes:** pending changes approved in the console (recommended), a `confirm` argument, or none.
 5. **Setting passwords:** generated and applied by an operator in the console (recommended), or no tool.
-6. **The Identity Applications token:** one password grant when the key is made, then refresh tokens (recommended),
-   once the lab confirms the refresh-token lifetime.
+6. **The Identity Applications token:** one password grant when the key is made, then refresh tokens
+   (recommended). The lab confirmed a 30-day lifetime, and that refreshes do not touch `oidpInstanceData`.
 7. **Lifetimes:** a 30-day default, at most 90 days, and 14 days idle.
 8. **The per-directory switch:** off by default.
