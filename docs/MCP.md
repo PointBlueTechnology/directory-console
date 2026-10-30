@@ -1,6 +1,6 @@
 # Agents over MCP (design)
 
-**Status:** design note. Nothing here is built yet. The decisions to take are at the end.
+**Status:** design note, decided 2026-10-30. Nothing here is built yet. The decisions are at the end.
 
 This note proposes letting a person's AI agent do day-to-day administration through the console, over the Model
 Context Protocol (MCP). Examples are looking up an account, finding out why a user did not synchronize, starting a
@@ -201,17 +201,16 @@ needs OSP. A directory without it works as above, and the Identity Applications 
 - Development work: policies, deploys and promotion stay in DirXMLDevWeb.
 - Console settings, LDIF import, and agents acting for no one (for example CI).
 
-## Decisions to take
+## Decisions (taken 2026-10-30)
 
-1. **Where keys live:** in the data volume, outside the versioned configuration. Should backups include them, or
-   leave them out so a restore never brings back a revoked key? Recommended: leave them out; keys are cheap to make
-   again.
+1. **Where keys live:** in the data volume, outside the versioned configuration. Backups leave them out, so a
+   restore never brings back a revoked key; keys are cheap to make again.
 2. **The role ceiling:** viewer, editor and operator, never admin. Default: read only.
-3. **Roles under single sign-on:** keep the grants from the last sign-in, narrowed at the next one, and give these
-   keys a shorter longest life (say 14 days).
-4. **Production writes:** pending changes approved in the console (recommended), a `confirm` argument, or none.
-5. **Setting passwords:** generated and applied by an operator in the console (recommended), or no tool.
-6. **The Identity Applications token:** one password grant when the key is made, then refresh tokens
-   (recommended). The lab confirmed a 30-day lifetime, and that refreshes do not touch `oidpInstanceData`.
+3. **Roles under single sign-on:** keep the grants from the last sign-in, narrowed at the next one. These keys get a
+   shorter longest life: 14 days.
+4. **Production writes:** pending changes, approved in the console.
+5. **Setting passwords:** generated, then applied by an operator in the console.
+6. **The Identity Applications token:** one password grant when the key is made, then refresh tokens. The lab
+   confirmed a 30-day lifetime that outlives OSP's session, and that refreshes do not touch `oidpInstanceData`.
 7. **Lifetimes:** a 30-day default, at most 90 days, and 14 days idle.
 8. **The per-directory switch:** off by default.
