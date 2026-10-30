@@ -186,9 +186,12 @@ needs OSP. A directory without it works as above, and the Identity Applications 
   - **The refresh token is not rotated:** a refresh returns only an access token, and the same refresh token
     works again.
   - **The refresh token alone is not enough:** a refresh with a wrong client secret is refused (401).
-  - **Approvals are recorded as the person:** a task denied over REST with the person's token reads
-    `"user": "<their DN>"` on the comment, and "User task denied by reviewer <their full name>" on the engine's
-    entry. The OAuth client appears nowhere. On the lab the requester and the reviewer were the same account.
+  - **Approvals are recorded as the person:** in a scratch PRD, one user requested and an approval step was
+    addressed to a second user, who approved over REST with their own token. The request's history names the
+    approver throughout: "User task assigned to / claimed by / approved by reviewer <approver>". Their comment
+    carries `"user"` and `commentDn` = the approver's DN. The requester stays the requester, and the OAuth client
+    (`rbpmrest`) appears nowhere. The reviewer's name in those entries is built from given name and surname, not
+    `fullName`.
   - **Still to check:** whether a refresh token works after OSP's session TTL (`sessionTTL`, 2700 s) has passed.
 
 ## Not in scope
