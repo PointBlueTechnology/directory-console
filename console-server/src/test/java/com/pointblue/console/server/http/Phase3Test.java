@@ -58,7 +58,11 @@ public class Phase3Test {
             "dn: cn=Sales Team,ou=Sales,o=acme\nobjectClass: groupOfNames\ncn: Sales Team\nmember: cn=ed,ou=Sales,o=acme",
             "dn: cn=ed,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: ed\nsn: Editor\nuserPassword: ed-pw\ngroupMembership: cn=Editors,ou=Groups,o=acme",
             "dn: cn=help,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: help\nsn: Desk\nuserPassword: help-pw\ngroupMembership: cn=Help Desk,ou=Groups,o=acme",
-            "dn: cn=alice,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: alice\nsn: Ali\nuid: alice\ntitle: Rep\nlockedByIntruder: TRUE\nloginIntruderAttempts: 5",
+            "dn: cn=alice,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: alice\nsn: Ali\nuid: alice\ntitle: Rep",
+            "dn: cn=lou,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: lou\nsn: Lou\nuid: lou\nlockedByIntruder: TRUE\nloginIntruderAttempts: 5\nloginIntruderResetTime: 20991231000000Z",
+            "dn: cn=lapsed,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: lapsed\nsn: Lapsed\nuid: lapsed\nlockedByIntruder: TRUE\nloginIntruderAttempts: 5\nloginIntruderResetTime: 20200101000000Z",
+            "dn: ou=servers,o=system\nobjectClass: organizationalUnit\nou: servers",
+            "dn: cn=edir2,ou=servers,o=system\nobjectClass: ncpServer\ncn: edir2\nstatus: 2",
             "dn: cn=bob,ou=Engineering,o=acme\nobjectClass: inetOrgPerson\ncn: bob\nsn: Bob\nuid: bob",
             "dn: cn=gone,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: gone\nsn: Gone\nuid: gone\nloginDisabled: TRUE");
         idp = new FakeIdp()
@@ -66,7 +70,9 @@ public class Phase3Test {
             .person("bob", Map.of("preferred_username", "bob", "groups", List.of("nobody")))
             .person("root", Map.of("preferred_username", "admin", "groups", List.of("sales-editors")))
             .person("ghost", Map.of("preferred_username", "nobody-here", "groups", List.of("sales-editors")))
-            .person("gone", Map.of("preferred_username", "gone", "groups", List.of("sales-editors")));
+            .person("gone", Map.of("preferred_username", "gone", "groups", List.of("sales-editors")))
+            .person("lou", Map.of("preferred_username", "lou", "groups", List.of("sales-editors")))
+            .person("lapsed", Map.of("preferred_username", "lapsed", "groups", List.of("sales-editors")));
         dataPath = tmp.newFolder("data").toPath();
         server = new Server(new DataDir(dataPath), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
         server.start();
@@ -232,6 +238,7 @@ public class Phase3Test {
         assertEquals(2, presets.size());
         String alice = guid(h, "cn=alice,ou=Sales,o=acme");
         String bob = guid(h, "cn=bob,ou=Engineering,o=acme");
+        lock("cn=alice,ou=Sales,o=acme", null);
         assertEquals(List.of("hr", "reset"), Json.asMap(call("GET", "/api/v2/trees/acme/objects/" + alice, null, h).body().get("allowed")).get("presets"));
 
         Reply ran = call("POST", "/api/v2/trees/acme/objects/" + alice + "/presets/reset", Map.of("password", "N3w-secret!", "unlock", true), h);
@@ -263,6 +270,16 @@ public class Phase3Test {
     }
 
     // ---- OpenID Connect -------------------------------------------------------------------------
+
+    /** Lock {@code dn} by intruder detection, until {@code reset} (generalized time; null for no reset time). */
+    private void lock(String dn, String reset) throws Exception {
+        List<com.unboundid.ldap.sdk.Modification> mods = new java.util.ArrayList<>(List.of(
+            new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.REPLACE, "lockedByIntruder", "TRUE"),
+            new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.REPLACE, "loginIntruderAttempts", "5")));
+        mods.add(reset == null ? new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.REPLACE, "loginIntruderResetTime")
+            : new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.REPLACE, "loginIntruderResetTime", reset));
+        edir.server.modify(dn, mods);
+    }
 
     /** The browser's part: start, follow the provider back, and present the callback with the state cookie. */
     private Reply sso(String person, String next) throws Exception {
@@ -343,6 +360,12 @@ public class Phase3Test {
         assertEquals("the tree admin is never acted as", "/?sso-error=never-proxy", sso("root", "/").raw().headers().firstValue("Location").orElseThrow());
         assertEquals("/?sso-error=no-account", sso("ghost", "/").raw().headers().firstValue("Location").orElseThrow());
         assertEquals("a disabled account", "/?sso-error=no-account", sso("gone", "/").raw().headers().firstValue("Location").orElseThrow());
+        assertEquals("eDirectory accepts the control for a locked account; the console does not",
+            "/?sso-error=locked", sso("lou", "/").raw().headers().firstValue("Location").orElseThrow());
+        assertTrue(audit().contains("\"code\":\"locked\""));
+        Reply lapsed = sso("lapsed", "/");
+        assertEquals("a lock whose reset time has passed is over", "/", lapsed.raw().headers().firstValue("Location").orElseThrow());
+        assertEquals("cn=lapsed,ou=Sales,o=acme", call("GET", "/api/v2/session", null, headers(lapsed)).body().get("dn"));
         assertEquals("an outside next becomes /", "/", sso("alice", "//evil.example/").raw().headers().firstValue("Location").orElseThrow());
 
         // a callback without the browser's state cookie (started elsewhere) is refused
@@ -353,6 +376,24 @@ public class Phase3Test {
         Reply cb = call("GET", base + back.substring("https://localhost:8443".length()), null, Map.of());
         assertEquals("/?sso-error=state", cb.raw().headers().firstValue("Location").orElseThrow());
         assertTrue(cb.raw().headers().allValues("Set-Cookie").stream().noneMatch(c -> c.startsWith(Server.COOKIE + "=")));
+    }
+
+    @Test
+    public void singleSignOnReachesAnotherServerOnlyWhileUnlocked() throws Exception {
+        String edir2 = guid(withCsrf(signIn("cn=admin,o=system", "admin-pw")), "cn=edir2,ou=servers,o=system");
+        server.config.update(server.config.version(), "test", "address", doc -> Json.asMap(Json.asMap(doc.get("directories")).get("acme"))
+            .put("serverAddresses", Map.of("cn=edir2,ou=servers,o=system", "127.0.0.1:" + edir.port())));
+        Map<String, String> h = withCsrf(headers(sso("alice", "/")));
+        String self = guid(h, "cn=alice,ou=Sales,o=acme");
+
+        lock("cn=alice,ou=Sales,o=acme", "20991231000000Z");
+        Reply locked = call("GET", "/api/v2/trees/acme/objects/" + self + "?server=" + edir2, null, h);
+        assertEquals(String.valueOf(locked.body()), 403, locked.status());
+        assertEquals("locked", locked.body().get("title"));
+
+        lock("cn=alice,ou=Sales,o=acme", "20200101000000Z");
+        Reply on2 = call("GET", "/api/v2/trees/acme/objects/" + self + "?server=" + edir2, null, h);
+        assertEquals("a lock whose reset time has passed is over: " + on2.body(), 200, on2.status());
     }
 
     // ---- settings -------------------------------------------------------------------------------

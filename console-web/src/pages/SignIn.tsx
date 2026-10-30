@@ -54,6 +54,7 @@ const SSO_ERRORS: Record<string, string> = {
   'no-account': 'No active account in this directory matches your single sign-on identity.',
   'ambiguous-account': 'More than one account matches your single sign-on identity. Ask an administrator to fix the mapping.',
   'never-proxy': 'This account signs in with its name and password, not through single sign-on.',
+  locked: 'Your account is locked by intruder detection. Ask an administrator or the help desk to unlock it, or wait for the lock to reset.',
   'no-role': 'Your account has no Directory Console role. Ask an administrator to map one of your groups to a role.',
   'proxy-refused': 'The directory would not let the console act for you: your account may be disabled or expired.',
   'not-configured': 'Single sign-on is not set up for this directory.',
