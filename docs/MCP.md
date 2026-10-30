@@ -141,9 +141,10 @@ Two alternatives were considered:
 
 No tool takes or returns a password.
 
-- **Setting a person's password:** the console generates one from the person's password policy (this already exists)
-  and records it as a pending change. An operator signed in to the console applies it and hands it over. The agent
-  never sees it.
+- **Setting a person's password (a future feature, not in phases 1 to 3):** the console would generate one from the
+  person's password policy (this already exists) and record it as a pending change. An operator signed in to the
+  console would apply it and hand it over. The agent would never see it. Until then, passwords are set in the console
+  as today.
 - **Named and Remote Loader passwords:** no tools.
 
 ## Tools, in phases
@@ -292,6 +293,10 @@ A key works only at `/mcp`: the API's other routes ignore it. Each tool call goe
 key's session. Revoking a key, turning keys off for the directory, or a locked, disabled or expired account stops it
 at the next call.
 
+## Future features
+
+- **Setting a person's password** through an agent, as described under [Passwords](#passwords).
+
 ## Not in scope
 
 - Development work: policies, deploys and promotion stay in DirXMLDevWeb.
@@ -306,7 +311,8 @@ at the next call.
    shorter longest life: 14 days.
 4. **Agents' writes:** pending changes, approved in the console. Changed the same day: approval is a per-directory
    setting, required by default, that an administrator can turn off.
-5. **Setting passwords:** generated, then applied by an operator in the console.
+5. **Setting passwords:** generated, then applied by an operator in the console. A future feature: not built in
+   phases 1 to 3 (marked 2026-10-30).
 6. **The Identity Applications token:** one password grant when the key is made, then refresh tokens. The lab
    confirmed a 30-day lifetime that outlives OSP's session, and that refreshes do not touch `oidpInstanceData`.
 7. **Lifetimes:** a 30-day default, at most 90 days, and 14 days idle.

@@ -43,7 +43,7 @@ It is a beta release. It has been tested against lab trees running eDirectory 9.
   - extra password policy options.
 - **Identity Manager:** work orders, e-mail templates and RBE policies; viewing a driver's policies and its trace output (Designer and DirXMLDevWeb do these today).
 - **Search:** saved searches shared between people.
-- **Agents:** setting passwords, and Identity Applications for keys made with single sign-on ([MCP.md](MCP.md)). Changes waiting for approval do not survive a restart.
+- **Agents:** Identity Applications for keys made with single sign-on ([MCP.md](MCP.md)). Changes waiting for approval do not survive a restart. Setting a person's password through an agent is a future feature ([MCP.md](MCP.md#future-features)).
 
 ## Known issues
 
