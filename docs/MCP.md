@@ -192,7 +192,9 @@ needs OSP. A directory without it works as above, and the Identity Applications 
     carries `"user"` and `commentDn` = the approver's DN. The requester stays the requester, and the OAuth client
     (`rbpmrest`) appears nowhere. The reviewer's name in those entries is built from given name and surname, not
     `fullName`.
-  - **Still to check:** whether a refresh token works after OSP's session TTL (`sessionTTL`, 2700 s) has passed.
+  - **A refresh token outlives OSP's session:** one taken at a sign-in still refreshed after 50 and 60 minutes,
+    past `sessionTTL` (2700 s), and the new access token worked (`tasks/list` 200). An idle key's token therefore
+    stays usable for the refresh token's 30 days, not just the 45-minute session.
 
 ## Not in scope
 
