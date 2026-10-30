@@ -155,6 +155,10 @@ final class Tasks {
             l.modify(e.dn(), mods);
         } catch (NamingException x) {
             objects.audit(s, "object.account", guid, detail, Ldap.Failure.of(x));
+            // acting as the person, eDirectory can answer a write they have no right to with "no such attribute"
+            if (objects.explainRefusal(s, l, e.dn(), changed, x) instanceof Http.Problem p) {
+                throw p;
+            }
             throw x;
         }
         objects.audit(s, "object.account", guid, detail, null);
@@ -199,6 +203,9 @@ final class Tasks {
             l.modify(e.dn(), mods);
         } catch (NamingException x) {
             objects.audit(s, "object.unlock", guid, Map.of("dn", e.dn()), Ldap.Failure.of(x));
+            if (objects.explainRefusal(s, l, e.dn(), mods.stream().map(mi -> mi.getAttribute().getID()).distinct().toList(), x) instanceof Http.Problem p) {
+                throw p;
+            }
             throw x;
         }
         objects.audit(s, "object.unlock", guid, Map.of("dn", e.dn()), null);

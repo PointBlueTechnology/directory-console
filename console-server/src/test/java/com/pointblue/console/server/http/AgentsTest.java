@@ -3,6 +3,7 @@ package com.pointblue.console.server.http;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.pointblue.console.server.auth.FakeIdp;
@@ -60,6 +61,9 @@ public class AgentsTest {
             "dn: cn=Editors,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Editors\nmember: cn=ed,ou=Sales,o=acme",
             "dn: cn=ed,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: ed\nsn: Editor\nfullName: Ed Editor\nuserPassword: ed-pw\ngroupMembership: cn=Editors,ou=Groups,o=acme",
             "dn: cn=alice,ou=Sales,o=acme\nobjectClass: inetOrgPerson\ncn: alice\nsn: Ali\nuid: alice\ntitle: Rep",
+            "dn: cn=Reps,ou=Sales,o=acme\nobjectClass: groupOfNames\ncn: Reps",
+            "dn: cn=Operators,ou=Groups,o=acme\nobjectClass: groupOfNames\ncn: Operators\nmember: cn=op,ou=Groups,o=acme",
+            "dn: cn=op,ou=Groups,o=acme\nobjectClass: inetOrgPerson\ncn: op\nsn: Operator\nuserPassword: op-pw\ngroupMembership: cn=Operators,ou=Groups,o=acme",
             "dn: cn=Driver Set,o=system\nobjectClass: DirXML-DriverSet\ncn: Driver Set",
             "dn: cn=AD,cn=Driver Set,o=system\nobjectClass: DirXML-Driver\ncn: AD\nDirXML-TraceLevel: 3");
         engine = new FakeEngine(edir);
@@ -82,7 +86,8 @@ public class AgentsTest {
         assertEquals(200, call("POST", "/api/v2/setup/finish", Map.of(), t).status());
         server.config.update(server.config.version(), "test", "agents", doc -> {
             Map<String, Object> d = Json.asMap(Json.asMap(doc.get("directories")).get("acme"));
-            d.put("roles", List.of(Map.of("group", "cn=Editors,ou=Groups,o=acme", "role", "editor", "scopes", List.of("ou=Sales,o=acme"))));
+            d.put("roles", List.of(Map.of("group", "cn=Editors,ou=Groups,o=acme", "role", "editor", "scopes", List.of("ou=Sales,o=acme")),
+                Map.of("group", "cn=Operators,ou=Groups,o=acme", "role", "operator")));
             d.put("oidc", Map.of("issuer", idp.issuer, "clientId", "console", "label", "Acme SSO", "claim", "preferred_username",
                 "attribute", "uid", "searchBases", List.of("o=acme"),
                 "roles", List.of(Map.of("group", "sales-editors", "role", "editor", "scopes", List.of("ou=Sales,o=acme")))));
@@ -128,13 +133,17 @@ public class AgentsTest {
     }
 
     private void agentKeys(boolean enabled) throws Exception {
+        agentKeys(enabled, true);
+    }
+
+    private void agentKeys(boolean enabled, boolean approve) throws Exception {
         Map<String, String> admin = signIn("cn=admin,o=system", "admin-pw");
-        Reply r = call("PUT", "/api/v2/directories/acme/agent-keys", Map.of("enabled", enabled, "maxDays", 60), admin);
+        Reply r = call("PUT", "/api/v2/directories/acme/agent-keys", Map.of("enabled", enabled, "maxDays", 60, "approveChanges", approve), admin);
         assertEquals(String.valueOf(r.body()), 200, r.status());
         Map<String, Object> a = Json.asMap(r.body().get("agentKeys"));
         assertEquals(enabled, a.get("enabled"));
         assertEquals(60, Json.asInt(a.get("maxDays"), 0));
-        assertEquals(true, a.get("approveChanges"));
+        assertEquals(approve, a.get("approveChanges"));
     }
 
     private String makeKey(Map<String, String> h, Map<String, Object> body) throws Exception {
@@ -208,7 +217,10 @@ public class AgentsTest {
         assertEquals("2025-06-18", Json.asMap(init.body().get("result")).get("protocolVersion"));
         List<Object> tools = Json.asList(Json.asMap(mcp(key, "tools/list", Map.of()).body().get("result")).get("tools"));
         assertTrue(tools.size() >= 20);
-        assertTrue("every tool of this version reads", tools.stream().allMatch(t -> Json.asMap(Json.asMap(t).get("annotations")).get("readOnlyHint").equals(true)));
+        Map<String, Object> hints = new HashMap<>();
+        tools.forEach(t -> hints.put(String.valueOf(Json.asMap(t).get("name")), Json.asMap(Json.asMap(t).get("annotations")).get("readOnlyHint")));
+        assertEquals(true, hints.get("read_object"));
+        assertEquals("a change tool says so", false, hints.get("disable_account"));
 
         Result who = tool(key, "whoami", Map.of());
         assertFalse(who.error());
@@ -328,6 +340,104 @@ public class AgentsTest {
         Result who = tool(key, "whoami", Map.of());
         assertEquals("cn=alice,ou=Sales,o=acme", who.body().get("dn"));
         assertNotNull(who.body().get("roles"));
+    }
+
+    private List<String> toolNames(String key) throws Exception {
+        return Json.asList(Json.asMap(mcp(key, "tools/list", Map.of()).body().get("result")).get("tools")).stream()
+            .map(t -> String.valueOf(Json.asMap(t).get("name"))).toList();
+    }
+
+    private String attr(String dn, String name) throws Exception {
+        com.unboundid.ldap.sdk.Entry e = edir.server.getEntry(dn, name);
+        return e == null ? null : e.getAttributeValue(name);
+    }
+
+    @Test
+    public void aChangeWaitsForThePersonsApproval() throws Exception {
+        agentKeys(true);
+        Map<String, String> ed = signIn("cn=ed,ou=Sales,o=acme", "ed-pw");
+        String viewer = makeKey(ed, Map.of("label", "reader", "password", "ed-pw"));
+        assertFalse("a read-only key is offered no change tools", toolNames(viewer).contains("disable_account"));
+        Result refused = tool(viewer, "disable_account", Map.of("object", "cn=alice,ou=Sales,o=acme"));
+        assertTrue(refused.error());
+        assertEquals("forbidden", refused.body().get("title"));
+
+        String key = makeKey(ed, Map.of("label", "editor", "password", "ed-pw", "roles", List.of("editor")));
+        List<String> names = toolNames(key);
+        assertTrue(names.containsAll(List.of("disable_account", "enable_account", "unlock_account", "add_to_group", "remove_from_group", "change_status")));
+        assertFalse("operator tools need the operator role", names.contains("start_driver"));
+
+        Result out = tool(key, "disable_account", Map.of("object", "cn=admin,o=system"));
+        assertEquals("the key's scoped editor role does not reach o=system", "out-of-scope", out.body().get("title"));
+
+        Result asked = tool(key, "disable_account", Map.of("object", "cn=alice,ou=Sales,o=acme"));
+        assertFalse(String.valueOf(asked.body()), asked.error());
+        assertEquals("pending", asked.body().get("state"));
+        String id = String.valueOf(asked.body().get("id"));
+        assertTrue(String.valueOf(asked.body().get("approve")).endsWith("/agent-keys?change=" + id));
+        assertNull("nothing changed yet", attr("cn=alice,ou=Sales,o=acme", "loginDisabled"));
+        assertEquals("pending", tool(key, "change_status", Map.of("id", id)).body().get("state"));
+
+        List<Object> mine = Json.asList(call("GET", "/api/v2/agent-changes", null, ed).body().get("changes"));
+        assertEquals(1, mine.size());
+        assertEquals("Disable cn=alice,ou=Sales,o=acme", Json.asMap(mine.get(0)).get("summary"));
+        Map<String, String> op = signIn("cn=op,ou=Groups,o=acme", "op-pw");
+        assertEquals("only the key's owner approves", 404, call("POST", "/api/v2/agent-changes/" + id + "/approve", Map.of(), op).status());
+
+        Reply approved = call("POST", "/api/v2/agent-changes/" + id + "/approve", Map.of(), ed);
+        assertEquals(String.valueOf(approved.body()), 200, approved.status());
+        assertEquals("approved", approved.body().get("state"));
+        assertEquals("TRUE", attr("cn=alice,ou=Sales,o=acme", "loginDisabled"));
+        assertEquals("approved", tool(key, "change_status", Map.of("id", id)).body().get("state"));
+        assertEquals(409, call("POST", "/api/v2/agent-changes/" + id + "/approve", Map.of(), ed).status());
+        String audit = audit();
+        assertTrue(audit.contains("\"agent-change.request\"") && audit.contains("\"agent-change.approve\""));
+        assertTrue("the change itself is audited as the agent", audit.contains("\"via\":\"agent\",\"agent\":\"editor ("));
+
+        Result group = tool(key, "add_to_group", Map.of("object", "cn=alice,ou=Sales,o=acme", "group", "cn=Reps,ou=Sales,o=acme"));
+        String gid = String.valueOf(group.body().get("id"));
+        Reply declined = call("POST", "/api/v2/agent-changes/" + gid + "/decline", Map.of(), ed);
+        assertEquals("declined", declined.body().get("state"));
+        assertNull(attr("cn=alice,ou=Sales,o=acme", "groupMembership"));
+
+        Result again = tool(key, "enable_account", Map.of("object", "cn=alice,ou=Sales,o=acme"));
+        String eid = String.valueOf(again.body().get("id"));
+        String keyId = String.valueOf(Json.asMap(Json.asList(call("GET", "/api/v2/agent-keys", null, ed).body().get("keys")).get(0)).get("id"));
+        call("DELETE", "/api/v2/agent-keys/" + keyId, null, ed);
+        Reply afterRevoke = call("POST", "/api/v2/agent-changes/" + eid + "/approve", Map.of(), ed);
+        assertEquals("a revoked key's change cannot be approved", 409, afterRevoke.status());
+    }
+
+    @Test
+    public void withoutApprovalAChangeIsMadeAtOnce() throws Exception {
+        agentKeys(true, false);
+        Map<String, String> op = signIn("cn=op,ou=Groups,o=acme", "op-pw");
+        String key = makeKey(op, Map.of("label", "ops", "password", "op-pw", "roles", List.of("operator")));
+        assertTrue(toolNames(key).containsAll(List.of("start_driver", "stop_driver", "run_job", "abort_job", "resync_driver", "migrate_object_to_app", "migrate_from_app")));
+        assertFalse("no editor role: no account tools", toolNames(key).contains("disable_account"));
+        Result started = tool(key, "start_driver", Map.of("driver", "cn=AD,cn=Driver Set,o=system"));
+        assertFalse(String.valueOf(started.body()), started.error());
+        assertTrue(engine.actions.stream().anyMatch(a -> a.startsWith("start ") && a.toLowerCase().contains("cn=ad")));
+
+        // a production directory without approval: the directory's name, typed by the person
+        server.config.update(server.config.version(), "test", "production", doc -> Json.asMap(Json.asMap(doc.get("directories")).get("acme")).put("tier", "production"));
+        Result unconfirmed = tool(key, "stop_driver", Map.of("driver", "cn=AD,cn=Driver Set,o=system"));
+        assertTrue(unconfirmed.error());
+        assertEquals("confirm-directory", unconfirmed.body().get("title"));
+        Result confirmed = tool(key, "stop_driver", Map.of("driver", "cn=AD,cn=Driver Set,o=system", "confirm", "Acme"));
+        assertFalse(String.valueOf(confirmed.body()), confirmed.error());
+    }
+
+    @Test
+    public void approvingOnProductionNeedsTheDirectorysName() throws Exception {
+        agentKeys(true);
+        server.config.update(server.config.version(), "test", "production", doc -> Json.asMap(Json.asMap(doc.get("directories")).get("acme")).put("tier", "production"));
+        Map<String, String> ed = signIn("cn=ed,ou=Sales,o=acme", "ed-pw");
+        String key = makeKey(ed, Map.of("label", "editor", "password", "ed-pw", "roles", List.of("editor")));
+        String id = String.valueOf(tool(key, "disable_account", Map.of("object", "cn=alice,ou=Sales,o=acme")).body().get("id"));
+        assertEquals(409, call("POST", "/api/v2/agent-changes/" + id + "/approve", Map.of(), ed).status());
+        assertEquals(200, call("POST", "/api/v2/agent-changes/" + id + "/approve", Map.of("confirm", "Acme"), ed).status());
+        assertEquals("TRUE", attr("cn=alice,ou=Sales,o=acme", "loginDisabled"));
     }
 
     @Test

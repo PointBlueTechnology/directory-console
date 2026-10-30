@@ -832,7 +832,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Off by default. On, people make keys for their AI agents under their name > Agent keys; it needs the service account.',
           'The longest life applies to new keys: 1 to 90 days. Keys made with single sign-on live at most 14 days, and any key unused for 14 days stops.',
           'Turning keys off stops every key on this directory at once; turning them on again lets the unexpired ones work again.',
-          'Approval of changes is on by default: a change an agent asks for waits until the person approves it in the console. The agent tools of this version only read, so nothing waits yet.',
+          'Approval of changes is on by default: a change an agent asks for waits, for an hour, until the person approves it in the console (Agent keys). Off, an agent\'s changes go ahead within its key\'s roles; on a production directory the agent then passes the directory\'s name, typed by the person.',
         ],
       },
       {
@@ -869,7 +869,15 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'What the agent can do',
         paragraphs: [
           'Everything the agent does runs as you, with your eDirectory rights and at most the key\'s roles. If your account is disabled, expires or is locked by intruder detection, or you lose your role, the key stops working at its next call.',
-          'The agent tools of this version only read: objects, groups, sign-in status, drivers, jobs, associations, caches, statistics and versions.',
+          'The agent reads objects, groups, sign-in status, drivers, jobs, associations, caches, statistics and versions. With the editor role it can enable, disable and unlock accounts and change group membership; with the operator role it can start and stop drivers, run and abort jobs, resynchronize and migrate.',
+        ],
+      },
+      {
+        title: 'Approving changes',
+        list: [
+          'A change an agent asks for is listed under Changes agents asked for, and the agent gives you a link to it.',
+          'Review shows what it changes. Approve makes it then, as the agent\'s key; on a production directory you type its name first. Decline drops it.',
+          'A change not decided within an hour expires. A change from a key revoked since cannot be approved.',
         ],
       },
       { title: 'Revoking a key', paragraphs: ['Revoke stops a key at once. Administrators can see and revoke everyone\'s keys here.'] },

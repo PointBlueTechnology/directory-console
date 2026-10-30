@@ -1,5 +1,6 @@
 package com.pointblue.console.server.http;
 
+import com.pointblue.console.server.auth.Role;
 import com.pointblue.console.server.auth.Sessions;
 import com.pointblue.dirxml.dev.json.Json;
 import com.sun.net.httpserver.Headers;
@@ -28,7 +29,7 @@ import java.util.Map;
  *
  * <p>Every tool is a call to the console's own API, made in-process with the key's session: the same roles, container
  * scopes, eDirectory rights and refusals as the page. Nothing here decides what an agent may do; the API does. The
- * tools of this version only read.
+ * change tools wait for the person's approval unless the directory turns that off (see {@link AgentChanges}).
  */
 final class Mcp {
 
@@ -40,8 +41,10 @@ final class Mcp {
         "Directory Console: eDirectory and Identity Manager administration, as the person who made this agent key, with their own eDirectory rights.",
         "1. Call whoami first: who you act as, the directory (and whether it is production), and what the key may do.",
         "2. Objects, drivers, driver sets and jobs are named by GUID or by DN. list_driver_sets and driver_set give the drivers' GUIDs.",
-        "3. The tools of this version only read. Report what you find; changes are made by the person in the console.",
-        "4. Never ask for a password or print one; tools never return secrets.");
+        "3. Change tools are listed only when the key may make that kind of change. Say what you are about to change before calling one.",
+        "4. A change usually waits for the person's approval in the console: the answer is a pending change with a link. Give the person the link, then call change_status.",
+        "5. On a production directory without approval, a change needs confirm = the directory's name, typed by the person in chat. Never fill it in yourself.",
+        "6. Never ask for a password or print one; tools never return secrets.");
 
     private final Server server;
     private final List<Tool> tools = new ArrayList<>();
@@ -135,11 +138,15 @@ final class Mcp {
                 case "tools/list": {
                     List<Object> list = new ArrayList<>();
                     for (Tool t : tools) {
+                        if (t.role != null && !caller.session().principal.has(t.role)) {
+                            continue;   // a change this key may not make
+                        }
                         Map<String, Object> d = new LinkedHashMap<>();
                         d.put("name", t.name);
                         d.put("description", t.description);
                         d.put("inputSchema", t.schema());
-                        d.put("annotations", Map.of("readOnlyHint", true, "openWorldHint", false));
+                        d.put("annotations", t.role == null ? Map.of("readOnlyHint", true, "openWorldHint", false)
+                            : Map.of("readOnlyHint", false, "destructiveHint", true, "idempotentHint", false, "openWorldHint", false));
                         list.add(d);
                     }
                     return result(id, Map.of("tools", list));
@@ -207,8 +214,11 @@ final class Mcp {
         Reply run(Call c) throws IOException;
     }
 
-    /** {@code args}: name → [type, description]; {@code required} are among them. */
-    private record Tool(String name, String description, Map<String, String[]> args, List<String> required, Body call) {
+    /**
+     * {@code args}: name → [type, description]; {@code required} are among them. {@code role}: the role a change tool
+     * needs (null for a tool that reads).
+     */
+    private record Tool(String name, String description, Map<String, String[]> args, List<String> required, Role role, Body call) {
 
         Map<String, Object> schema() {
             Map<String, Object> props = new LinkedHashMap<>();
@@ -279,6 +289,17 @@ final class Mcp {
         }
 
         /** The GUID the argument names: a GUID as given, or a DN looked up (a refusal when there is no such object). */
+        /** The object the argument names (GUID or DN): its GUID, DN and structural class, read as the key. */
+        Obj object(String arg) throws IOException {
+            String v = s(arg);
+            Reply r = v.matches(GUID) ? get(tree() + "/objects/" + v.toLowerCase(java.util.Locale.ROOT)) : get(tree() + "/objects?dn=" + enc(v));
+            if (r.status != 200) {
+                throw new Refusal(r);
+            }
+            Map<String, Object> m = r.json();
+            return new Obj(String.valueOf(m.get("guid")), String.valueOf(m.get("dn")), Json.asString(m.get("objectClass")));
+        }
+
         String guid(String arg) throws IOException {
             String v = s(arg);
             if (v.matches(GUID)) {
@@ -316,8 +337,63 @@ final class Mcp {
     private static final String DRIVER_SET = "the driver set: its GUID, or its DN (cn=DriverSet,o=system)";
     private static final String SERVER = "optional: an eDirectory server's GUID, to ask that server's replica or engine (object_servers lists them); the key's own server when absent";
 
+    /** An object a tool names. */
+    record Obj(String guid, String dn, String objectClass) {
+    }
+
     private void tool(String name, String description, Map<String, String[]> args, List<String> required, Body call) {
-        tools.add(new Tool(name, description, args, required, call));
+        tools.add(new Tool(name, description, args, required, null, call));
+    }
+
+    /** What a change tool builds from its arguments: the API call it makes. */
+    private interface Builds {
+        AgentChanges.Request build(Call c) throws IOException;
+    }
+
+    /**
+     * A change tool, needing {@code role}. With the directory's approval on (the default) the call is recorded as a
+     * pending change for the person to approve; with it off it is made now, with {@code confirm} as the production
+     * directory's typed name. Either way the key must have the role, reaching the object, first.
+     */
+    private void change(String name, String description, Role role, Map<String, String[]> args, List<String> required, Builds builds) {
+        Map<String, String[]> all = new LinkedHashMap<>(args);
+        all.put("confirm", new String[] {"string", "only on a production directory whose changes need no approval: the directory's name, typed by the person in chat; never fill it in yourself"});
+        tools.add(new Tool(name, description, all, required, role, c -> {
+            Sessions.Session s = c.caller.session();
+            if (!s.principal.has(role)) {
+                return problem(403, "forbidden", "this needs the " + role.id() + " role, which this agent key does not have");
+            }
+            AgentChanges.Request r = builds.build(c);
+            if (r.target() != null && !s.principal.may(role, r.target())) {
+                return problem(403, "out-of-scope", "the key's " + role.id() + " role does not reach " + r.target());
+            }
+            if (server.agents.settings(s.principal.directoryId()).approveChanges()) {
+                return new Reply(202, Json.compact(server.agentChanges.propose(c.caller, r)));
+            }
+            return execute(server, c.ex, s, r, c.s("confirm"));
+        }));
+    }
+
+    private static Reply problem(int status, String title, String detail) {
+        return new Reply(status, Json.compact(Map.of("title", title, "status", status, "detail", detail)));
+    }
+
+    /**
+     * Make a change tool's API call now, in-process, as {@code s} (an agent key's session): when its owner approves it,
+     * or straight away without approval. {@code confirm} goes as {@code X-Confirm-Directory}; a PATCH carries
+     * {@code If-Match: *} (the change names its values, not a version read earlier).
+     */
+    static Reply execute(Server server, HttpExchange from, Sessions.Session s, AgentChanges.Request r, String confirm) throws IOException {
+        byte[] b = r.body() == null ? new byte[0] : Json.compact(r.body()).getBytes(StandardCharsets.UTF_8);
+        Local l = new Local(from, s, r.method(), URI.create(r.path()), b);
+        if (confirm != null && !confirm.isBlank()) {
+            l.requestHeaders.set("X-Confirm-Directory", confirm.trim());
+        }
+        if (r.method().equals("PATCH")) {
+            l.requestHeaders.set("If-Match", "*");
+        }
+        server.dispatch(l, l.uri.getPath(), r.method());
+        return new Reply(l.status, l.out.toString(StandardCharsets.UTF_8));
     }
 
     private static Map<String, String[]> args(String... kv) {
@@ -445,9 +521,103 @@ final class Mcp {
         tool("driver_set_statistics", "A driver set's statistics on one server: the engine's JVM, and each driver's state, cache and operation counters.",
             args("driver_set", "string", DRIVER_SET, "server", "string", SERVER), List.of("driver_set"),
             c -> c.get(c.tree() + "/idm/driversets/" + c.guid("driver_set") + "/statistics" + c.query("server")));
+        defineChanges();
         tool("versions", "Versions on one server: the engine's, and each driver's shim version and base package as the statistics job last collected them.",
             args("driver_set", "string", DRIVER_SET, "server", "string", SERVER), List.of("driver_set"),
             c -> c.get(c.tree() + "/idm/driversets/" + c.guid("driver_set") + "/versions" + c.query("server")));
+    }
+
+    private void defineChanges() {
+        tool("change_status", "A change you asked for: pending (waiting for the person's approval), approved (with the change's answer), declined, "
+                + "expired (not decided within an hour) or failed.", args("id", "string", "the change's id, from the change tool's answer"), List.of("id"), c -> {
+            Map<String, Object> st = server.agentChanges.status(c.caller, c.s("id"));
+            return st == null ? problem(404, "not-found", "no change " + c.s("id") + " from this key") : new Reply(200, Json.compact(st));
+        });
+
+        // ---- accounts and groups (editor) ----
+        change("enable_account", "Enable a user's account (loginDisabled false).", Role.EDITOR, args("object", "string", "the user: GUID or DN"), List.of("object"), c -> {
+            Obj o = c.object("object");
+            return new AgentChanges.Request("enable_account", "Enable " + o.dn(), o.dn(), "PATCH", c.tree() + "/objects/" + o.guid() + "/account", Map.of("disabled", false));
+        });
+        change("disable_account", "Disable a user's account (loginDisabled true): they can no longer sign in.", Role.EDITOR,
+            args("object", "string", "the user: GUID or DN"), List.of("object"), c -> {
+                Obj o = c.object("object");
+                return new AgentChanges.Request("disable_account", "Disable " + o.dn(), o.dn(), "PATCH", c.tree() + "/objects/" + o.guid() + "/account", Map.of("disabled", true));
+            });
+        change("unlock_account", "Clear a user's intruder lockout.", Role.EDITOR, args("object", "string", "the user: GUID or DN"), List.of("object"), c -> {
+            Obj o = c.object("object");
+            return new AgentChanges.Request("unlock_account", "Unlock " + o.dn(), o.dn(), "POST", c.tree() + "/objects/" + o.guid() + "/unlock", Map.of());
+        });
+        change("add_to_group", "Add a user to a group (both sides: the group's member and the user's groupMembership).", Role.EDITOR,
+            args("object", "string", "the user: GUID or DN", "group", "string", "the group: GUID or DN"), List.of("object", "group"), c -> {
+                Obj o = c.object("object");
+                Obj g = c.object("group");
+                return new AgentChanges.Request("add_to_group", "Add " + o.dn() + " to " + g.dn(), o.dn(), "POST", c.tree() + "/objects/" + o.guid() + "/memberships",
+                    Map.of("add", List.of(g.guid()), "remove", List.of()));
+            });
+        change("remove_from_group", "Remove a user from a group (both sides).", Role.EDITOR,
+            args("object", "string", "the user: GUID or DN", "group", "string", "the group: GUID or DN"), List.of("object", "group"), c -> {
+                Obj o = c.object("object");
+                Obj g = c.object("group");
+                return new AgentChanges.Request("remove_from_group", "Remove " + o.dn() + " from " + g.dn(), o.dn(), "POST", c.tree() + "/objects/" + o.guid() + "/memberships",
+                    Map.of("add", List.of(), "remove", List.of(g.guid())));
+            });
+
+        // ---- Identity Manager (operator) ----
+        for (String action : List.of("start", "stop")) {
+            change(action + "_driver", (action.equals("start") ? "Start" : "Stop") + " a driver on one server's engine.", Role.OPERATOR,
+                args("driver", "string", DRIVER, "server", "string", SERVER), List.of("driver"), c -> {
+                    Obj d = c.object("driver");
+                    return new AgentChanges.Request(action + "_driver", (action.equals("start") ? "Start " : "Stop ") + d.dn(), d.dn(), "POST",
+                        c.tree() + "/idm/drivers/" + d.guid() + "/" + action + c.query("server"), Map.of());
+                });
+        }
+        for (String action : List.of("start", "abort")) {
+            String tool = action.equals("start") ? "run_job" : "abort_job";
+            change(tool, action.equals("start") ? "Run an Identity Manager job now." : "Abort a running job.", Role.OPERATOR,
+                args("job", "string", "the job: GUID or DN", "server", "string", SERVER), List.of("job"), c -> {
+                    Obj j = c.object("job");
+                    return new AgentChanges.Request(tool, (action.equals("start") ? "Run " : "Abort ") + j.dn(), j.dn(), "POST",
+                        c.tree() + "/idm/jobs/" + j.guid() + "/" + action + c.query("server"), Map.of());
+                });
+        }
+        change("resync_driver", "Resynchronize a driver: the engine sends its objects again (all, or those changed since a time).", Role.OPERATOR,
+            args("driver", "string", DRIVER, "since", "string", "optional: an ISO 8601 time, such as 2026-10-30T00:00:00Z; everything when absent",
+                "server", "string", SERVER), List.of("driver"), c -> {
+                Obj d = c.object("driver");
+                Map<String, Object> b = new LinkedHashMap<>();
+                if (c.s("since") != null) {
+                    b.put("since", c.s("since"));
+                }
+                return new AgentChanges.Request("resync_driver", "Resynchronize " + d.dn() + (c.s("since") == null ? "" : " since " + c.s("since")), d.dn(), "POST",
+                    c.tree() + "/idm/drivers/" + d.guid() + "/resync" + c.query("server"), b);
+            });
+        change("migrate_object_to_app", "Migrate one object from the vault into the connected application through a driver.", Role.OPERATOR,
+            args("driver", "string", DRIVER, "object", "string", OBJECT,
+                "class", "string", "optional: the object's class as the driver knows it; the object's structural class when absent",
+                "server", "string", SERVER), List.of("driver", "object"), c -> {
+                Obj d = c.object("driver");
+                Obj o = c.object("object");
+                String cls = c.s("class") != null ? c.s("class") : o.objectClass();
+                return new AgentChanges.Request("migrate_object_to_app", "Migrate " + o.dn() + " into the application through " + d.dn(), d.dn(), "POST",
+                    c.tree() + "/idm/drivers/" + d.guid() + "/migrate/to-app" + c.query("server"),
+                    Map.of("base", o.guid(), "class", cls, "filter", "(objectClass=" + cls + ")", "max", 1));
+            });
+        change("migrate_from_app", "Migrate objects from the connected application into the vault: the engine queries the application for objects of "
+                + "a class, optionally matching one attribute value.", Role.OPERATOR,
+            args("driver", "string", DRIVER, "class", "string", "the vault class, such as User",
+                "attribute", "string", "optional: an attribute to match", "value", "string", "optional: its value",
+                "server", "string", SERVER), List.of("driver", "class"), c -> {
+                Obj d = c.object("driver");
+                Map<String, Object> b = new LinkedHashMap<>();
+                b.put("class", c.s("class"));
+                if (c.s("attribute") != null) {
+                    b.put("search", List.of(Map.of("attribute", c.s("attribute"), "value", String.valueOf(c.s("value")))));
+                }
+                return new AgentChanges.Request("migrate_from_app", "Migrate " + c.s("class") + " objects from the application through " + d.dn()
+                    + (c.s("attribute") == null ? "" : " where " + c.s("attribute") + " = " + c.s("value")), d.dn(), "POST",
+                    c.tree() + "/idm/drivers/" + d.guid() + "/migrate/from-app" + c.query("server"), b);
+            });
     }
 
     /** For tests and the docs: the tools' names, in order. */

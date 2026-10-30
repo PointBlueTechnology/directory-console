@@ -935,6 +935,29 @@ export interface AgentKeyList {
   mcpUrl: string;
 }
 
+/** A change an agent asked for: it waits for its key's owner to approve it (unless the directory turns approval off). */
+export interface AgentChange {
+  id: string;
+  state: 'pending' | 'approved' | 'declined' | 'expired' | 'failed';
+  tool: string;
+  summary: string;
+  target: string | null;
+  key: { id: string; label: string };
+  dn: string;
+  created: string;
+  expires: string;
+  decided?: string;
+  decidedBy?: string;
+  result?: { status: number; body: unknown };
+}
+
+export const agentChanges = {
+  list: (all = false) => request<{ changes: AgentChange[] }>('GET', `/api/v2/agent-changes${all ? '?all=true' : ''}`).then((r) => r.data.changes),
+  /** {@code confirm}: the directory's name, on a production directory. */
+  approve: (id: string, confirm?: string) => request<AgentChange>('POST', `/api/v2/agent-changes/${encodeURIComponent(id)}/approve`, { confirm }).then((r) => r.data),
+  decline: (id: string) => request<AgentChange>('POST', `/api/v2/agent-changes/${encodeURIComponent(id)}/decline`, {}).then((r) => r.data),
+};
+
 /** The signed-in person's agent keys; an admin may list everyone's. A key is shown once, when it is made. */
 export const agentKeys = {
   list: (all = false) => request<AgentKeyList>('GET', `/api/v2/agent-keys${all ? '?all=true' : ''}`).then((r) => r.data),

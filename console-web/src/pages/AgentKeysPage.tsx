@@ -5,7 +5,8 @@ import {
 } from '@patternfly/react-core';
 import { PlusIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
-import { type AgentKey, type AgentKeyList, type RoleId, ApiError, agentKeys } from '../api';
+import { type AgentChange, type AgentKey, type AgentKeyList, type RoleId, ApiError, agentChanges, agentKeys } from '../api';
+import { navigate, useLocation } from '../router';
 import { useSession } from '../session';
 import { ProblemAlert } from '../components/Problem';
 import { useStepUp } from '../components/StepUp';
@@ -14,6 +15,7 @@ import { useHelpTopic } from '../help/Help';
 
 const STATE_COLOR = { active: 'green', idle: 'orange', expired: 'grey' } as const;
 const when = (t: string | null) => (t ? new Date(t).toLocaleString() : 'never');
+const CHANGE_COLOR = { pending: 'blue', approved: 'green', declined: 'grey', expired: 'grey', failed: 'red' } as const;
 
 /**
  * Agent keys: a person makes one for their AI agent, which then uses the console's MCP server as them, with their own
@@ -28,10 +30,23 @@ export function AgentKeysPage() {
   const [making, setMaking] = useState(false);
   const [made, setMade] = useState<{ token: string; key: AgentKey; mcpUrl: string } | null>(null);
   const sure = useAreYouSure();
+  const { query } = useLocation();
+  const [changes, setChanges] = useState<AgentChange[]>([]);
+  const [deciding, setDeciding] = useState<AgentChange | null>(null);
   const load = useCallback(() => {
     setError(null);
     agentKeys.list(all).then(setList, setError);
+    agentChanges.list(all).then(setChanges, setError);
   }, [all]);
+  // the link an agent gives (?change=<id>) opens that change
+  const linked = query.get('change');
+  useEffect(() => {
+    const c = linked ? changes.find((x) => x.id === linked) : undefined;
+    if (c && c.state === 'pending') {
+      setDeciding(c);
+    }
+  }, [linked, changes]);
+  const closeDecision = () => { setDeciding(null); if (linked) { navigate('/agent-keys', true); } load(); };
   useEffect(load, [load]);
   const revoke = (k: AgentKey) => sure.ask(`Revoke ${k.label}?`, 'The agent using this key loses access at once. This cannot be undone; a new key can be made.', 'Revoke',
     () => agentKeys.revoke(k.id).then(load, setError));
@@ -40,8 +55,45 @@ export function AgentKeysPage() {
     <PageSection isFilled>
       <Title headingLevel="h1">Agent keys</Title>
       <p className="dc-subtle">An agent key lets an AI agent work in this console as you, through its MCP server, with your own eDirectory rights and
-        at most the roles you give the key. The agent can never do more than you can. This version&apos;s agent tools only read.</p>
+        at most the roles you give the key. The agent can never do more than you can. Its changes wait here for your approval unless an
+        administrator turns that off for this directory.</p>
       <ProblemAlert error={error} onRetry={load} />
+      {linked && changes.length > 0 && !changes.some((c) => c.id === linked) && (
+        <Alert variant="warning" isInline title="That change is not here">It may have expired, or belong to someone else, or the console restarted since the agent asked.</Alert>
+      )}
+      {changes.length > 0 && (
+        <>
+          <Title headingLevel="h2" className="dc-tab-body">Changes agents asked for</Title>
+          <p className="dc-subtle">A change waits here for {all ? 'its key\'s owner' : 'you'} to approve it, for an hour. Approving makes it then, as the agent&apos;s key.</p>
+          <Table aria-label="Changes agents asked for" variant="compact">
+            <Thead>
+              <Tr>
+                <Th>Change</Th>
+                {all && <Th>Person</Th>}
+                <Th>Key</Th>
+                <Th>State</Th>
+                <Th>Asked</Th>
+                <Th screenReaderText="Actions" />
+              </Tr>
+            </Thead>
+            <Tbody>
+              {changes.map((c) => (
+                <Tr key={c.id}>
+                  <Td dataLabel="Change">{c.summary}</Td>
+                  {all && <Td dataLabel="Person" className="dc-mono">{c.dn}</Td>}
+                  <Td dataLabel="Key">{c.key.label}</Td>
+                  <Td dataLabel="State"><Label color={CHANGE_COLOR[c.state]}>{c.state}</Label></Td>
+                  <Td dataLabel="Asked">{when(c.created)}</Td>
+                  <Td isActionCell>
+                    {c.state === 'pending' && <Button variant="secondary" size="sm" onClick={() => setDeciding(c)}>Review</Button>}
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+          <Title headingLevel="h2" className="dc-tab-body">Keys</Title>
+        </>
+      )}
       {!list && !error && <Spinner aria-label="Loading the agent keys" />}
       {list && !list.settings.enabled && (
         <EmptyState titleText="Agent keys are off for this directory" headingLevel="h2">
@@ -102,6 +154,7 @@ export function AgentKeysPage() {
         <NewKey list={list} onCancel={() => setMaking(false)} onMade={(m) => { setMaking(false); setMade(m); load(); }} />
       )}
       {made && <ShowKey made={made} onClose={() => setMade(null)} />}
+      {deciding && <Decide change={deciding} mine={deciding.dn.toLowerCase() === session.me.dn.toLowerCase()} onClose={closeDecision} />}
       {sure.dialog}
     </PageSection>
   );
@@ -154,7 +207,7 @@ function NewKey({ list, onCancel, onMade }: { list: AgentKeyList; onCancel: () =
               <Checkbox key={r} id={`key-role-${r}`} label={ROLE_TEXT[r]} isChecked={roles.includes(r)}
                 onChange={(_e, v) => setRoles(v ? [...roles, r] : roles.filter((x) => x !== r))} />
             ))}
-            <FormHelperText><HelperText><HelperTextItem>Never more than your own roles, and never admin. The agent tools of this version only read.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>Never more than your own roles, and never admin.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           {!sso && (
             <FormGroup label="Your password" fieldId="key-password" isRequired>
@@ -203,6 +256,54 @@ function ShowKey({ made, onClose }: { made: { token: string; key: AgentKey; mcpU
       </ModalBody>
       <ModalFooter>
         <Button onClick={onClose}>Done</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+/** Approve or decline one change an agent asked for; on a production directory, approving asks for its name. */
+function Decide({ change, mine, onClose }: { change: AgentChange; mine: boolean; onClose: () => void }) {
+  const { me } = useSession();
+  const production = me.tier === 'production';
+  const name = me.directoryName ?? me.directory;
+  const [typed, setTyped] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [done, setDone] = useState<AgentChange | null>(null);
+  const [busy, setBusy] = useState(false);
+  const go = (call: () => Promise<AgentChange>) => {
+    setBusy(true);
+    setError(null);
+    call().then(setDone, setError).finally(() => setBusy(false));
+  };
+  return (
+    <Modal variant="medium" isOpen onClose={onClose} aria-labelledby="decide-title">
+      <ModalHeader title={done ? `The change is ${done.state}` : 'A change an agent asked for'} labelId="decide-title" />
+      <ModalBody>
+        <p><strong>{change.summary}</strong></p>
+        <p className="dc-subtle">Asked by the agent key {change.key.label} ({change.tool}) at {when(change.created)}; it expires at {when(change.expires)}.
+          Approving makes the change now, as that key, with your rights and the key&apos;s roles.</p>
+        {!done && mine && production && (
+          <Form onSubmit={(e) => e.preventDefault()}>
+            <FormGroup label={`Type ${name} to approve a change to this production directory`} fieldId="decide-confirm">
+              <TextInput id="decide-confirm" value={typed} onChange={(_e, v) => setTyped(v)} autoComplete="off" />
+            </FormGroup>
+          </Form>
+        )}
+        {!mine && <p className="dc-subtle">Only {change.dn} can approve it; you can decline it.</p>}
+        {done?.result && (
+          <Alert variant={done.result.status < 400 ? 'success' : 'danger'} isInline title={done.result.status < 400 ? 'Done' : 'The change failed'}>
+            <pre className="dc-mono">{JSON.stringify(done.result.body, null, 2).slice(0, 2000)}</pre>
+          </Alert>
+        )}
+        <ProblemAlert error={error} />
+      </ModalBody>
+      <ModalFooter>
+        {!done && mine && (
+          <Button isLoading={busy} isDisabled={busy || (production && typed.trim().toLowerCase() !== name.toLowerCase())}
+            onClick={() => go(() => agentChanges.approve(change.id, production ? typed.trim() : undefined))}>Approve</Button>
+        )}
+        {!done && <Button variant="secondary" isDanger isDisabled={busy} onClick={() => go(() => agentChanges.decline(change.id))}>Decline</Button>}
+        <Button variant="link" onClick={onClose}>{done ? 'Close' : 'Later'}</Button>
       </ModalFooter>
     </Modal>
   );

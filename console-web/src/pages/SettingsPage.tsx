@@ -179,7 +179,7 @@ function DirectorySection({ s, api, etag, onSaved }: {
           <FormGroup fieldId="dir-agent-approve">
             <Checkbox id="dir-agent-approve" label="Changes an agent asks for wait for the person's approval in the console" isChecked={agentApprove}
               onChange={(_e, v) => setAgentApprove(v)}
-              description="On by default. Off, an agent's changes go ahead within its key's roles. The agent tools of this version make no changes yet." />
+              description="On by default. Off, an agent's changes go ahead within its key's roles; on a production directory the agent then needs its name, typed by the person." />
           </FormGroup>
           <ActionGroup>
             <Button variant="secondary" isDisabled={busy || !sessionOk(agentDays, 1, 90) || (agentOn && !s.serviceAccount)

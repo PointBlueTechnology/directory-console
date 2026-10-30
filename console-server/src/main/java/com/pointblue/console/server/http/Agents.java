@@ -51,7 +51,7 @@ final class Agents {
     /**
      * Agent keys for a directory: {@code directories.<id>.agentKeys = {"enabled", "maxDays", "approveChanges"}}. Off by
      * default. {@code approveChanges} (true by default): a change an agent asks for waits until the person approves it in
-     * the console. The tools of this version make no changes, so nothing waits yet.
+     * the console (see AgentChanges).
      */
     record Settings(boolean enabled, int maxDays, boolean approveChanges) {
         Map<String, Object> json() {
@@ -259,6 +259,7 @@ final class Agents {
         }
         keys.revoke(id);
         close(id);
+        server.agentChanges.revoked(id);
         server.audit.log(Server.who(s), "agent-key.revoke", id, Map.of("label", k.label(), "owner", k.dn()), "ok");
         Http.json(ex, 204, Map.of());
     }
@@ -306,6 +307,11 @@ final class Agents {
             server.failedByClient.record(client);
             throw unauthorized("agent-key-invalid", "this agent key is unknown or was revoked");
         }
+        return check(k, client);
+    }
+
+    /** {@code k}'s session, checked now as {@link #resolve} checks it: for a call, or for a change its owner approves. */
+    Caller check(AgentKeys.Key k, String client) throws IOException {
         Instant now = keys.now();
         if (k.expired(now)) {
             throw refused(k, client, unauthorized("agent-key-expired", "this agent key expired on " + k.expires() + "; make a new one"));
