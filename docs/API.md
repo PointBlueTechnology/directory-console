@@ -153,6 +153,21 @@ The check is NMAS's Password Policy Check (`2.16.840.1.113719.1.39.42.100.17`): 
 `code` is NMAS's or eDirectory's (0 when it passes; -216 too short, -16000 too long, -16057 digits or special
 characters the policy does not allow, and so on).
 
+## Agent keys and MCP, new in 0.4.0
+
+```
+GET    /api/v2/agent-keys                 your keys, the directory's agent key settings and the MCP address; ?all=true: everyone's (admin)
+POST   /api/v2/agent-keys                 {"label", "days"?, "roles"? ["viewer", "editor", "operator"], "password" (direct sign-in)}: {token, key, mcpUrl}
+DELETE /api/v2/agent-keys/{id}            your own key, or anyone's for an admin
+PUT    /api/v2/directories/{id}/agent-keys   {"enabled", "maxDays" (1-90), "approveChanges" (true when absent)} (admin, recent sign-in)
+POST   /mcp                               JSON-RPC 2.0 (MCP, Streamable HTTP, stateless) with Authorization: Bearer dc_…
+```
+
+The token is shown once; the console keeps its SHA-256. With single sign-on, making a key needs a sign-in within the
+last 10 minutes instead of the password, and the key lives at most 14 days. A key works only at `/mcp`; refusals there
+are problem documents (`agent-key-required`, `agent-key-invalid`, `agent-key-expired`, `agent-key-idle`,
+`agent-keys-off`, `locked`, `account-disabled`, `account-expired`, `no-role`). See [MCP.md](MCP.md).
+
 ## Console settings
 
 ```

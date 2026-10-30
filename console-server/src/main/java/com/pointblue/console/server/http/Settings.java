@@ -38,6 +38,9 @@ import javax.naming.NamingException;
  * PUT  /api/v2/directories/{id}/service-account {"dn", "password"} (checked by signing in as it), or null for none
  * GET  /api/v2/directories/{id}/service-account/check  its rights for sign-in and single sign-on, on a sample of people
  * PUT  /api/v2/directories/{id}/session         {"idleMinutes": 5-240, "maxHours": 1-24}: applies at once, to sessions already open too
+ * PUT  /api/v2/directories/{id}/agent-keys      {"enabled": bool, "maxDays": 1-90, "approveChanges": bool (true when absent)}:
+ *                                               agent keys for MCP (see Agents); off stops every key here at once, and on
+ *                                               again lets the unexpired ones work again
  * </pre>
  *
  * The tier, sign-in options and service account are what the console's first sign-in leaves for later
@@ -92,6 +95,20 @@ final class Settings {
                     }
                 });
             }
+            case "PUT agent-keys" -> {
+                Map<String, Object> b = Json.asMap(body(ex));
+                boolean enabled = Boolean.TRUE.equals(b.get("enabled"));
+                int maxDays = Http.integer(b, "maxDays", com.pointblue.console.server.auth.AgentKeys.MAX_DAYS);
+                boolean approve = !Boolean.FALSE.equals(b.get("approveChanges"));
+                save(ex, s, d, "agentKeys", Map.of("enabled", enabled, "maxDays", maxDays, "approveChanges", approve), v -> {
+                    if (maxDays < 1 || maxDays > com.pointblue.console.server.auth.AgentKeys.MAX_DAYS) {
+                        throw new IllegalArgumentException("the longest life of a key is 1 to " + com.pointblue.console.server.auth.AgentKeys.MAX_DAYS + " days");
+                    }
+                    if (enabled && d.serviceAccountDn() == null) {
+                        throw new IllegalArgumentException("agent keys need the directory's service account: set it first");
+                    }
+                });
+            }
             case "PUT service-account" -> serviceAccount(ex, s, d);
             case "GET service-account/check" -> checkServiceAccount(ex, s, d);
             default -> throw new Http.Problem(404, "not-found", method + " " + path);
@@ -122,6 +139,7 @@ final class Settings {
         m.put("serviceAccount", d.serviceAccountDn());
         Sessions.Limits limits = server.sessionLimits(d.id());
         m.put("session", Map.of("idleMinutes", limits == null ? 30 : limits.idle().toMinutes(), "maxHours", limits == null ? 12 : limits.absolute().toHours()));
+        m.put("agentKeys", server.agents.settings(d.id()).json());
         m.put("login", Map.of("searchBases", d.searchBases(), "duplicates", d.duplicates() == DirectoryConfig.Duplicates.ERROR ? "error" : "choose",
             "allowed", d.directAllowed()));
         m.put("breakGlass", d.breakGlass());
@@ -169,7 +187,7 @@ final class Settings {
         } catch (ConfigStore.Conflict c) {
             throw new Http.Problem(409, "version-conflict", c.getMessage());
         }
-        server.audit.log(new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via()), "settings." + key, d.id(),
+        server.audit.log(Server.who(s), "settings." + key, d.id(),
             Map.of("summary", summary(key, value)), "ok");
         settings(ex, DirectoryConfig.find(server.config.read(), d.id()));
     }
@@ -433,7 +451,7 @@ final class Settings {
         } catch (javax.naming.NamingException e) {
             throw new Http.Problem(502, "directory-error", Ldap.Failure.of(e).getMessage());
         }
-        server.audit.log(new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via()), "settings.service-account.check", d.id(),
+        server.audit.log(Server.who(s), "settings.service-account.check", d.id(),
             Map.of("result", out.get("result")), "ok");
         Http.json(ex, 200, out);
     }

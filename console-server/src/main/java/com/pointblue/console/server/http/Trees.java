@@ -74,7 +74,7 @@ final class Trees {
     }
 
     private static AuditLog.Actor actor(Sessions.Session s) {
-        return new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via());
+        return Server.who(s);
     }
 
     private static String tier(Map<String, Object> b, String dflt) {
@@ -193,6 +193,7 @@ final class Trees {
             throw new Http.Problem(409, "version-conflict", c.getMessage());
         }
         int ended = server.sessions.removeDirectory(id);
+        server.agents.removeDirectory(id);
         int dropped = 0;
         for (TrustStore.Entry e : server.trust.entries()) {
             if (e.scope().equals("directory:" + id) && server.trust.remove(e.key())) {

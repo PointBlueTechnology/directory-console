@@ -79,6 +79,8 @@ public final class Server {
     private final Settings settings = new Settings(this);
     private final Edir edir = new Edir(this);
     final Security security = new Security(this);
+    final Agents agents;
+    private final Mcp mcp = new Mcp(this);
     private final StaticFiles ui = new StaticFiles("web");
 
     /** Open the data directory and listen on {@code port}, every address. {@code publicUrl} is how browsers reach this server. */
@@ -98,6 +100,7 @@ public final class Server {
         this.config = new ConfigStore(data, SecretBox.open(data.keys().resolve("config.key")));
         this.sessions.limits(this::sessionLimits);
         this.audit = new AuditLog(data);
+        this.agents = new Agents(this, new com.pointblue.console.server.auth.AgentKeys(data));
         if (restored != null) {
             audit.log(AuditLog.Actor.SYSTEM, "console.restored", "console", restored, "ok");
             out.println(java.time.Instant.now() + " restored from a backup made " + restored.get("createdAt"));
@@ -156,6 +159,7 @@ public final class Server {
         expiry.stop();
         syslog.stop();
         acme.stop();
+        agents.stop();
         http.stop(1);
     }
 
@@ -217,20 +221,33 @@ public final class Server {
                     checkHost(ex);
                 }
                 checkOrigin(ex, method);
-                route(ex, path, method);
             } catch (Http.Problem p) {
                 Http.problem(ex, p);
-            } catch (RuntimeException e) {
-                String ref = logError(method, path, e);
-                Http.problem(ex, new Http.Problem(500, "internal", "unexpected error: " + e.getClass().getSimpleName()
-                    + (e.getMessage() == null ? "" : " (" + e.getMessage() + ")") + "; the console's log has the details, reference " + ref));
-            } catch (LinkageError e) {
-                // a library class is missing: answer, never drop the connection
-                String ref = logError(method, path, e);
-                Http.problem(ex, new Http.Problem(500, "missing-library", "a library this needs is not installed: " + e.getMessage() + "; reference " + ref));
+                return;
             }
+            dispatch(ex, path, method);
         } catch (IOException e) {
             // the client went away
+        }
+    }
+
+    /**
+     * Answer one request: the route's answer, or its refusal as a problem document. The MCP server calls this for each
+     * tool call, with an in-process exchange carrying the agent key's session (see {@link Mcp.Local}).
+     */
+    void dispatch(HttpExchange ex, String path, String method) throws IOException {
+        try {
+            route(ex, path, method);
+        } catch (Http.Problem p) {
+            Http.problem(ex, p);
+        } catch (RuntimeException e) {
+            String ref = logError(method, path, e);
+            Http.problem(ex, new Http.Problem(500, "internal", "unexpected error: " + e.getClass().getSimpleName()
+                + (e.getMessage() == null ? "" : " (" + e.getMessage() + ")") + "; the console's log has the details, reference " + ref));
+        } catch (LinkageError e) {
+            // a library class is missing: answer, never drop the connection
+            String ref = logError(method, path, e);
+            Http.problem(ex, new Http.Problem(500, "missing-library", "a library this needs is not installed: " + e.getMessage() + "; reference " + ref));
         }
     }
 
@@ -284,6 +301,17 @@ public final class Server {
             }
             return;
         }
+        if (path.equals("/mcp")) {
+            // agents, with an agent key (see Mcp and Agents); the in-process calls it makes come back through dispatch
+            if (bootstrap != null) {
+                throw new Http.Problem(503, "setup-required", "Directory Console is not configured yet");
+            }
+            if (ex instanceof Mcp.Local) {
+                throw new Http.Problem(404, "not-found", "a tool call cannot call the MCP server");
+            }
+            mcp.handle(ex, method);
+            return;
+        }
         if (!path.startsWith("/api/")) {
             // the web UI, in bootstrap mode too (it then shows where to find the setup token)
             ui.serve(ex, path, method);
@@ -321,6 +349,10 @@ public final class Server {
         }
         if (path.startsWith("/api/v2/trees/")) {
             objects.handle(ex, path, method);
+            return;
+        }
+        if (agents.handles(path)) {
+            agents.handle(ex, method, path);
             return;
         }
         if (updates.handles(path)) {
@@ -387,8 +419,18 @@ public final class Server {
 
     // ---- sessions -------------------------------------------------------------------------------
 
-    /** The caller's session, refusing without one, without {@code role}, or without the CSRF token on a write. */
+    /**
+     * The caller's session, refusing without one, without {@code role}, or without the CSRF token on a write. A call the
+     * MCP server makes for an agent key carries that key's session, checked when the call came in; it sends no cookie,
+     * so it needs no CSRF token.
+     */
     Sessions.Session session(HttpExchange ex, Role role) {
+        if (ex instanceof Mcp.Local local) {
+            if (role != null && !local.agent.principal.has(role)) {
+                throw new Http.Problem(403, "forbidden", "this needs the " + role.id() + " role, which this agent key does not have");
+            }
+            return local.agent;
+        }
         Sessions.Session s = sessions.get(Http.cookie(ex, COOKIE));
         if (s == null) {
             throw new Http.Problem(401, "sign-in-required", "sign in first");
@@ -415,14 +457,14 @@ public final class Server {
         }
     }
 
-    /** The audit actor for a session. */
     /** The client's address: the socket's, or what a trusted reverse proxy reports (console setting trustedProxies). */
     String client(HttpExchange ex) {
         return Proxies.client(other.trustedProxies(), Http.client(ex), ex.getRequestHeaders().get("X-Forwarded-For"));
     }
 
+    /** The audit actor for a session: the person, and the agent key when the call came with one. */
     static AuditLog.Actor who(Sessions.Session s) {
-        return new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via());
+        return new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via(), s.agent);
     }
 
     /** The session's directory: configured, or one the person entered at sign-in. */
@@ -630,7 +672,7 @@ public final class Server {
         if (com.pointblue.console.server.ldap.Names.same(srv.dn(), own.dsaName())) {
             return new On(own.dsaName(), own, s.engine, s.engineProblem);
         }
-        if (!"oidc".equals(s.principal.via())) {
+        if (!s.principal.proxied()) {
             throw new Http.Problem(409, "server-sign-in-required", "sign in to " + srv.first("cn") + " to work with its replica",
                 Map.of("server", Map.of("guid", guid, "dn", srv.dn(), "name", String.valueOf(srv.first("cn")))));
         }
@@ -809,6 +851,7 @@ public final class Server {
             : oidc.finish(d, config.secret(d.oidcSecretPath()), config.secret(d.serviceAccountPasswordPath()), q);
         if (o instanceof com.pointblue.console.server.auth.OidcLogin.SignedIn si) {
             failedByClient.clear(client);
+            agents.signedIn(si.principal());
             SsoEngine engine = ssoEngine(d, si.connection(), d.target(), si.principal().dn(), null);
             Sessions.Session session = sessions.create(si.principal(), si.connection(), engine.engine(), engine.problem());
             audit.log(new AuditLog.Actor(si.principal().subject(), si.principal().dn(), "oidc"), "sign-in", dirId,

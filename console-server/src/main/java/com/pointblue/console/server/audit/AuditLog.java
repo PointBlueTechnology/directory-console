@@ -55,9 +55,16 @@ public final class AuditLog {
         }
     }
 
-    /** Who acted: the IdP subject or the eDirectory DN, whichever applies. */
-    public record Actor(String subject, String dn, String via) {
+    /**
+     * Who acted: the IdP subject or the eDirectory DN, whichever applies. {@code agent} names the agent key a call
+     * came with (its label and id), null for a person in a browser.
+     */
+    public record Actor(String subject, String dn, String via, String agent) {
         public static final Actor SYSTEM = new Actor("system", null, "system");
+
+        public Actor(String subject, String dn, String via) {
+            this(subject, dn, via, null);
+        }
 
         Map<String, Object> json() {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -66,6 +73,9 @@ public final class AuditLog {
                 m.put("dn", dn);
             }
             m.put("via", via);
+            if (agent != null) {
+                m.put("agent", agent);
+            }
             return m;
         }
     }

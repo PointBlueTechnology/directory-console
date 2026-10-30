@@ -603,7 +603,7 @@ final class Idm {
             results.add(r);
         }
         long deleted = results.stream().filter(r -> "deleted".equals(r.get("status"))).count();
-        server.audit.log(new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via()), "idm.driver.cache-delete", guid,
+        server.audit.log(Server.who(s), "idm.driver.cache-delete", guid,
             Map.of("dn", t.dn(), "directory", s.principal.directoryId(), "events", results), deleted == results.size() ? "ok" : deleted == 0 ? "failed" : "partial");
         Http.json(ex, 200, Map.of("results", results, "deleted", deleted));
     }
@@ -628,7 +628,7 @@ final class Idm {
                 r.put("dn", e.dn());
                 r.put("name", e.first("cn"));
                 r.put("connected", Names.same(e.dn(), own));
-                r.put("signedIn", Names.same(e.dn(), own) || s.servers.containsKey(g) || "oidc".equals(s.principal.via()));
+                r.put("signedIn", Names.same(e.dn(), own) || s.servers.containsKey(g) || s.principal.proxied());
                 out.add(r);
             }
         }
@@ -706,7 +706,7 @@ final class Idm {
     private void acted(HttpExchange ex, Sessions.Session s, String action, String guid, Target t, Operate.Result r, boolean perObject) throws IOException {
         Object body = parse(r);
         boolean refused = !r.ok && body instanceof Map<?, ?> m && m.get("refusal") != null;
-        server.audit.log(new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via()), action, guid,
+        server.audit.log(Server.who(s), action, guid,
             Map.of("dn", t.dn(), "directory", s.principal.directoryId()), refused ? "refused" : r.ok ? "ok" : "failed");
         if (refused) {
             throw new Http.Problem(409, "confirm-directory", String.valueOf(((Map<?, ?>) body).get("refusal")));
@@ -759,7 +759,7 @@ final class Idm {
         } finally {
             java.util.Arrays.fill(value, '\0');
         }
-        server.audit.log(new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via()), "idm.password.set", guid,
+        server.audit.log(Server.who(s), "idm.password.set", guid,
             Map.of("dn", t.dn(), "kind", kind, "name", name == null ? "" : name), "ok");
         Http.json(ex, 204, Map.of());
     }
@@ -776,7 +776,7 @@ final class Idm {
             case "key" -> engine.clearMutualAuthKeyPassword(t.dn());
             default -> engine.clearMutualAuthKeystorePassword(t.dn());
         }
-        server.audit.log(new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via()), "idm.password.remove", guid,
+        server.audit.log(Server.who(s), "idm.password.remove", guid,
             Map.of("dn", t.dn(), "kind", kind, "name", name == null ? "" : name), "ok");
         Http.json(ex, 204, Map.of());
     }

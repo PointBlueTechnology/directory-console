@@ -298,7 +298,7 @@ final class Objects {
      */
     Exception explainRefusal(Sessions.Session s, Ldap l, String dn, List<String> attributes, NamingException x) {
         Ldap.Failure f = Ldap.Failure.of(x);
-        if (f.code != 16 || !"oidc".equals(s.principal.via())) {
+        if (f.code != 16 || !s.principal.proxied()) {
             return x;
         }
         List<String> denied = new ArrayList<>();
@@ -427,7 +427,7 @@ final class Objects {
             m.put("name", h.name());
             m.put("type", h.type().id());
             m.put("connected", Names.same(h.dn(), own));
-            m.put("signedIn", Names.same(h.dn(), own) || s.servers.containsKey(h.guid()) || "oidc".equals(s.principal.via()));
+            m.put("signedIn", Names.same(h.dn(), own) || s.servers.containsKey(h.guid()) || s.principal.proxied());
             out.add(m);
         }
         Http.json(ex, 200, out);
@@ -982,6 +982,6 @@ final class Objects {
                 d.put("ndsError", failed.ndsError);
             }
         }
-        server.audit.log(new AuditLog.Actor(s.principal.subject(), s.principal.dn(), s.principal.via()), action, target, d, failed == null ? "ok" : "refused");
+        server.audit.log(Server.who(s), action, target, d, failed == null ? "ok" : "refused");
     }
 }

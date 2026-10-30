@@ -50,6 +50,8 @@ public final class FakeEdir implements AutoCloseable {
     public volatile int privileges = 0x1f;
     /** The authorization id of the last modify's RFC 4370 control ("dn:…"), or null when it had none. */
     public volatile String lastProxied;
+    /** The proxied-authorization control of the last search that carried one. */
+    public volatile String lastProxiedSearch;
     /** Partitions and replicas (empty until a test or the demo adds some). */
     public final FakePartitions partitions = new FakePartitions();
     /** PKI extended operations: server certificates as key material objects, user certificates in memory. */
@@ -91,6 +93,14 @@ public final class FakeEdir implements AutoCloseable {
                 }
                 a.addAttribute("revision", String.valueOf(revision.incrementAndGet()));
                 request.setRequest(a);
+            }
+
+            @Override
+            public void processSearchRequest(com.unboundid.ldap.listener.interceptor.InMemoryInterceptedSearchRequest request) {
+                com.unboundid.ldap.sdk.Control proxied = request.getRequest().getControl("2.16.840.1.113730.3.4.18");
+                if (proxied != null && proxied.getValue() != null) {
+                    lastProxiedSearch = proxied.getValue().stringValue();
+                }
             }
 
             @Override

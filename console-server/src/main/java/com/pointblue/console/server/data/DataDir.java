@@ -31,7 +31,7 @@ public final class DataDir {
 
     public DataDir(Path root) throws IOException {
         this.root = root.toAbsolutePath();
-        for (Path d : new Path[] {this.root, config(), history(), trust(), tls(), keys(), audit()}) {
+        for (Path d : new Path[] {this.root, config(), history(), trust(), tls(), keys(), audit(), agents()}) {
             directory(d);
         }
     }
@@ -62,6 +62,11 @@ public final class DataDir {
 
     public Path audit() {
         return root.resolve("audit");
+    }
+
+    /** Agent keys (their hashes): kept out of backups, so a restore never brings back a revoked key. */
+    public Path agents() {
+        return root.resolve("agents");
     }
 
     public Path bootstrapFile() {

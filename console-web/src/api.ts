@@ -873,6 +873,7 @@ export interface DirectorySettings {
   /** {@code allowed}: who may still sign in with a password while direct sign-in is off (besides break-glass). */
   login: { searchBases: string[]; duplicates: 'choose' | 'error'; allowed: string[] };
   session: { idleMinutes: number; maxHours: number };
+  agentKeys: AgentKeySettings;
   breakGlass: string[];
   roles: RoleMappingJson[];
   presets: Preset[];
@@ -900,8 +901,47 @@ export function settings(id: string) {
     checkServiceAccount: () => request<ServiceAccountCheck>('GET', `${base}/service-account/check`).then((r) => r.data),
     /** Idle timeout and longest session for this tree; applies at once, to open sessions too. */
     sessionLimits: (limits: { idleMinutes: number; maxHours: number }, etag?: string) => put('session', limits, etag),
+    /** Agent keys for MCP: on or off, their longest life, and whether agents' changes wait for approval. */
+    agentKeys: (a: AgentKeySettings, etag?: string) => put('agent-keys', a, etag),
   };
 }
+
+// ---- agent keys (MCP) ------------------------------------------------------------------
+
+/** A directory's agent keys: off by default; changes an agent asks for wait for approval unless turned off. */
+export interface AgentKeySettings {
+  enabled: boolean;
+  maxDays: number;
+  approveChanges: boolean;
+}
+
+export interface AgentKey {
+  id: string;
+  label: string;
+  directory: string;
+  dn: string;
+  name: string;
+  via: 'direct' | 'oidc';
+  roles: RoleId[];
+  created: string;
+  expires: string;
+  lastUsed: string | null;
+  state: 'active' | 'expired' | 'idle';
+}
+
+export interface AgentKeyList {
+  keys: AgentKey[];
+  settings: AgentKeySettings & { serviceAccount: boolean; longestDays: number };
+  mcpUrl: string;
+}
+
+/** The signed-in person's agent keys; an admin may list everyone's. A key is shown once, when it is made. */
+export const agentKeys = {
+  list: (all = false) => request<AgentKeyList>('GET', `/api/v2/agent-keys${all ? '?all=true' : ''}`).then((r) => r.data),
+  create: (body: { label: string; days: number; roles: RoleId[]; password?: string }) =>
+    request<{ token: string; key: AgentKey; mcpUrl: string }>('POST', '/api/v2/agent-keys', body).then((r) => r.data),
+  revoke: (id: string) => request<void>('DELETE', `/api/v2/agent-keys/${encodeURIComponent(id)}`),
+};
 
 // ---- eDirectory administration -------------------------------------------------------
 
