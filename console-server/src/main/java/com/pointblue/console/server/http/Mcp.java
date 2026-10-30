@@ -138,14 +138,14 @@ final class Mcp {
                 case "tools/list": {
                     List<Object> list = new ArrayList<>();
                     for (Tool t : tools) {
-                        if (t.role != null && !caller.session().principal.has(t.role)) {
-                            continue;   // a change this key may not make
+                        if (!offered(t, caller)) {
+                            continue;   // a change this key may not make, or Identity Applications it cannot reach
                         }
                         Map<String, Object> d = new LinkedHashMap<>();
                         d.put("name", t.name);
                         d.put("description", t.description);
                         d.put("inputSchema", t.schema());
-                        d.put("annotations", t.role == null ? Map.of("readOnlyHint", true, "openWorldHint", false)
+                        d.put("annotations", !t.writes() ? Map.of("readOnlyHint", true, "openWorldHint", false)
                             : Map.of("readOnlyHint", false, "destructiveHint", true, "idempotentHint", false, "openWorldHint", false));
                         list.add(d);
                     }
@@ -218,13 +218,21 @@ final class Mcp {
      * {@code args}: name → [type, description]; {@code required} are among them. {@code role}: the role a change tool
      * needs (null for a tool that reads).
      */
-    private record Tool(String name, String description, Map<String, String[]> args, List<String> required, Role role, Body call) {
+    private record Tool(String name, String description, Map<String, String[]> args, List<String> required, Role role, boolean apps,
+                        boolean appsWrites, Body call) {
+
+        boolean writes() {
+            return role != null || appsWrites;
+        }
 
         Map<String, Object> schema() {
             Map<String, Object> props = new LinkedHashMap<>();
             args.forEach((k, v) -> {
                 Map<String, Object> p = new LinkedHashMap<>();
-                if (v[0].equals("string[]")) {
+                if (v[0].equals("object")) {
+                    p.put("type", "object");
+                    p.put("additionalProperties", true);
+                } else if (v[0].equals("string[]")) {
                     p.put("type", "array");
                     p.put("items", Map.of("type", "string"));
                 } else {
@@ -342,7 +350,7 @@ final class Mcp {
     }
 
     private void tool(String name, String description, Map<String, String[]> args, List<String> required, Body call) {
-        tools.add(new Tool(name, description, args, required, null, call));
+        tools.add(new Tool(name, description, args, required, null, false, false, call));
     }
 
     /** What a change tool builds from its arguments: the API call it makes. */
@@ -358,7 +366,7 @@ final class Mcp {
     private void change(String name, String description, Role role, Map<String, String[]> args, List<String> required, Builds builds) {
         Map<String, String[]> all = new LinkedHashMap<>(args);
         all.put("confirm", new String[] {"string", "only on a production directory whose changes need no approval: the directory's name, typed by the person in chat; never fill it in yourself"});
-        tools.add(new Tool(name, description, all, required, role, c -> {
+        tools.add(new Tool(name, description, all, required, role, false, false, c -> {
             Sessions.Session s = c.caller.session();
             if (!s.principal.has(role)) {
                 return problem(403, "forbidden", "this needs the " + role.id() + " role, which this agent key does not have");
@@ -370,8 +378,28 @@ final class Mcp {
             if (server.agents.settings(s.principal.directoryId()).approveChanges()) {
                 return new Reply(202, Json.compact(server.agentChanges.propose(c.caller, r)));
             }
-            return execute(server, c.ex, s, r, c.s("confirm"));
+            return execute(server, c.ex, s, c.caller.key(), r, c.s("confirm"));
         }));
+    }
+
+    /**
+     * Whether {@code t} is offered to this key: a change tool only with its role; an Identity Applications tool only on
+     * a directory with Identity Applications and a key authorized for them (or to be authorized again), and its changes
+     * only to a key that may make changes (editor or operator).
+     */
+    private boolean offered(Tool t, Agents.Caller caller) {
+        Sessions.Principal p = caller.session().principal;
+        if (t.role != null && !p.has(t.role)) {
+            return false;
+        }
+        if (t.apps && (!server.agentApps.settings(p.directoryId()).on() || caller.key().appsState() == null)) {
+            return false;
+        }
+        return !t.appsWrites || mayChange(p);
+    }
+
+    private static boolean mayChange(Sessions.Principal p) {
+        return p.has(Role.EDITOR) || p.has(Role.OPERATOR);
     }
 
     private static Reply problem(int status, String title, String detail) {
@@ -383,7 +411,11 @@ final class Mcp {
      * or straight away without approval. {@code confirm} goes as {@code X-Confirm-Directory}; a PATCH carries
      * {@code If-Match: *} (the change names its values, not a version read earlier).
      */
-    static Reply execute(Server server, HttpExchange from, Sessions.Session s, AgentChanges.Request r, String confirm) throws IOException {
+    static Reply execute(Server server, HttpExchange from, Sessions.Session s, com.pointblue.console.server.auth.AgentKeys.Key key,
+                         AgentChanges.Request r, String confirm) throws IOException {
+        if (r.method().equals(APPS)) {
+            return executeApps(server, s, key, r);
+        }
         byte[] b = r.body() == null ? new byte[0] : Json.compact(r.body()).getBytes(StandardCharsets.UTF_8);
         Local l = new Local(from, s, r.method(), URI.create(r.path()), b);
         if (confirm != null && !confirm.isBlank()) {
@@ -522,6 +554,7 @@ final class Mcp {
             args("driver_set", "string", DRIVER_SET, "server", "string", SERVER), List.of("driver_set"),
             c -> c.get(c.tree() + "/idm/driversets/" + c.guid("driver_set") + "/statistics" + c.query("server")));
         defineChanges();
+        defineApps();
         tool("versions", "Versions on one server: the engine's, and each driver's shim version and base package as the statistics job last collected them.",
             args("driver_set", "string", DRIVER_SET, "server", "string", SERVER), List.of("driver_set"),
             c -> c.get(c.tree() + "/idm/driversets/" + c.guid("driver_set") + "/versions" + c.query("server")));
@@ -618,6 +651,157 @@ final class Mcp {
                     + (c.s("attribute") == null ? "" : " where " + c.s("attribute") + " = " + c.s("value")), d.dn(), "POST",
                     c.tree() + "/idm/drivers/" + d.guid() + "/migrate/from-app" + c.query("server"), b);
             });
+    }
+
+    // ---- Identity Applications (docs/MCP.md, phase 3) ----
+
+    /** The method of a change that is an Identity Applications call ({@code path} names the operation). */
+    static final String APPS = "APPS";
+
+    /** An Identity Applications call as the key's person, its refusal as a problem answer. */
+    private Reply apps(Call c, AgentApps.Op op) throws IOException {
+        Sessions.Session s = c.caller.session();
+        try {
+            return new Reply(200, Json.compact(server.agentApps.call(c.caller.key(), server.directoryOf(s), op)));
+        } catch (Http.Problem p) {
+            return problem(p.status, p.type, p.getMessage());
+        }
+    }
+
+    /** Make an Identity Applications change now (approved, or without approval), audited as the agent. */
+    static Reply executeApps(Server server, Sessions.Session s, com.pointblue.console.server.auth.AgentKeys.Key key, AgentChanges.Request r) throws IOException {
+        Map<String, Object> a = Json.asMap(r.body());
+        Reply out;
+        try {
+            Map<String, Object> answer = server.agentApps.call(key, server.directoryOf(s), session -> switch (r.path()) {
+                case "act" -> session.act(strings(a.get("tasks")), Json.asString(a.get("action")), Json.asString(a.get("comment")));
+                case "requestPrd" -> session.requestPrd(Json.asString(a.get("id")), data(a.get("data")), strings(a.get("recipients")));
+                case "requestPermission" -> session.requestPermission(Json.asString(a.get("id")), Json.asString(a.get("entityType")),
+                    strings(a.get("recipients")), Json.asString(a.get("reason")));
+                default -> throw new IllegalArgumentException("no Identity Applications operation " + r.path());
+            });
+            // a 200 with "success": false is a refusal the applications explain in the answer
+            out = new Reply(Boolean.FALSE.equals(answer.get("success")) ? 409 : 200, Json.compact(answer));
+        } catch (Http.Problem p) {
+            out = problem(p.status, p.type, p.getMessage());
+        }
+        server.audit.log(Server.who(s), "apps." + r.tool(), r.target(), Map.of("summary", r.summary()), out.status() < 400 ? "ok" : "failed");
+        return out;
+    }
+
+    private static List<String> strings(Object o) {
+        List<String> out = new ArrayList<>();
+        if (o instanceof List<?> l) {
+            l.forEach(x -> out.add(String.valueOf(x)));
+        } else if (o != null && !String.valueOf(o).isBlank()) {
+            out.add(String.valueOf(o));
+        }
+        return out;
+    }
+
+    /** A request form's data: each key to its values (a single value becomes a list of one). */
+    private static Map<String, List<String>> data(Object o) {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        if (o instanceof Map<?, ?> m) {
+            m.forEach((k, v) -> out.put(String.valueOf(k), strings(v)));
+        }
+        return out;
+    }
+
+    /** An Identity Applications change: recorded for approval, or made now, as the directory's setting says. */
+    private void appsChange(String name, String description, Map<String, String[]> args, List<String> required, Builds builds) {
+        tools.add(new Tool(name, description, args, required, null, true, true, c -> {
+            Sessions.Session s = c.caller.session();
+            if (!mayChange(s.principal)) {
+                return problem(403, "forbidden", "Identity Applications changes need a key that may make changes (editor or operator)");
+            }
+            AgentChanges.Request r = builds.build(c);
+            if (server.agents.settings(s.principal.directoryId()).approveChanges()) {
+                return new Reply(202, Json.compact(server.agentChanges.propose(c.caller, r)));
+            }
+            return executeApps(server, s, c.caller.key(), r);
+        }));
+    }
+
+    private void appsTool(String name, String description, Map<String, String[]> args, List<String> required, Body call) {
+        tools.add(new Tool(name, description, args, required, null, true, false, call));
+    }
+
+    private static int num(Call c, String k, int dflt, int max) {
+        String v = c.s(k);
+        try {
+            return v == null ? dflt : Math.max(1, Math.min(max, (int) Double.parseDouble(v)));
+        } catch (NumberFormatException e) {
+            return dflt;
+        }
+    }
+
+    private void defineApps() {
+        appsTool("my_tasks", "Identity Applications: the approval tasks waiting for the person, newest first.",
+            args("q", "string", "optional: search text", "size", "integer", "optional: how many, up to 100 (20 by default)"), List.of(),
+            c -> apps(c, s -> s.tasks(c.s("q"), 1, num(c, "size", 20, 100))));
+        appsTool("task", "Identity Applications: one approval task, with its form's data.", args("task_id", "string", "the task's id, from my_tasks"),
+            List.of("task_id"), c -> apps(c, s -> s.task(c.s("task_id"))));
+        appsTool("my_requests", "Identity Applications: the person's requests and their state, newest first.",
+            args("q", "string", "optional: search text", "size", "integer", "optional: how many, up to 100 (20 by default)"), List.of(),
+            c -> apps(c, s -> s.history(c.s("q"), 1, num(c, "size", 20, 100))));
+        appsTool("request_detail", "Identity Applications: one request with its history (assigned, approved, denied, by whom).",
+            args("id", "string", "the request's id, from my_requests", "entity_type", "string", "optional: its entityType from my_requests (prd by default)"),
+            List.of("id"), c -> apps(c, s -> s.historyItem(c.s("id"), c.s("entity_type") == null ? "prd" : c.s("entity_type"))));
+        appsTool("assignments", "Identity Applications: a person's role and resource assignments.",
+            args("person", "string", "optional: the person's DN; the key's own person when absent"), List.of(),
+            c -> apps(c, s -> s.assignments(c.s("person") == null ? c.caller.key().dn() : c.s("person"), 1, 200)));
+        appsTool("request_definitions", "Identity Applications: the catalog's request definitions (PRDs), with their DNs. The catalog can "
+                + "list one since deleted: request_definition checks.", args("q", "string", "optional: search text"), List.of(),
+            c -> apps(c, s -> s.catalogPrds(c.s("q"), 1, 200)));
+        appsTool("request_definition", "Identity Applications: one request definition (PRD) as the permission index has it: its form and data "
+                + "items. Refused when it is not requestable.", args("prd", "string", "the PRD's DN"), List.of("prd"),
+            c -> apps(c, s -> s.permission(c.s("prd"), "prd")));
+
+        for (String action : List.of("approve", "deny")) {
+            appsChange(action + "_tasks", "Identity Applications: " + action + " approval tasks, as the person.",
+                args("task_ids", "string[]", "the tasks' ids, from my_tasks", "comment", "string", "optional: a comment for the request's history"),
+                List.of("task_ids"), c -> {
+                    List<String> ids = strings(c.args.get("task_ids"));
+                    List<String> what = new ArrayList<>();
+                    for (String id : ids.subList(0, Math.min(5, ids.size()))) {
+                        Reply t = apps(c, s -> s.task(id));
+                        Map<String, Object> m = t.status() == 200 ? t.json() : Map.of();
+                        what.add(m.get("processName") == null ? id : m.get("processName") + (m.get("recipientName") == null ? "" : " for " + m.get("recipientName")));
+                    }
+                    String summary = (action.equals("approve") ? "Approve " : "Deny ") + String.join("; ", what) + (ids.size() > 5 ? " and " + (ids.size() - 5) + " more" : "");
+                    Map<String, Object> body = new LinkedHashMap<>();
+                    body.put("tasks", ids);
+                    body.put("action", action);
+                    body.put("comment", c.s("comment"));
+                    return new AgentChanges.Request(action + "_tasks", summary, null, APPS, "act", body);
+                });
+        }
+        appsChange("start_request", "Identity Applications: start a request definition (PRD) with a JSON request form, for the person or for others.",
+            args("prd", "string", "the PRD's DN",
+                "data", "object", "optional: the request form's fields, key to value (or a list of values)",
+                "recipients", "string[]", "optional: the recipients' DNs; the person themselves when absent"), List.of("prd"), c -> {
+                List<String> to = strings(c.args.get("recipients"));
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("id", c.s("prd"));
+                body.put("data", c.args.get("data") instanceof Map<?, ?> m ? m : Map.of());
+                body.put("recipients", to);
+                return new AgentChanges.Request("start_request", "Start " + c.s("prd") + (to.isEmpty() ? "" : " for " + String.join(", ", to)), c.s("prd"), APPS, "requestPrd", body);
+            });
+        for (String type : List.of("role", "resource")) {
+            appsChange("request_" + type, "Identity Applications: request a " + type + " for the person or for others.",
+                args(type, "string", "the " + type + "'s DN", "recipients", "string[]", "optional: the recipients' DNs; the person themselves when absent",
+                    "reason", "string", "optional: why"), List.of(type), c -> {
+                    List<String> to = strings(c.args.get("recipients"));
+                    Map<String, Object> body = new LinkedHashMap<>();
+                    body.put("id", c.s(type));
+                    body.put("entityType", type);
+                    body.put("recipients", to);
+                    body.put("reason", c.s("reason"));
+                    return new AgentChanges.Request("request_" + type, "Request the " + type + " " + c.s(type) + (to.isEmpty() ? "" : " for " + String.join(", ", to)),
+                        c.s(type), APPS, "requestPermission", body);
+                });
+        }
     }
 
     /** For tests and the docs: the tools' names, in order. */

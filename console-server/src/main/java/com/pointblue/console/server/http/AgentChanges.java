@@ -192,7 +192,7 @@ final class AgentChanges {
             // the call is the agent's, made now as its key, so the key's roles and the account's state apply now
             Agents.Caller caller = server.agents.check(k, server.client(ex));
             server.audit.log(Server.who(s), "agent-change.approve", c.id, Map.of("tool", c.request.tool(), "summary", c.request.summary(), "agent", c.keyLabel), "ok");
-            Mcp.Reply r = Mcp.execute(server, ex, caller.session(), c.request, d != null && d.production() ? d.name() : null);
+            Mcp.Reply r = Mcp.execute(server, ex, caller.session(), caller.key(), c.request, d != null && d.production() ? d.name() : null);
             c.result = r;
             decide(c, r.status() < 400 ? "approved" : "failed", s);
             Http.json(ex, 200, c.json());

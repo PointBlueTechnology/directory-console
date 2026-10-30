@@ -832,6 +832,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Off by default. On, people make keys for their AI agents under their name > Agent keys; it needs the service account.',
           'The longest life applies to new keys: 1 to 90 days. Keys made with single sign-on live at most 14 days, and any key unused for 14 days stops.',
           'Turning keys off stops every key on this directory at once; turning them on again lets the unexpired ones work again.',
+          'Identity Applications for agents: its address, OSP client (rbpmrest) and the client\'s secret, kept encrypted. Keys made with a password then also get the Identity Applications tools.',
           'Approval of changes is on by default: a change an agent asks for waits, for an hour, until the person approves it in the console (Agent keys). Off, an agent\'s changes go ahead within its key\'s roles; on a production directory the agent then passes the directory\'s name, typed by the person.',
         ],
       },
@@ -878,6 +879,15 @@ export const CONTENT: Record<string, HelpTopic> = {
           'A change an agent asks for is listed under Changes agents asked for, and the agent gives you a link to it.',
           'Review shows what it changes. Approve makes it then, as the agent\'s key; on a production directory you type its name first. Decline drops it.',
           'A change not decided within an hour expires. A change from a key revoked since cannot be approved.',
+        ],
+      },
+      {
+        title: 'Identity Applications',
+        list: [
+          'On a directory with Identity Applications set up (Settings > Directory), a key made with your password also signs you in to Identity Applications once. The key keeps that sign-in, never the password.',
+          'Its agent then sees your approval tasks, requests and assignments, and, with a key that may make changes, approves or denies tasks and makes requests, as you. Those changes wait for your approval like the others.',
+          'If the sign-in stops working (after 30 days, or when it is revoked), the key shows Authorize again: type your password there.',
+          'Keys made with single sign-on have no Identity Applications tools: the console has no password to sign in with.',
         ],
       },
       { title: 'Revoking a key', paragraphs: ['Revoke stops a key at once. Administrators can see and revoke everyone\'s keys here.'] },

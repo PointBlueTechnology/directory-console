@@ -28,7 +28,8 @@ export function AgentKeysPage() {
   const [list, setList] = useState<AgentKeyList | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [making, setMaking] = useState(false);
-  const [made, setMade] = useState<{ token: string; key: AgentKey; mcpUrl: string } | null>(null);
+  const [made, setMade] = useState<{ token: string; key: AgentKey; mcpUrl: string; appsProblem?: string } | null>(null);
+  const [authorizing, setAuthorizing] = useState<AgentKey | null>(null);
   const sure = useAreYouSure();
   const { query } = useLocation();
   const [changes, setChanges] = useState<AgentChange[]>([]);
@@ -129,6 +130,7 @@ export function AgentKeysPage() {
                   <Th>Made</Th>
                   <Th>Expires</Th>
                   <Th>Last used</Th>
+                  {list.settings.apps && <Th>Identity Applications</Th>}
                   <Th screenReaderText="Actions" />
                 </Tr>
               </Thead>
@@ -142,6 +144,15 @@ export function AgentKeysPage() {
                     <Td dataLabel="Made">{when(k.created)}</Td>
                     <Td dataLabel="Expires">{when(k.expires)}</Td>
                     <Td dataLabel="Last used">{when(k.lastUsed)}</Td>
+                    {list.settings.apps && (
+                      <Td dataLabel="Identity Applications">
+                        {k.apps === 'authorized' ? <Label color="green">authorized</Label>
+                          : k.apps === 'authorize-again' ? <Label color="orange">authorize again</Label> : <span className="dc-subtle">no</span>}
+                        {k.apps !== 'authorized' && k.via === 'direct' && session.me.via === 'direct' && k.dn.toLowerCase() === session.me.dn.toLowerCase() && (
+                          <> <Button variant="link" isInline onClick={() => setAuthorizing(k)}>Authorize</Button></>
+                        )}
+                      </Td>
+                    )}
                     <Td isActionCell><Button variant="link" isDanger onClick={() => revoke(k)}>Revoke</Button></Td>
                   </Tr>
                 ))}
@@ -154,6 +165,7 @@ export function AgentKeysPage() {
         <NewKey list={list} onCancel={() => setMaking(false)} onMade={(m) => { setMaking(false); setMade(m); load(); }} />
       )}
       {made && <ShowKey made={made} onClose={() => setMade(null)} />}
+      {authorizing && <Authorize agentKey={authorizing} onClose={() => { setAuthorizing(null); load(); }} />}
       {deciding && <Decide change={deciding} mine={deciding.dn.toLowerCase() === session.me.dn.toLowerCase()} onClose={closeDecision} />}
       {sure.dialog}
     </PageSection>
@@ -165,7 +177,7 @@ const ROLE_TEXT: Record<'editor' | 'operator', string> = {
   operator: 'Run Identity Manager operations (operator)',
 };
 
-function NewKey({ list, onCancel, onMade }: { list: AgentKeyList; onCancel: () => void; onMade: (m: { token: string; key: AgentKey; mcpUrl: string }) => void }) {
+function NewKey({ list, onCancel, onMade }: { list: AgentKeyList; onCancel: () => void; onMade: (m: { token: string; key: AgentKey; mcpUrl: string; appsProblem?: string }) => void }) {
   const { me, can } = useSession();
   const { run, dialog } = useStepUp();
   const sso = me.via === 'oidc';
@@ -215,7 +227,12 @@ function NewKey({ list, onCancel, onMade }: { list: AgentKeyList; onCancel: () =
               <FormHelperText><HelperText><HelperTextItem>To confirm it is you. It is checked and not kept.</HelperTextItem></HelperText></FormHelperText>
             </FormGroup>
           )}
-          {sso && <p className="dc-subtle">Making a key needs a single sign-on sign-in within the last 10 minutes.</p>}
+          {!sso && list.settings.apps && (
+            <p className="dc-subtle">Your password also signs you in to Identity Applications once, for this key: it keeps that sign-in (never the
+              password), so its agent can see and act on your approval tasks and requests.</p>
+          )}
+          {sso && <p className="dc-subtle">Making a key needs a single sign-on sign-in within the last 10 minutes.{list.settings.apps
+            && ' Keys made with single sign-on get no Identity Applications tools: there is no password to sign in to them with.'}</p>}
         </Form>
         <ProblemAlert error={error} />
       </ModalBody>
@@ -228,7 +245,7 @@ function NewKey({ list, onCancel, onMade }: { list: AgentKeyList; onCancel: () =
   );
 }
 
-function ShowKey({ made, onClose }: { made: { token: string; key: AgentKey; mcpUrl: string }; onClose: () => void }) {
+function ShowKey({ made, onClose }: { made: { token: string; key: AgentKey; mcpUrl: string; appsProblem?: string }; onClose: () => void }) {
   const claude = `claude mcp add --transport http directory-console ${made.mcpUrl} --header "Authorization: Bearer ${made.token}"`;
   const json = JSON.stringify({ mcpServers: { 'directory-console': { type: 'http', url: made.mcpUrl, headers: { Authorization: `Bearer ${made.token}` } } } }, null, 2);
   return (
@@ -238,6 +255,11 @@ function ShowKey({ made, onClose }: { made: { token: string; key: AgentKey; mcpU
         <Alert variant="warning" isInline title="Copy the key now: it is not shown again">
           Keep it like a password. Anyone with it can act as you, within the key&apos;s roles, until it expires or you revoke it.
         </Alert>
+        {made.appsProblem && (
+          <Alert variant="info" isInline title="The key has no Identity Applications tools yet">
+            {made.appsProblem} Authorize it later from the list of keys.
+          </Alert>
+        )}
         <Form>
           <FormGroup label="The key" fieldId="show-key-token">
             <ClipboardCopy id="show-key-token" isReadOnly hoverTip="Copy" clickTip="Copied">{made.token}</ClipboardCopy>
@@ -304,6 +326,40 @@ function Decide({ change, mine, onClose }: { change: AgentChange; mine: boolean;
         )}
         {!done && <Button variant="secondary" isDanger isDisabled={busy} onClick={() => go(() => agentChanges.decline(change.id))}>Decline</Button>}
         <Button variant="link" onClick={onClose}>{done ? 'Close' : 'Later'}</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+/** Sign the person in to Identity Applications for their own key (again), with their password. */
+function Authorize({ agentKey, onClose }: { agentKey: AgentKey; onClose: () => void }) {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    agentKeys.authorize(agentKey.id, password).then(onClose, (x) => {
+      setPassword('');
+      setError(x instanceof ApiError && x.status === 401 && x.code === 'bad-credentials' ? new Error('The password is incorrect.') : x);
+    }).finally(() => setBusy(false));
+  };
+  return (
+    <Modal variant="small" isOpen onClose={onClose} aria-labelledby="authorize-title">
+      <ModalHeader title={`Identity Applications for ${agentKey.label}`} labelId="authorize-title" />
+      <ModalBody>
+        <Form id="authorize-form" onSubmit={submit}>
+          <p>Your password signs you in to Identity Applications once; the key keeps that sign-in, never the password.</p>
+          <FormGroup label="Your password" fieldId="authorize-password" isRequired>
+            <TextInput id="authorize-password" type="password" autoComplete="current-password" value={password} onChange={(_e, v) => setPassword(v)} autoFocus isRequired />
+          </FormGroup>
+        </Form>
+        <ProblemAlert error={error} />
+      </ModalBody>
+      <ModalFooter>
+        <Button type="submit" form="authorize-form" isLoading={busy} isDisabled={busy || !password}>Authorize</Button>
+        <Button variant="link" onClick={onClose}>Cancel</Button>
       </ModalFooter>
     </Modal>
   );

@@ -1,8 +1,8 @@
 # Agents over MCP (design)
 
-**Status:** decided 2026-10-30. Phases 1 (agent keys, `/mcp`, the read tools) and 2 (the change tools, with
-approval in the console) are built; see [Using it](#using-it). Phase 3 (Identity Applications) is not built yet. The
-decisions are at the end.
+**Status:** decided 2026-10-30. All three phases are built: agent keys, `/mcp` and the read tools; the change
+tools, with approval in the console; and Identity Applications. See [Using it](#using-it). The decisions are at the
+end.
 
 This note proposes letting a person's AI agent do day-to-day administration through the console, over the Model
 Context Protocol (MCP). Examples are looking up an account, finding out why a user did not synchronize, starting a
@@ -169,8 +169,14 @@ No tool takes or returns a password.
 Identity Applications calls are only offered on a directory with an Identity Applications address set. That
 needs OSP. A directory without it works as above, and the Identity Applications tools are simply not listed.
 
-- **Client:** a vendor-free REST client in DirXMLDev core, built from what `bin/apps` and `docs/idapps-rest.md`
-  already established. It is used by both the console and DirXMLDev.
+- **Client:** a vendor-free REST client in DirXMLDev core (`com.pointblue.dirxml.dev.apps.IdApps`, from 0.60.0),
+  built from what `bin/apps` and `docs/idapps-rest.md` already established. It is used by both the console and
+  DirXMLDev.
+- **Which calls:** a person's assignments are `POST /assignments/list {"dn"}`; the request definitions come from the
+  catalog (`GET /IDMProv/rest/catalog/prds`), which on the lab still listed PRDs deleted from the vault, so
+  `request_definition` (the permission index) is the check before a request. Checked on idm254, 2026-10-30.
+- **Changes need a key that may make changes:** approving tasks and making requests need the key to carry editor or
+  operator; a read-only key sees tasks and requests only.
 - **The person's token:**
   1. When a key is made, the console makes one OSP password grant with the typed password, using the documented
      `rbpmrest` client and its secret, set for the directory.
@@ -208,7 +214,8 @@ needs OSP. A directory without it works as above, and the Identity Applications 
 
 ## Using it
 
-Phase 1 has keys, the endpoint and the read tools; phase 2 the change tools. Both are in 0.4.0.
+Phase 1 has keys, the endpoint and the read tools, phase 2 the change tools, and phase 3 Identity Applications. All
+three are in 0.4.0.
 
 1. **An administrator turns keys on:** Settings > Directory > Agent keys. Keys need the directory's service account,
    with Supervisor over the people who make keys. The same section sets the longest life (1 to 90 days, 90 by
@@ -259,6 +266,24 @@ Phase 1 has keys, the endpoint and the read tools; phase 2 the change tools. Bot
    restart drops them.
 6. **Without approval:** the change is made at once. On a production directory the tool then needs `confirm`, the
    directory's name, which the agent must get from the person; the engine's operations refuse without it.
+
+7. **Identity Applications** (a directory with its address set, Settings > Directory > *Identity Applications for
+   agents*: the address, the OSP client, normally `rbpmrest`, and its secret). A key made with a password also signs
+   its person in to Identity Applications once; the key keeps the refresh token, sealed with the console's key, and
+   shows *authorized*. Its tools:
+
+   | Tool | What it does, as the person |
+   |---|---|
+   | `my_tasks`, `task` | their approval tasks |
+   | `my_requests`, `request_detail` | their requests and each one's history |
+   | `assignments` | a person's role and resource assignments |
+   | `request_definitions`, `request_definition` | the catalog's PRDs; one PRD as the permission index has it |
+   | `approve_tasks`, `deny_tasks` | act on tasks (a key that may make changes) |
+   | `start_request`, `request_role`, `request_resource` | requests (a key that may make changes) |
+
+   Changes follow the approval setting like any other. When the refresh token stops working (30 days on the lab, or
+   revoked), the tools answer `authorize-again` and the key shows *authorize again*; its person types their password
+   under Agent keys > Authorize. Keys made with single sign-on get no Identity Applications tools in this version.
 
 Every change is audited twice over: `agent-change.request`, `.approve` or `.decline` name the tool and the summary,
 and the change itself is audited as the person with `via` = `agent` and the key's label and id.

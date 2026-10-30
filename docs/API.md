@@ -158,7 +158,9 @@ characters the policy does not allow, and so on).
 ```
 GET    /api/v2/agent-keys                 your keys, the directory's agent key settings and the MCP address; ?all=true: everyone's (admin)
 POST   /api/v2/agent-keys                 {"label", "days"?, "roles"? ["viewer", "editor", "operator"], "password" (direct sign-in)}: {token, key, mcpUrl}
+POST   /api/v2/agent-keys/{id}/authorize  {"password"}: Identity Applications for your own key (again); direct sign-in
 DELETE /api/v2/agent-keys/{id}            your own key, or anyone's for an admin
+PUT    /api/v2/directories/{id}/apps      {"url", "clientId"? (rbpmrest), "clientSecret"? (absent keeps it)} or null (admin, recent sign-in)
 PUT    /api/v2/directories/{id}/agent-keys   {"enabled", "maxDays" (1-90), "approveChanges" (true when absent)} (admin, recent sign-in)
 POST   /mcp                               JSON-RPC 2.0 (MCP, Streamable HTTP, stateless) with Authorization: Bearer dc_…
 GET    /api/v2/agent-changes              changes your keys' agents asked for, newest first; ?all=true: everyone's (admin)
@@ -167,7 +169,8 @@ POST   /api/v2/agent-changes/{id}/decline the key's owner, or an admin
 ```
 
 A change is `pending`, `approved`, `declined`, `expired` (after an hour) or `failed` (the call was refused, or the key
-was revoked).
+was revoked). A key's `apps` is `authorized`, `authorize-again` or null; making a key on a directory with Identity
+Applications answers `appsProblem` when that sign-in failed (the key is made either way).
 
 The token is shown once; the console keeps its SHA-256. With single sign-on, making a key needs a sign-in within the
 last 10 minutes instead of the password, and the key lives at most 14 days. A key works only at `/mcp`; refusals there
