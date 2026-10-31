@@ -217,6 +217,9 @@ needs OSP. A directory without it works as above, and the Identity Applications 
 
 ## Using it
 
+For people using agents (setting up, example prompts, troubleshooting), see [USING-AGENTS.md](USING-AGENTS.md). This
+section is the reference.
+
 Phase 1 has keys, the endpoint and the read tools, phase 2 the change tools, and phase 3 Identity Applications. All
 three are in 0.4.0.
 
