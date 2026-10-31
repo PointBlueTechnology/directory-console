@@ -132,11 +132,43 @@ try {
     ['settings-trusted-certificates', async () => { await go('/settings?tab=trust', 3000); }],
     ['settings-history-backup', async () => { await go('/settings?tab=backup', 2500); }],
     ['settings-console-certificate', async () => { await go('/settings?tab=certificate', 2500); }],
+    ['settings-agent-keys', async () => {
+      await go('/settings?tab=directory', 2500);
+      await js(`[...document.querySelectorAll('h3')].find((h) => h.textContent.trim() === 'Agent keys')?.scrollIntoView({ block: 'start' })`);
+      await sleep(400);
+    }],
   ];
   for (const [name, run] of plan) {
     if (ONLY && ONLY !== name) continue;
     await run();
     await shot(name);
+  }
+
+  // agent keys belong to a person, not the break-glass administrator: the demo's editor pat (fixture credentials).
+  // The demo needs agent keys on, pat's keys, and a change an agent asked for (see SCREENSHOTS.md).
+  const agentPlan = [
+    ['agent-keys', async () => { await go('/agent-keys', 2500); }],
+    ['agent-key-new', async () => {
+      await go('/agent-keys', 2500); await clickText('New agent key'); await sleep(800);
+      await typeInto('#key-label', 'Claude Code on my laptop'); await sleep(400);
+    }],
+    ['agent-change-review', async () => {
+      const change = await js(`(async () => ((await (await fetch('/api/v2/agent-changes')).json()).changes.find((c) => c.state === 'pending') ?? {}).id)()`);
+      if (change) await go('/agent-keys?change=' + change, 2800);
+    }],
+  ];
+  if (!ONLY || agentPlan.some(([name]) => name === ONLY)) {
+    await js(`(async () => {
+      const me = await (await fetch('/api/v2/session')).json();
+      await fetch('/api/v2/session', { method: 'DELETE', headers: { 'X-CSRF-Token': me.csrf } });
+      await fetch('/api/v2/session', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ directory: 'acme', name: 'pat', password: 'pat-pw' }) });
+    })()`);
+    for (const [name, run] of agentPlan) {
+      if (ONLY && ONLY !== name) continue;
+      await run();
+      await shot(name);
+    }
   }
 } finally {
   try { ws?.close(); } catch { /* closing */ }

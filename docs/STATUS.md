@@ -1,6 +1,6 @@
 # Status
 
-Where Directory Console stands as of version 0.3.24 (October 2026): what works, what has limits, and what is not built yet.
+Where Directory Console stands as of version 0.4.0 (October 2026): what works, what has limits, and what is not built yet.
 It is a beta release. It has been tested against lab trees running eDirectory 9.2 and 9.3, and Identity Manager 4.8.
 
 ## Works
@@ -30,6 +30,9 @@ It is a beta release. It has been tested against lab trees running eDirectory 9.
 - **Certificates:** user certificates cannot be deleted. Only a user can export their own certificate's private key (eDirectory keeps it under their key). Validation results are not shown.
 - **Work on another server:** replica changes, LDAP refresh and reload, and applying an encrypted attribute policy go over a connection to that server. The console must reach that server's LDAPS port. With a direct sign-in, it asks you to sign in to that server once.
 - **A restore applies at the next start:** Settings > History and backup checks the file and stages it; restart the console (the container, or the service without one) to apply it. A backup's audit log is restored only onto an empty one.
+- **Agents:** changes waiting for approval are kept in memory, so a restart drops them (the agent asks again). Keys
+  made with single sign-on get no Identity Applications tools. Identity Applications' "who has" lists only people
+  under the applications' user search root. The agent's machine must trust the console's certificate.
 - **Search:** saved and recent searches are kept in the browser that ran them, for one directory; they are not shared. Results cannot be edited in the table (use the object's details). Exports are in the directory's order, not sorted. LDIF import is not built.
 - **Password policies:** eDirectory treats unset "digits allowed" and "special characters allowed" as not allowed, even when the policy requires a minimum of them; such a policy accepts no password, and the console says so.
 - **Syslog forwarding is best effort:** while the syslog server cannot be reached, up to 2000 entries wait. After that they are dropped and counted under Settings > Syslog. The console's own audit log keeps every entry.

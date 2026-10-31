@@ -213,6 +213,8 @@ proxy (next section).
 - **`CONSOLE_PUBLIC_URL` is the proxy's address,** the one browsers use. The console refuses changes from any other
   origin, and its session cookie needs HTTPS end to end.
 - **Pass the `Host` header** through unchanged, and set `X-Forwarded-For`.
+- **Forward `/mcp` too,** with its `Authorization` header, if people will use AI agents (agent keys, from 0.4.0). A
+  proxy that forwards only the page and `/api` leaves agents unable to connect.
 - **Settings > Reverse proxy:** list the proxy's addresses (IPs or CIDR ranges). Only then does the console believe
   its `X-Forwarded-For`, so audit entries and sign-in limits see each person's own address.
 - **Kubernetes with ingress-nginx:** either `nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"` (TLS ends at the
@@ -224,6 +226,8 @@ proxy (next section).
 - `https://console.example.com/api/v2/health/live` answers `{"version":…,"status":"live"}`, and
   `/api/v2/health/ready` answers `ready` once setup is finished.
 - The certificate browsers see is the one you expect.
+- `https://console.example.com/mcp` answers 401 with `WWW-Authenticate: Bearer` to a request without an agent key
+  (a 404 means the proxy does not forward it).
 - A person with a role signs in with a short name; one without a role is refused.
 - With single sign-on: the button signs someone in as their own account, and an account under **Never act as** is
   refused. With password sign-in limited to single sign-on, an unlisted account's password is refused, and a

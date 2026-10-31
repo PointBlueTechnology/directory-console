@@ -11,7 +11,8 @@ real tree.
 - [Security](#security): certificates, password policies
 - [Identity Manager](#identity-manager): driver set, driver, jobs
 - [Audit log](#audit-log)
-- [Settings](#settings): single sign-on, trusted certificates, history and backup, the console's certificate
+- [AI agents](#ai-agents): agent keys, a new key, approving an agent's change
+- [Settings](#settings): single sign-on, trusted certificates, history and backup, the console's certificate, agent keys
 
 ## Signing in
 
@@ -104,6 +105,22 @@ hash chain.
 
 ![The audit log](images/audit-log.png)
 
+## AI agents
+
+**Agent keys.** A person's keys for their AI agents, and the changes the agents asked for, waiting for approval. An
+agent works through the console's MCP server, as the person, with their own rights and at most the key's roles.
+
+![Agent keys and a change waiting for approval](images/agent-keys.png)
+
+**A new key.** A label, a life, and what the key may do: reading always, and only roles the person has. Their
+password confirms it is them. The key is shown once, with the command to add it to Claude Code.
+
+![Making an agent key](images/agent-key-new.png)
+
+**Approving a change.** The agent gives the person a link; the change is made only when they approve it.
+
+![Reviewing a change an agent asked for](images/agent-change-review.png)
+
 ## Settings
 
 **Single sign-on.** An OpenID Connect provider for signing in, with the redirect URI to register at the provider.
@@ -124,6 +141,11 @@ file encrypted with your passphrase.
 
 ![The console's own certificate](images/settings-console-certificate.png)
 
+**Agent keys.** On or off for a directory, the longest life of a key, and whether agents' changes wait for approval.
+Identity Applications for agents is set just below.
+
+![Agent key settings for a directory](images/settings-agent-keys.png)
+
 ## Refreshing these screenshots
 
 Start `DemoServer` (port 8443) and the web UI's development server (`npm run dev` in `console-web`, port 5173), then
@@ -132,6 +154,9 @@ run:
 ```bash
 node docs/images/capture.mjs docs/images
 ```
+
+The agent shots need agent keys on for the demo directory, a key made by `pat` (`pat-pw`), and a change asked for
+with that key through `/mcp`; the script signs in as `pat` for them.
 
 Add a name (for example `search`) to retake one screenshot. The script uses Chrome headless; set `CHROME` to its path
 if it is not in the macOS default location. Use it against the demo only.

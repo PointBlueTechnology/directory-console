@@ -232,7 +232,13 @@ three are in 0.4.0.
    claude mcp add --transport http directory-console https://console.example.com/mcp --header "Authorization: Bearer dc_…"
    ```
 
-   Other clients take the same address and header. The agent's machine must trust the console's certificate.
+   Other clients take the same address and header.
+
+   **The agent's machine must trust the console's certificate.** With the console's own self-signed certificate,
+   Node-based clients such as Claude Code refuse it (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`) until it is trusted. For
+   example, save it with `openssl s_client -connect console.example.com:443 </dev/null | openssl x509 > console.pem`
+   and start the client with `NODE_EXTRA_CA_CERTS=/path/to/console.pem`. A certificate from a public or internal CA
+   the machine already trusts needs nothing. `claude mcp list` then shows the server as connected.
 3. **The agent calls `whoami` first,** then the read tools:
 
    | Tool | What it reads |

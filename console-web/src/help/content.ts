@@ -864,6 +864,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Choose how long it lasts, and what it may do: reading always, and changing objects or running Identity Manager only if you have those roles. A key never has the admin role.',
           'Type your password to confirm it is you (with single sign-on: a sign-in within the last 10 minutes).',
           'The key is shown once. Copy it, with the command or settings for your agent, and keep it like a password.',
+          'The agent\'s machine must trust the console\'s certificate. With the console\'s own certificate, start Claude Code (or another Node-based agent) with NODE_EXTRA_CA_CERTS pointing to a copy of it.',
         ],
       },
       {
@@ -885,7 +886,8 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Identity Applications',
         list: [
           'On a directory with Identity Applications set up (Settings > Directory), a key made with your password also signs you in to Identity Applications once. The key keeps that sign-in, never the password.',
-          'Its agent then sees your approval tasks, requests and assignments, and, with a key that may make changes, approves or denies tasks and makes requests, as you. Those changes wait for your approval like the others.',
+          'Its agent then sees your approval tasks and requests, who holds a role or resource, and assignments; with a key that may make changes, it approves or denies tasks, makes requests, revokes roles and resources, and retracts requests, as you. Those changes wait for your approval like the others.',
+          '"Who has" lists only people under the Identity Applications\' user search root.',
           'If the sign-in stops working (after 30 days, or when it is revoked), the key shows Authorize again: type your password there.',
           'Keys made with single sign-on have no Identity Applications tools: the console has no password to sign in with.',
         ],

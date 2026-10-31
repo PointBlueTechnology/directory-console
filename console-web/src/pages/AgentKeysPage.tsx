@@ -272,7 +272,7 @@ function ShowKey({ made, onClose }: { made: { token: string; key: AgentKey; mcpU
           </FormGroup>
           <FormGroup label="Other MCP clients" fieldId="show-key-json">
             <ClipboardCopy id="show-key-json" isReadOnly isCode variant={ClipboardCopyVariant.expansion} hoverTip="Copy" clickTip="Copied">{json}</ClipboardCopy>
-            <FormHelperText><HelperText><HelperTextItem>The agent&apos;s machine must trust the console&apos;s certificate.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>The agent&apos;s machine must trust the console&apos;s certificate. With the console&apos;s own certificate, start Claude Code with NODE_EXTRA_CA_CERTS set to a copy of it.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
         </Form>
       </ModalBody>

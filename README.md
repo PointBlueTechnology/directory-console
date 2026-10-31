@@ -104,6 +104,14 @@ docker compose up -d
   - role mappings from eDirectory groups to four roles, optionally limited to containers: viewer, editor, operator (Identity Manager) and admin;
   - task presets for delegated work;
   - break-glass accounts.
+- **AI agents (MCP, new in 0.4.0):** an agent works in the console as the person who gave it a key, over the
+  console's MCP server (`/mcp`), with their own rights and at most the key's roles.
+  - **Reads:** objects, groups, sign-in status, drivers, jobs, the inspectors, statistics and versions.
+  - **Changes:** accounts, group membership, drivers and jobs, resynchronization and migration. They wait for the
+    person's approval in the console unless an administrator turns that off for the directory.
+  - **Identity Applications:** with its address set, approval tasks, requests, assignments, and revoking a role or a
+    resource.
+  - Off until an administrator turns agent keys on for a directory. See [docs/MCP.md](docs/MCP.md).
 - **Help:** the ? in the header explains the page you are on; hover hints explain terms and fields.
 
 ## How it works
@@ -115,6 +123,9 @@ docker compose up -d
   single sign-on too, through the same proxied authorization), with
   [DirXMLDev](https://github.com/PointBlueTechnology/DirXMLDev) over the open-source JLDAP library.
   Nothing needs to be installed or mounted, and the image contains no OpenText code.
+- **Agents:** a person makes an agent key under their name > Agent keys. The console keeps only a hash of it. Each of
+  the agent's calls runs as that person: the service account acts as them with proxied authorization, as single
+  sign-on does, after checking that their account is not locked, disabled or expired.
 - **Trust:** the console makes its own TLS certificate on first start, and prints its fingerprint so you
   can check it. Directory certificates are trusted only after you confirm their fingerprint, and the
   console keeps its own trust store.
