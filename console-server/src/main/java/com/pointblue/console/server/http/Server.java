@@ -80,6 +80,7 @@ public final class Server {
     private final Edir edir = new Edir(this);
     final Security security = new Security(this);
     final Agents agents;
+    final AgentChanges agentChanges = new AgentChanges(this);
     private final Mcp mcp = new Mcp(this);
     private final StaticFiles ui = new StaticFiles("web");
 
@@ -349,6 +350,10 @@ public final class Server {
         }
         if (path.startsWith("/api/v2/trees/")) {
             objects.handle(ex, path, method);
+            return;
+        }
+        if (agentChanges.handles(path)) {
+            agentChanges.handle(ex, method, path);
             return;
         }
         if (agents.handles(path)) {

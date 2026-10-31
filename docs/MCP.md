@@ -1,8 +1,8 @@
 # Agents over MCP (design)
 
-**Status:** decided 2026-10-30. Phase 1 is built: agent keys, the `/mcp` endpoint and the read tools (see
-[Using it](#using-it)). Phases 2 (changes) and 3 (Identity Applications) are not built yet. The decisions are at the
-end.
+**Status:** decided 2026-10-30. Phases 1 (agent keys, `/mcp`, the read tools) and 2 (the change tools, with
+approval in the console) are built; see [Using it](#using-it). Phase 3 (Identity Applications) is not built yet. The
+decisions are at the end.
 
 This note proposes letting a person's AI agent do day-to-day administration through the console, over the Model
 Context Protocol (MCP). Examples are looking up an account, finding out why a user did not synchronize, starting a
@@ -158,7 +158,8 @@ No tool takes or returns a password.
 2. **Operate** (operator and editor):
    - start and stop drivers;
    - run and abort jobs;
-   - migrate and resynchronize an object;
+   - migrate an object into the application, migrate objects from it, and resynchronize a driver (the API resynchronizes
+     a driver, all or since a time, rather than one object);
    - account tasks: enable, disable and unlock;
    - add to a group and remove from it.
 3. **Identity Applications** (below).
@@ -207,7 +208,7 @@ needs OSP. A directory without it works as above, and the Identity Applications 
 
 ## Using it
 
-Phase 1 (0.4.0) has keys, the endpoint and the read tools.
+Phase 1 has keys, the endpoint and the read tools; phase 2 the change tools. Both are in 0.4.0.
 
 1. **An administrator turns keys on:** Settings > Directory > Agent keys. Keys need the directory's service account,
    with Supervisor over the people who make keys. The same section sets the longest life (1 to 90 days, 90 by
@@ -237,6 +238,30 @@ Phase 1 (0.4.0) has keys, the endpoint and the read tools.
 
    Objects, drivers, driver sets and jobs are named by GUID or DN. A `server` argument asks another server's
    replica or engine.
+4. **Change tools,** listed only when the key has the role:
+
+   | Tool | Role | What it changes |
+   |---|---|---|
+   | `enable_account`, `disable_account`, `unlock_account` | editor | a user's account |
+   | `add_to_group`, `remove_from_group` | editor | group membership, both sides |
+   | `start_driver`, `stop_driver` | operator | a driver, on one server's engine |
+   | `run_job`, `abort_job` | operator | a job |
+   | `resync_driver`, `migrate_object_to_app`, `migrate_from_app` | operator | synchronization through a driver |
+   | `change_status` | any | a change the key asked for |
+
+   The key's role must reach the object first (its container scopes), or the tool refuses at once.
+5. **Approval** (on by default): a change tool answers `202` with a pending change: its id, a summary and a link
+   (`/agent-keys?change=<id>`). The agent gives the person the link. In the console, under *Agent keys*, the person
+   reviews it and approves it (typing the directory's name on a production directory) or declines it; an admin may also
+   decline. Approving makes the call then, in-process, as the key: the key and the account are checked again, and
+   eDirectory decides with the person's rights. The agent reads the outcome with `change_status`. A change not decided
+   within an hour expires; one from a key revoked since cannot be approved. Pending changes are kept in memory, so a
+   restart drops them.
+6. **Without approval:** the change is made at once. On a production directory the tool then needs `confirm`, the
+   directory's name, which the agent must get from the person; the engine's operations refuse without it.
+
+Every change is audited twice over: `agent-change.request`, `.approve` or `.decline` name the tool and the summary,
+and the change itself is audited as the person with `via` = `agent` and the key's label and id.
 
 A key works only at `/mcp`: the API's other routes ignore it. Each tool call goes through the API in-process, as the
 key's session. Revoking a key, turning keys off for the directory, or a locked, disabled or expired account stops it

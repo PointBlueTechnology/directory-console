@@ -125,6 +125,32 @@ public final class LiveAgentsCheck {
                     asKey.containsKey("_error") ? "refused: " + asKey.get("title") : Json.asList(asKey.get("drivers")).size() + " drivers");
             }
 
+            // changes: wait for the person's approval, then made as the key, decided by eDirectory with the user's rights
+            LiveSetupCheck.Reply other = call("POST", "/api/v2/trees/" + TREE + "/objects/" + container + "/children",
+                Map.of("objectClass", "inetOrgPerson", "name", Map.of("type", "cn", "value", "change-target"), "attributes", Map.of("sn", List.of("Target"))), admin);
+            String otherDn = String.valueOf(other.body().get("dn"));
+            ok("create a second user to change", other.status() == 201, otherDn);
+            List<?> named = Json.asList(Json.asMap(mcp(key, "tools/list", Map.of()).body().get("result")).get("tools"));
+            ok("an editor key is offered the account and group tools", named.stream().anyMatch(t -> "disable_account".equals(Json.asMap(t).get("name"))), "");
+            Map<String, Object> asked = tool(key, "disable_account", Map.of("object", otherDn));
+            String changeId = String.valueOf(asked.get("id"));
+            ok("disable_account waits for approval", "pending".equals(asked.get("state")), asked.get("summary") + " -> " + asked.get("approve"));
+            LiveSetupCheck.Reply approved = call("POST", "/api/v2/agent-changes/" + changeId + "/approve", Map.of(), me);
+            Map<String, Object> result = Json.asMap(approved.body().get("result"));
+            ok("the person approves; the change is made as the key, with the user's rights (eDirectory refuses: the user has no rights over it)",
+                approved.status() == 200 && ("failed".equals(approved.body().get("state")) || "approved".equals(approved.body().get("state"))),
+                approved.body().get("state") + " " + result.get("status") + " " + Json.asMap(result.getOrDefault("body", Map.of())).get("title"));
+            Map<String, Object> st = tool(key, "change_status", Map.of("id", changeId));
+            ok("change_status tells the agent", String.valueOf(approved.body().get("state")).equals(st.get("state")), st.get("state"));
+            String declineId = String.valueOf(tool(key, "unlock_account", Map.of("object", otherDn)).get("id"));
+            LiveSetupCheck.Reply declined = call("POST", "/api/v2/agent-changes/" + declineId + "/decline", Map.of(), me);
+            ok("the person declines another", "declined".equals(declined.body().get("state")), declined.body().get("state"));
+            call("PUT", "/api/v2/directories/" + TREE + "/agent-keys", Map.of("enabled", true, "maxDays", 30, "approveChanges", false), admin);
+            Map<String, Object> direct = tool(key, "enable_account", Map.of("object", otherDn));
+            ok("approval off: the change is made at once (and eDirectory decides)", !"pending".equals(direct.get("state")),
+                direct.containsKey("_error") ? "refused: " + direct.get("title") : "done");
+            call("PUT", "/api/v2/directories/" + TREE + "/agent-keys", Map.of("enabled", true, "maxDays", 30, "approveChanges", true), admin);
+
             // eDirectory accepts the control for an account locked by intruder detection; the console refuses the key
             String future = DateTimeFormatter.ofPattern("yyyyMMddHHmmss'Z'").format(java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).plusHours(1));
             LiveSetupCheck.Reply lock = call("PATCH", "/api/v2/trees/" + TREE + "/objects/" + userGuid, Map.of("changes", List.of(
@@ -149,7 +175,8 @@ public final class LiveAgentsCheck {
             ok("a revoked key is refused", mcp(key, "tools/list", Map.of()).status() == 401, "");
 
             String audit = audit(dataPath);
-            ok("audited: key made, refusals, revoked", audit.contains("\"agent-key.create\"") && audit.contains("\"agent-key.use\"") && audit.contains("\"agent-key.revoke\""), "");
+            ok("audited: key made, changes asked for, approved and declined, refusals, revoked", audit.contains("\"agent-key.create\"") && audit.contains("\"agent-change.request\"")
+                && audit.contains("\"agent-change.approve\"") && audit.contains("\"agent-change.decline\"") && audit.contains("\"agent-key.use\"") && audit.contains("\"agent-key.revoke\""), "");
             ok("the key is not in the console's files", !Files.readString(dataPath.resolve("agents/keys.json")).contains(key.substring(3)) && !audit.contains(key.substring(3)), "");
         } finally {
             if (container != null) {

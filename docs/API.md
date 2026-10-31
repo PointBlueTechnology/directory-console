@@ -161,7 +161,13 @@ POST   /api/v2/agent-keys                 {"label", "days"?, "roles"? ["viewer",
 DELETE /api/v2/agent-keys/{id}            your own key, or anyone's for an admin
 PUT    /api/v2/directories/{id}/agent-keys   {"enabled", "maxDays" (1-90), "approveChanges" (true when absent)} (admin, recent sign-in)
 POST   /mcp                               JSON-RPC 2.0 (MCP, Streamable HTTP, stateless) with Authorization: Bearer dc_…
+GET    /api/v2/agent-changes              changes your keys' agents asked for, newest first; ?all=true: everyone's (admin)
+POST   /api/v2/agent-changes/{id}/approve {"confirm"?: the directory's name, on production}: made now, as the key; the change with its result
+POST   /api/v2/agent-changes/{id}/decline the key's owner, or an admin
 ```
+
+A change is `pending`, `approved`, `declined`, `expired` (after an hour) or `failed` (the call was refused, or the key
+was revoked).
 
 The token is shown once; the console keeps its SHA-256. With single sign-on, making a key needs a sign-in within the
 last 10 minutes instead of the password, and the key lives at most 14 days. A key works only at `/mcp`; refusals there
