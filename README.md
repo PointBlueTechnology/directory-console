@@ -111,7 +111,8 @@ docker compose up -d
     person's approval in the console unless an administrator turns that off for the directory.
   - **Identity Applications:** with its address set, approval tasks, requests, assignments, and revoking a role or a
     resource.
-  - Off until an administrator turns agent keys on for a directory. See [docs/MCP.md](docs/MCP.md).
+  - Off until an administrator turns agent keys on for a directory. [docs/USING-AGENTS.md](docs/USING-AGENTS.md) shows
+    how to set an agent up and what to ask it; [docs/MCP.md](docs/MCP.md) explains how it works.
 - **Help:** the ? in the header explains the page you are on; hover hints explain terms and fields.
 
 ## How it works
