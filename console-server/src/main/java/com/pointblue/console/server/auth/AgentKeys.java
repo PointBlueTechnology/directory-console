@@ -53,10 +53,13 @@ public final class AgentKeys {
     /**
      * One key. {@code via} is how the person signed in when they made it ({@code direct} or {@code oidc});
      * {@code grants} are a single sign-on person's grants as of their last sign-in (empty for direct sign-in, whose
-     * grants are read from the directory on every call).
+     * grants are read from the directory on every call). {@code apps} is the person's Identity Applications refresh
+     * token, sealed with the console's key ({@code {"sealed": …}}), or null; {@code appsState} is {@code authorized},
+     * {@code authorize-again} (the token stopped working) or null (never authorized).
      */
     public record Key(String id, String hash, String label, String directoryId, String dn, String subject, String name, String via,
-                      Set<Role> roles, List<Grant> grants, Instant created, Instant expires, Instant lastUsed) {
+                      Set<Role> roles, List<Grant> grants, Instant created, Instant expires, Instant lastUsed,
+                      Map<String, Object> apps, String appsState) {
 
         public Key {
             roles = Set.copyOf(roles);
@@ -95,15 +98,20 @@ public final class AgentKeys {
             m.put("expires", expires.toString());
             m.put("lastUsed", lastUsed == null ? null : lastUsed.toString());
             m.put("state", state(now));
+            m.put("apps", appsState);
             return m;
         }
 
         Key used(Instant at) {
-            return new Key(id, hash, label, directoryId, dn, subject, name, via, roles, grants, created, expires, at);
+            return new Key(id, hash, label, directoryId, dn, subject, name, via, roles, grants, created, expires, at, apps, appsState);
         }
 
         Key withGrants(List<Grant> g) {
-            return new Key(id, hash, label, directoryId, dn, subject, name, via, roles, g, created, expires, lastUsed);
+            return new Key(id, hash, label, directoryId, dn, subject, name, via, roles, g, created, expires, lastUsed, apps, appsState);
+        }
+
+        Key withApps(Map<String, Object> sealed, String state) {
+            return new Key(id, hash, label, directoryId, dn, subject, name, via, roles, grants, created, expires, lastUsed, sealed, state);
         }
     }
 
@@ -149,7 +157,7 @@ public final class AgentKeys {
         Instant now = clock.instant();
         List<Grant> grants = "oidc".equals(p.via()) ? withoutPresets(p.grants()) : List.of();
         Key k = new Key(hash.substring(0, 12), hash, label, p.directoryId(), p.dn(), p.subject(), p.name(), p.via(), roles, grants,
-            now, now.plus(life), null);
+            now, now.plus(life), null, null, null);
         keys.put(hash, k);
         save();
         return new Made(token, k);
@@ -193,6 +201,21 @@ public final class AgentKeys {
     /** The key with this id; null when there is none. */
     public synchronized Key byId(String id) {
         return keys.values().stream().filter(k -> k.id().equals(id)).findFirst().orElse(null);
+    }
+
+    /**
+     * Keep (or drop, {@code sealed} null) the person's Identity Applications refresh token for key {@code id}, with its
+     * state; the key as it is now, or null when it is gone.
+     */
+    public synchronized Key apps(String id, Map<String, Object> sealed, String state) throws IOException {
+        Key k = byId(id);
+        if (k == null) {
+            return null;
+        }
+        Key u = k.withApps(sealed, state);
+        keys.put(k.hash(), u);
+        save();
+        return u;
     }
 
     /** Remove the key with this id; the removed key, or null. */
@@ -297,6 +320,12 @@ public final class AgentKeys {
             if (k.lastUsed() != null) {
                 m.put("lastUsed", k.lastUsed().toString());
             }
+            if (k.apps() != null) {
+                m.put("apps", k.apps());
+            }
+            if (k.appsState() != null) {
+                m.put("appsState", k.appsState());
+            }
             list.add(m);
         }
         DataDir.write(file, Json.pretty(Map.of("keys", list)).getBytes(StandardCharsets.UTF_8));
@@ -319,7 +348,7 @@ public final class AgentKeys {
         return new Key(String.valueOf(m.get("id")), String.valueOf(m.get("hash")).toLowerCase(Locale.ROOT), String.valueOf(m.get("label")),
             String.valueOf(m.get("directory")), String.valueOf(m.get("dn")), String.valueOf(m.get("subject")), String.valueOf(m.get("name")),
             String.valueOf(m.get("via")), roles, grants, Instant.parse(String.valueOf(m.get("created"))), Instant.parse(String.valueOf(m.get("expires"))),
-            used == null ? null : Instant.parse(String.valueOf(used)));
+            used == null ? null : Instant.parse(String.valueOf(used)), m.get("apps") instanceof Map<?, ?> a ? Json.asMap(a) : null, Json.asString(m.get("appsState")));
     }
 
     static String sha256(String token) {

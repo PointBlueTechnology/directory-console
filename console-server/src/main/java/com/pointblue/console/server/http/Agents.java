@@ -32,6 +32,7 @@ import javax.naming.NamingException;
  * GET    /api/v2/agent-keys          the person's keys, the directory's settings and the MCP address; ?all=true: everyone's (admin)
  * POST   /api/v2/agent-keys          {"label", "days"?, "roles"? ["viewer", "editor", "operator"], "password"? (direct sign-in)}
  *                                    the key, shown once
+ * POST   /api/v2/agent-keys/{id}/authorize   {"password"}: Identity Applications for the person's own key (again)
  * DELETE /api/v2/agent-keys/{id}     revoke: the person's own key, or anyone's for an admin
  * </pre>
  *
@@ -142,6 +143,8 @@ final class Agents {
             list(ex, s);
         } else if (path.equals("/api/v2/agent-keys") && method.equals("POST")) {
             create(ex, s);
+        } else if (method.equals("POST") && path.matches("/api/v2/agent-keys/[0-9a-f]{12}/authorize")) {
+            authorize(ex, s, path.substring("/api/v2/agent-keys/".length(), path.length() - "/authorize".length()));
         } else if (method.equals("DELETE") && path.matches("/api/v2/agent-keys/[0-9a-f]{12}")) {
             revoke(ex, s, path.substring("/api/v2/agent-keys/".length()));
         } else {
@@ -162,6 +165,7 @@ final class Agents {
         DirectoryConfig d = server.directoryOf(s);
         st.put("serviceAccount", d != null && d.serviceAccountDn() != null);
         st.put("longestDays", longest(s, d));
+        st.put("apps", server.agentApps.settings(dir).on());
         out.put("settings", st);
         out.put("mcpUrl", mcpUrl());
         Http.json(ex, 200, out);
@@ -210,25 +214,41 @@ final class Agents {
             throw new Http.Problem(409, "too-many-keys", "you have " + AgentKeys.PER_PERSON + " agent keys here; revoke one first");
         }
         // the person is here now: their password again, or a recent single sign-on
-        if (p.via().equals("oidc")) {
-            server.stepUp(s);
-        } else {
-            if (!server.failedByClient.allowed(client)) {
-                throw new Http.Problem(429, "too-many-attempts", "too many failed sign-ins; wait a few minutes");
+        char[] pw = null;
+        try {
+            if (p.via().equals("oidc")) {
+                server.stepUp(s);
+            } else {
+                pw = Http.string(b, "password", true).toCharArray();
+                checkPassword(s, d, pw, client, "agent-key.create", label);
             }
-            char[] pw = Http.string(b, "password", true).toCharArray();
-            try (Ldap ignored = Ldap.connect(server.trust, d.target(), null, p.dn(), pw, Server.T)) {
-                server.failedByClient.clear(client);
-            } catch (Ldap.BadCredentials e) {
-                server.failedByClient.record(client);
-                server.audit.log(Server.who(s), "agent-key.create", d.id(), Map.of("label", label, "client", client), "refused");
-                throw new Http.Problem(401, "bad-credentials", "the password is incorrect");
-            } catch (Ldap.Untrusted | NamingException e) {
-                throw new Http.Problem(503, "unavailable", "the directory did not answer: " + e.getMessage());
-            } finally {
+            createChecked(ex, s, d, svcPw, label, roles, days, client, pw);
+        } finally {
+            if (pw != null) {
                 java.util.Arrays.fill(pw, '\0');
             }
         }
+    }
+
+    /** The person's own password, checked by a bind as them (it is not kept). */
+    private void checkPassword(Sessions.Session s, DirectoryConfig d, char[] pw, String client, String event, String label) throws IOException {
+        if (!server.failedByClient.allowed(client)) {
+            throw new Http.Problem(429, "too-many-attempts", "too many failed sign-ins; wait a few minutes");
+        }
+        try (Ldap ignored = Ldap.connect(server.trust, d.target(), null, s.principal.dn(), pw, Server.T)) {
+            server.failedByClient.clear(client);
+        } catch (Ldap.BadCredentials e) {
+            server.failedByClient.record(client);
+            server.audit.log(Server.who(s), event, d.id(), Map.of("label", label, "client", client), "refused");
+            throw new Http.Problem(401, "bad-credentials", "the password is incorrect");
+        } catch (Ldap.Untrusted | NamingException e) {
+            throw new Http.Problem(503, "unavailable", "the directory did not answer: " + e.getMessage());
+        }
+    }
+
+    private void createChecked(HttpExchange ex, Sessions.Session s, DirectoryConfig d, String svcPw, String label, Set<Role> roles, int days,
+                               String client, char[] pw) throws IOException {
+        Sessions.Principal p = s.principal;
         // the console can act as them: the same read single sign-on makes before it lets someone in
         try (Ldap svc = Ldap.connect(server.trust, d.target(), null, d.serviceAccountDn(), svcPw.toCharArray(), Server.T)) {
             svc.actAs(p.dn());
@@ -243,11 +263,51 @@ final class Agents {
         AgentKeys.Made made = keys.create(label, p, roles, Duration.ofDays(days));
         server.audit.log(Server.who(s), "agent-key.create", made.key().id(), Map.of("label", label, "roles", made.key().roles().stream().map(Role::id).sorted().toList(),
             "days", days, "client", client), "ok");
+        AgentKeys.Key key = made.key();
+        String apps = null;
+        if (pw != null && server.agentApps.settings(d.id()).on()) {
+            // the same password, once more: the person's Identity Applications sign-in, whose refresh token the key keeps
+            try {
+                key = server.agentApps.authorize(key, d, pw);
+                server.audit.log(Server.who(s), "agent-key.apps", key.id(), Map.of("label", label), "ok");
+            } catch (Http.Problem problem) {
+                apps = problem.getMessage();
+                server.audit.log(Server.who(s), "agent-key.apps", key.id(), Map.of("label", label, "code", problem.type), "refused");
+            }
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("token", made.token());
-        out.put("key", made.key().json(keys.now()));
+        out.put("key", key.json(keys.now()));
         out.put("mcpUrl", mcpUrl());
+        if (apps != null) {
+            out.put("appsProblem", apps);
+        }
         Http.json(ex, 201, out);
+    }
+
+    /**
+     * {@code {"password"}}: authorize the person's own key for Identity Applications (again): a password grant, its
+     * refresh token kept. Direct sign-in only (single sign-on gives the console no password to send).
+     */
+    private void authorize(HttpExchange ex, Sessions.Session s, String id) throws IOException {
+        AgentKeys.Key k = keys.byId(id);
+        if (k == null || !k.directoryId().equals(s.principal.directoryId()) || !com.pointblue.console.server.ldap.Names.same(k.dn(), s.principal.dn())) {
+            throw new Http.Problem(404, "not-found", "no agent key " + id + " of yours");
+        }
+        if (!"direct".equals(s.principal.via())) {
+            throw new Http.Problem(409, "not-available", "authorizing Identity Applications needs your password: sign in with it, not single sign-on");
+        }
+        DirectoryConfig d = DirectoryConfig.find(server.config.read(), k.directoryId());
+        String client = server.client(ex);
+        char[] pw = Http.string(Http.body(ex), "password", true).toCharArray();
+        try {
+            checkPassword(s, d, pw, client, "agent-key.apps", k.label());
+            AgentKeys.Key u = server.agentApps.authorize(k, d, pw);
+            server.audit.log(Server.who(s), "agent-key.apps", id, Map.of("label", k.label()), "ok");
+            Http.json(ex, 200, u.json(keys.now()));
+        } finally {
+            java.util.Arrays.fill(pw, '\0');
+        }
     }
 
     private void revoke(HttpExchange ex, Sessions.Session s, String id) throws IOException {
@@ -260,6 +320,7 @@ final class Agents {
         keys.revoke(id);
         close(id);
         server.agentChanges.revoked(id);
+        server.agentApps.forget(id);
         server.audit.log(Server.who(s), "agent-key.revoke", id, Map.of("label", k.label(), "owner", k.dn()), "ok");
         Http.json(ex, 204, Map.of());
     }

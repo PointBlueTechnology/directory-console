@@ -81,6 +81,7 @@ public final class Server {
     final Security security = new Security(this);
     final Agents agents;
     final AgentChanges agentChanges = new AgentChanges(this);
+    final AgentApps agentApps = new AgentApps(this);
     private final Mcp mcp = new Mcp(this);
     private final StaticFiles ui = new StaticFiles("web");
 

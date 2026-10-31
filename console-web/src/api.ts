@@ -874,6 +874,8 @@ export interface DirectorySettings {
   login: { searchBases: string[]; duplicates: 'choose' | 'error'; allowed: string[] };
   session: { idleMinutes: number; maxHours: number };
   agentKeys: AgentKeySettings;
+  /** Identity Applications for agent keys: empty when none is set. The client secret is never returned. */
+  apps: { url?: string; clientId?: string; clientSecretSet?: boolean };
   breakGlass: string[];
   roles: RoleMappingJson[];
   presets: Preset[];
@@ -903,6 +905,8 @@ export function settings(id: string) {
     sessionLimits: (limits: { idleMinutes: number; maxHours: number }, etag?: string) => put('session', limits, etag),
     /** Agent keys for MCP: on or off, their longest life, and whether agents' changes wait for approval. */
     agentKeys: (a: AgentKeySettings, etag?: string) => put('agent-keys', a, etag),
+    /** Identity Applications for agent keys; {@code clientSecret} absent keeps the one set; null removes it all. */
+    apps: (a: { url: string; clientId?: string; clientSecret?: string } | null, etag?: string) => put('apps', a, etag),
   };
 }
 
@@ -927,11 +931,13 @@ export interface AgentKey {
   expires: string;
   lastUsed: string | null;
   state: 'active' | 'expired' | 'idle';
+  /** Identity Applications: authorized, to be authorized again, or never (null). */
+  apps: 'authorized' | 'authorize-again' | null;
 }
 
 export interface AgentKeyList {
   keys: AgentKey[];
-  settings: AgentKeySettings & { serviceAccount: boolean; longestDays: number };
+  settings: AgentKeySettings & { serviceAccount: boolean; longestDays: number; apps: boolean };
   mcpUrl: string;
 }
 
@@ -962,7 +968,9 @@ export const agentChanges = {
 export const agentKeys = {
   list: (all = false) => request<AgentKeyList>('GET', `/api/v2/agent-keys${all ? '?all=true' : ''}`).then((r) => r.data),
   create: (body: { label: string; days: number; roles: RoleId[]; password?: string }) =>
-    request<{ token: string; key: AgentKey; mcpUrl: string }>('POST', '/api/v2/agent-keys', body).then((r) => r.data),
+    request<{ token: string; key: AgentKey; mcpUrl: string; appsProblem?: string }>('POST', '/api/v2/agent-keys', body).then((r) => r.data),
+  /** Identity Applications for your own key (again), with your password. */
+  authorize: (id: string, password: string) => request<AgentKey>('POST', `/api/v2/agent-keys/${encodeURIComponent(id)}/authorize`, { password }).then((r) => r.data),
   revoke: (id: string) => request<void>('DELETE', `/api/v2/agent-keys/${encodeURIComponent(id)}`),
 };
 

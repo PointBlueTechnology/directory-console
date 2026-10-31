@@ -41,6 +41,8 @@ import javax.naming.NamingException;
  * PUT  /api/v2/directories/{id}/agent-keys      {"enabled": bool, "maxDays": 1-90, "approveChanges": bool (true when absent)}:
  *                                               agent keys for MCP (see Agents); off stops every key here at once, and on
  *                                               again lets the unexpired ones work again
+ * PUT  /api/v2/directories/{id}/apps            {"url": https://<apps host>, "clientId"? (rbpmrest), "clientSecret"? (write-only; absent
+ *                                               keeps it)} or null: Identity Applications for agent keys
  * </pre>
  *
  * The tier, sign-in options and service account are what the console's first sign-in leaves for later
@@ -109,6 +111,7 @@ final class Settings {
                     }
                 });
             }
+            case "PUT apps" -> apps(ex, s, d);
             case "PUT service-account" -> serviceAccount(ex, s, d);
             case "GET service-account/check" -> checkServiceAccount(ex, s, d);
             default -> throw new Http.Problem(404, "not-found", method + " " + path);
@@ -140,6 +143,7 @@ final class Settings {
         Sessions.Limits limits = server.sessionLimits(d.id());
         m.put("session", Map.of("idleMinutes", limits == null ? 30 : limits.idle().toMinutes(), "maxHours", limits == null ? 12 : limits.absolute().toHours()));
         m.put("agentKeys", server.agents.settings(d.id()).json());
+        m.put("apps", server.agentApps.settings(d.id()).json());
         m.put("login", Map.of("searchBases", d.searchBases(), "duplicates", d.duplicates() == DirectoryConfig.Duplicates.ERROR ? "error" : "choose",
             "allowed", d.directAllowed()));
         m.put("breakGlass", d.breakGlass());
@@ -220,6 +224,12 @@ final class Settings {
                         out.put(k, m.get(k));
                     }
                 }
+                return out;
+            }
+            if (key.equals("apps")) {
+                // the address and client, never the secret
+                out.put("url", m.get("url"));
+                out.put("clientId", m.get("clientId"));
                 return out;
             }
             if (key.equals("login")) {
@@ -343,6 +353,36 @@ final class Settings {
             String attr = Json.asString(o.get("attribute"));
             if (attr != null && !attr.matches("[A-Za-z][A-Za-z0-9-]*")) {
                 throw new IllegalArgumentException("the mapping attribute " + attr + " is not an attribute name");
+            }
+        });
+    }
+
+    /** Identity Applications for agent keys: the address and the OSP client; its secret is sealed and never returned. */
+    private void apps(HttpExchange ex, Sessions.Session s, DirectoryConfig d) throws IOException {
+        Object b = body(ex);
+        if (b == null) {
+            save(ex, s, d, "apps", null, v -> { });
+            return;
+        }
+        Map<String, Object> o = new LinkedHashMap<>(Json.asMap(b));
+        String url = Json.asString(o.get("url"));
+        if (url == null || !(url.startsWith("https://") || url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost"))) {
+            throw new Http.Problem(400, "invalid-settings", "the Identity Applications address is an https URL, such as https://apps.example.com");
+        }
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("url", url.trim().replaceAll("/+$", ""));
+        String client = Json.asString(o.get("clientId"));
+        v.put("clientId", client == null || client.isBlank() ? com.pointblue.dirxml.dev.apps.IdApps.DEFAULT_CLIENT : client.trim());
+        Object secret = o.get("clientSecret");
+        String path = AgentApps.secretPath(d.id());
+        if (secret instanceof String str && !str.isEmpty()) {
+            v.put("clientSecret", server.config.seal(str, path));
+        } else if (rawSection(d.id(), "apps", null) instanceof Map<?, ?> old && old.get("clientSecret") != null) {
+            v.put("clientSecret", old.get("clientSecret"));
+        }
+        save(ex, s, d, "apps", v, x -> {
+            if (!v.containsKey("clientSecret")) {
+                throw new IllegalArgumentException("the OSP client's secret is required: agent keys keep a refresh token, which OSP gives only to a client with a secret");
             }
         });
     }

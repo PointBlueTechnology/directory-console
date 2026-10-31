@@ -122,6 +122,9 @@ function DirectorySection({ s, api, etag, onSaved }: {
   const [agentOn, setAgentOn] = useState(s.agentKeys.enabled);
   const [agentDays, setAgentDays] = useState(String(s.agentKeys.maxDays));
   const [agentApprove, setAgentApprove] = useState(s.agentKeys.approveChanges);
+  const [appsUrl, setAppsUrl] = useState(s.apps.url ?? '');
+  const [appsClient, setAppsClient] = useState(s.apps.clientId ?? 'rbpmrest');
+  const [appsSecret, setAppsSecret] = useState('');
   const [saPassword, setSaPassword] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -185,6 +188,32 @@ function DirectorySection({ s, api, etag, onSaved }: {
             <Button variant="secondary" isDisabled={busy || !sessionOk(agentDays, 1, 90) || (agentOn && !s.serviceAccount)
               || (agentOn === s.agentKeys.enabled && Number(agentDays) === s.agentKeys.maxDays && agentApprove === s.agentKeys.approveChanges)}
               onClick={() => go('The agent key settings are saved.', () => api.agentKeys({ enabled: agentOn, maxDays: Number(agentDays), approveChanges: agentApprove }, etag))}>Save the agent key settings</Button>
+          </ActionGroup>
+        </FormSection>
+        <FormSection title="Identity Applications for agents" titleElement="h3">
+          <p className="dc-subtle">
+            With an address here, agent keys made with a password can also use Identity Applications as their person: approval tasks, requests,
+            assignments. The console signs the person in once with OSP and keeps the refresh token, which needs a client with a secret.
+          </p>
+          <FormGroup label="Identity Applications address" fieldId="dir-apps-url">
+            <TextInput id="dir-apps-url" value={appsUrl} onChange={(_e, v) => setAppsUrl(v)} placeholder="https://apps.example.com" />
+          </FormGroup>
+          <FormGroup label="OSP client" fieldId="dir-apps-client">
+            <TextInput id="dir-apps-client" value={appsClient} onChange={(_e, v) => setAppsClient(v)} />
+            <FormHelperText><HelperText><HelperTextItem>rbpmrest is the documented REST client.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+          <FormGroup label="Client secret" fieldId="dir-apps-secret">
+            <TextInput id="dir-apps-secret" type="password" value={appsSecret} onChange={(_e, v) => setAppsSecret(v)} autoComplete="new-password"
+              placeholder={s.apps.clientSecretSet ? 'Set (leave empty to keep it)' : ''} />
+            <FormHelperText><HelperText><HelperTextItem>Kept encrypted, never shown again.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+          <ActionGroup>
+            <Button variant="secondary" isDisabled={busy || !appsUrl.trim().startsWith('https://') || (!s.apps.clientSecretSet && !appsSecret)}
+              onClick={() => go('The Identity Applications settings are saved.', () => api.apps({ url: appsUrl.trim(), clientId: appsClient.trim() || undefined,
+                clientSecret: appsSecret || undefined }, etag))}>Save Identity Applications</Button>
+            {s.apps.url && <Button variant="link" isDanger isDisabled={busy} onClick={() => sure.ask('Remove Identity Applications for agents?',
+              'Agent keys stop offering the Identity Applications tools. Keys keep their sign-ins until they are revoked or expire.', 'Remove',
+              () => go('Identity Applications for agents is removed.', () => api.apps(null, etag)))}>Remove it</Button>}
           </ActionGroup>
         </FormSection>
         <FormSection title="Service account" titleElement="h3">

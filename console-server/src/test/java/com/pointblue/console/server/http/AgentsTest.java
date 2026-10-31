@@ -440,6 +440,159 @@ public class AgentsTest {
         assertEquals("TRUE", attr("cn=alice,ou=Sales,o=acme", "loginDisabled"));
     }
 
+    /** A stand-in for OSP and Identity Applications, as the lab answered (DirXMLDev docs/idapps-rest.md). */
+    private static final class FakeApps implements AutoCloseable {
+        final com.sun.net.httpserver.HttpServer server;
+        final List<String> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+        volatile boolean refreshWorks = true;
+        volatile int grants;
+
+        FakeApps() throws Exception {
+            server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/osp/a/idm/auth/oauth2/token", ex -> {
+                String form = java.net.URLDecoder.decode(new String(ex.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8), java.nio.charset.StandardCharsets.UTF_8);
+                boolean client = ("Basic " + java.util.Base64.getEncoder().encodeToString("rbpmrest:apps-secret".getBytes())).equals(ex.getRequestHeaders().getFirst("Authorization"));
+                grants++;
+                seen.add("grant " + (form.contains("grant_type=password") ? "password " + form.replaceAll(".*username=([^&]*).*", "$1") : "refresh"));
+                if (client && form.contains("grant_type=password") && form.contains("password=ed-pw")) {
+                    send(ex, 200, Map.of("access_token", "a" + grants, "expires_in", 1, "refresh_token", "r-ed"));
+                } else if (client && refreshWorks && form.contains("refresh_token=r-ed")) {
+                    send(ex, 200, Map.of("access_token", "a" + grants, "expires_in", 1));
+                } else {
+                    send(ex, 400, Map.of("error", "invalid_grant"));
+                }
+            });
+            server.createContext("/IDMProv/rest/", ex -> {
+                String body = new String(ex.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                String path = ex.getRequestURI().getPath();
+                seen.add(ex.getRequestMethod() + " " + path + " " + body);
+                if (path.endsWith("/tasks/list")) {
+                    send(ex, 200, Map.of("tasks", List.of(Map.of("taskId", "t1", "processName", "Access", "recipientName", "Alice Ali")), "arraySize", 1));
+                } else if (path.endsWith("/tasks/item")) {
+                    send(ex, 200, Map.of("taskId", "t1", "processName", "Access", "recipientName", "Alice Ali"));
+                } else if (path.endsWith("/resources/resource/assignments")) {
+                    send(ex, 200, Map.of("assignmentStatusList", List.of(Map.of("recipientDn", "cn=alice,ou=Sales,o=acme", "instanceGuId", "inst-1"))));
+                } else if (path.endsWith("/assignments/identities")) {
+                    send(ex, 200, Map.of("assignmentToList", List.of(Map.of("subtype", "USER", "assignedToDn", "cn=alice,ou=Sales,o=acme")), "totalCount", 1));
+                } else if (path.endsWith("/tasks/v2")) {
+                    send(ex, 200, Map.of("success", true, "message", "Form submission successfully processed."));
+                } else if (ex.getRequestMethod().equals("POST") && path.endsWith("/assignments/list")) {
+                    send(ex, 200, Map.of("total", 1, "assignments", List.of(Map.of("id", "cn=Sales Role,o=system", "entityType", "role"))));
+                } else {
+                    send(ex, 200, Map.of("success", true));
+                }
+            });
+            server.start();
+        }
+
+        String url() {
+            return "http://127.0.0.1:" + server.getAddress().getPort();
+        }
+
+        static void send(com.sun.net.httpserver.HttpExchange ex, int status, Object body) throws java.io.IOException {
+            byte[] b = Json.compact(body).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            ex.getResponseHeaders().set("Content-Type", "application/json");
+            ex.sendResponseHeaders(status, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+        }
+
+        @Override
+        public void close() {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    public void identityApplicationsAsThePerson() throws Exception {
+        agentKeys(true);
+        try (FakeApps apps = new FakeApps()) {
+            Map<String, String> admin = signIn("cn=admin,o=system", "admin-pw");
+            assertEquals("a client secret is required", 400, call("PUT", "/api/v2/directories/acme/apps", Map.of("url", apps.url()), admin).status());
+            Reply set = call("PUT", "/api/v2/directories/acme/apps", Map.of("url", apps.url(), "clientSecret", "apps-secret"), admin);
+            assertEquals(String.valueOf(set.body()), 200, set.status());
+            assertEquals(Map.of("url", apps.url(), "clientId", "rbpmrest", "clientSecretSet", true), Json.asMap(set.body().get("apps")));
+            assertFalse("the secret is never returned", set.raw().body().contains("apps-secret"));
+
+            Map<String, String> ed = signIn("cn=ed,ou=Sales,o=acme", "ed-pw");
+            Reply made = call("POST", "/api/v2/agent-keys", Map.of("label", "apps", "password", "ed-pw", "roles", List.of("editor")), ed);
+            assertEquals(String.valueOf(made.body()), 201, made.status());
+            assertEquals("authorized", Json.asMap(made.body().get("key")).get("apps"));
+            assertTrue("one password grant, with the person's DN", apps.seen.contains("grant password cn=ed,ou=Sales,o=acme"));
+            assertFalse("the refresh token is kept sealed", Files.readString(dataPath.resolve("agents/keys.json")).contains("r-ed"));
+            String key = String.valueOf(made.body().get("token"));
+            String viewer = makeKey(ed, Map.of("label", "reader", "password", "ed-pw"));
+
+            assertTrue(toolNames(key).containsAll(List.of("my_tasks", "task", "my_requests", "assignments", "approve_tasks", "start_request", "request_role")));
+            assertTrue(toolNames(viewer).contains("my_tasks"));
+            assertFalse("a read-only key makes no Identity Applications changes", toolNames(viewer).contains("approve_tasks"));
+
+            Result tasks = tool(key, "my_tasks", Map.of());
+            assertFalse(String.valueOf(tasks.body()), tasks.error());
+            assertEquals(1, Json.asList(tasks.body().get("tasks")).size());
+            assertTrue("the access token is renewed with the refresh token, never a second password sign-in",
+                apps.seen.stream().filter(x -> x.startsWith("grant password")).count() == 2 && apps.seen.contains("grant refresh"));
+            assertTrue(tool(key, "assignments", Map.of()).body().toString().contains("cn=Sales Role,o=system"));
+
+            Result asked = tool(key, "approve_tasks", Map.of("task_ids", List.of("t1"), "comment", "fine"));
+            assertEquals("pending", asked.body().get("state"));
+            assertEquals("Approve Access for Alice Ali", asked.body().get("summary"));
+            assertTrue("nothing approved yet", apps.seen.stream().noneMatch(x -> x.startsWith("POST /IDMProv/rest/access/tasks ")));
+            Reply approved = call("POST", "/api/v2/agent-changes/" + asked.body().get("id") + "/approve", Map.of(), ed);
+            assertEquals(String.valueOf(approved.body()), "approved", approved.body().get("state"));
+            assertTrue(apps.seen.stream().anyMatch(x -> x.startsWith("POST /IDMProv/rest/access/tasks ") && x.contains("\"action\":\"approve\"") && x.contains("\"t1\"")));
+            assertTrue(audit().contains("\"apps.approve_tasks\""));
+
+            // the refresh token stops working: the key's Identity Applications tools ask for its owner again
+            apps.refreshWorks = false;
+            Result again = tool(key, "my_tasks", Map.of());
+            assertTrue(again.error());
+            assertEquals("authorize-again", again.body().get("title"));
+            String id = String.valueOf(Json.asMap(made.body().get("key")).get("id"));
+            Map<String, Object> listed = Json.asList(call("GET", "/api/v2/agent-keys", null, ed).body().get("keys")).stream().map(Json::asMap)
+                .filter(k -> id.equals(k.get("id"))).findFirst().orElseThrow();
+            assertEquals("authorize-again", listed.get("apps"));
+            assertEquals("still offered, so the agent can say what is needed", true, toolNames(key).contains("my_tasks"));
+            assertEquals(401, call("POST", "/api/v2/agent-keys/" + id + "/authorize", Map.of("password", "nope"), ed).status());
+            Reply reauth = call("POST", "/api/v2/agent-keys/" + id + "/authorize", Map.of("password", "ed-pw"), ed);
+            assertEquals(String.valueOf(reauth.body()), "authorized", reauth.body().get("apps"));
+            apps.refreshWorks = true;
+            assertFalse(tool(key, "my_tasks", Map.of()).error());
+        }
+    }
+
+    @Test
+    public void identityApplicationsRevokeWhoHasRetractAndForms() throws Exception {
+        agentKeys(true, false);   // changes made at once: the calls themselves are what this checks
+        try (FakeApps apps = new FakeApps()) {
+            Map<String, String> admin = signIn("cn=admin,o=system", "admin-pw");
+            assertEquals(200, call("PUT", "/api/v2/directories/acme/apps", Map.of("url", apps.url(), "clientSecret", "apps-secret"), admin).status());
+            Map<String, String> ed = signIn("cn=ed,ou=Sales,o=acme", "ed-pw");
+            String key = makeKey(ed, Map.of("label", "apps", "password", "ed-pw", "roles", List.of("editor")));
+            assertTrue(toolNames(key).containsAll(List.of("who_has", "search_permissions", "others_tasks", "request_tasks", "revoke_role", "revoke_resource", "retract_request")));
+
+            Result holders = tool(key, "who_has", Map.of("permission", "cn=Role,o=system", "type", "role"));
+            assertTrue(String.valueOf(holders.body()), holders.body().toString().contains("cn=alice,ou=Sales,o=acme"));
+
+            assertFalse(tool(key, "revoke_role", Map.of("role", "cn=Role,o=system", "people", List.of("cn=alice,ou=Sales,o=acme"), "reason", "left")).error());
+            assertTrue(apps.seen.stream().anyMatch(x -> x.startsWith("DELETE /IDMProv/rest/access/assignments/list ")
+                && x.contains("\"assignmentToList\":[{\"subtype\":\"user\",\"assignedToDn\":\"cn=alice,ou=Sales,o=acme\"}]") && x.contains("\"reason\":\"left\"")));
+
+            assertFalse(tool(key, "revoke_resource", Map.of("resource", "cn=Res,o=system", "people", List.of("cn=alice,ou=Sales,o=acme"), "reason", "left")).error());
+            assertTrue("a resource revocation carries the assignment's instance id",
+                apps.seen.stream().anyMatch(x -> x.startsWith("DELETE /IDMProv/rest/access/assignments/list ") && x.contains("\"instanceId\":\"inst-1\"")));
+            Result notHolder = tool(key, "revoke_resource", Map.of("resource", "cn=Res,o=system", "people", List.of("cn=bob,o=acme"), "reason", "x"));
+            assertEquals("not-a-holder", notHolder.body().get("title"));
+
+            assertFalse(tool(key, "retract_request", Map.of("id", "f517")).error());
+            assertTrue(apps.seen.stream().anyMatch(x -> x.startsWith("DELETE /IDMProv/rest/access/requests/history ") && x.contains("\"id\":\"f517\"")));
+
+            assertFalse(tool(key, "approve_tasks", Map.of("task_ids", List.of("t1"), "form_data", Map.of("justification", "ok"))).error());
+            assertTrue("form data goes through the JSON approval form", apps.seen.stream().anyMatch(x -> x.startsWith("POST /IDMProv/rest/access/tasks/v2 ")
+                && x.contains("\"taskAction\":\"ApprovalAction\"") && x.contains("\"data\":[{\"key\":\"justification\",\"value\":[\"ok\"]}]")));
+        }
+    }
+
     @Test
     public void keysAreNotInBackups() throws Exception {
         agentKeys(true);

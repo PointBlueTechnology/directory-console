@@ -122,6 +122,11 @@ public final class ConfigStore {
         return m;
     }
 
+    /** The plaintext of a value {@link #seal} made for {@code path}, kept elsewhere (an agent key's token); null for null. */
+    public String unseal(Map<String, Object> sealed, String path) {
+        return sealed == null || !(sealed.get("sealed") instanceof String s) ? null : box.open(s, path);
+    }
+
     /** The plaintext of the sealed value at {@code path}, or null when none is set there. */
     public synchronized String secret(String path) {
         Object v = at(current, path);
