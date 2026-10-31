@@ -100,7 +100,7 @@ Back up first: a volume snapshot of the `console-data` claim, or a backup from *
 Then change the image tag to the new version (pin versions on Kubernetes rather than following `latest`):
 
 ```bash
-kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.3.24
+kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.4.0
 ```
 
 ```bash
@@ -117,10 +117,10 @@ restoring the backup if the release notes say the configuration format changed. 
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.3.24
+    image: ghcr.io/pointbluetechnology/directory-console:0.4.0
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.3.24 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.4.0 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -140,6 +140,15 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.4.0:** nothing changes until an administrator turns agent keys on for a directory (Settings > Directory >
+  Agent keys); they are off by default.
+  - **No changes needed:** none to `compose.yaml`. The configuration format is the same (schema version 1), so going
+    back to 0.3.24 needs no restore: 0.3.24 ignores the new agent key and Identity Applications settings and the new
+    `agents/` folder in the data volume, and keys simply stop working until you upgrade again.
+  - **Behind a reverse proxy:** forward `/mcp` with its `Authorization` header if people will use agents
+    ([DEPLOYING](DEPLOYING.md#8-behind-a-reverse-proxy-or-load-balancer)).
+  - **Certificates:** an agent's machine must trust the console's certificate ([MCP.md](MCP.md#using-it)).
+  - Single sign-on now refuses an account locked by intruder detection, which eDirectory alone lets through.
 - **0.3.24:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.23
   needs no restore. In a basic search, * is a wildcard (* alone lists everything of the kind chosen).
 - **0.3.23:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.3.22
