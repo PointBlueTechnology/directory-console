@@ -173,6 +173,8 @@ needs OSP. A directory without it works as above, and the Identity Applications 
 - **Client:** a vendor-free REST client in DirXMLDev core (`com.pointblue.dirxml.dev.apps.IdApps`, from 0.60.0),
   built from what `bin/apps` and `docs/idapps-rest.md` already established. It is used by both the console and
   DirXMLDev.
+- **The calls and their bodies** are documented, with what the server actually reads, in the PointBlueTechnology
+  `idapps-rest` repository and DirXMLDev's `docs/idapps-rest.md`.
 - **Which calls:** a person's assignments are `POST /assignments/list {"dn"}`; the request definitions come from the
   catalog (`GET /IDMProv/rest/catalog/prds`), which on the lab still listed PRDs deleted from the vault, so
   `request_definition` (the permission index) is the check before a request. Checked on idm254, 2026-10-30.
@@ -279,8 +281,12 @@ three are in 0.4.0.
    | `my_requests`, `request_detail` | their requests and each one's history |
    | `assignments` | a person's role and resource assignments |
    | `request_definitions`, `request_definition` | the catalog's PRDs; one PRD as the permission index has it |
-   | `approve_tasks`, `deny_tasks` | act on tasks (a key that may make changes) |
+   | `search_permissions`, `who_has` | find roles and resources; who holds one (only people under the applications' user search root) |
+   | `others_tasks`, `request_tasks` | other people's tasks (help desk, administrators); a request's approval tasks |
+   | `approve_tasks`, `deny_tasks` | act on tasks; with `form_data`, through the JSON approval form (a key that may make changes) |
    | `start_request`, `request_role`, `request_resource` | requests (a key that may make changes) |
+   | `revoke_role`, `revoke_resource` | take a role or resource away from people; a resource's assignment ids are looked up first (a key that may make changes) |
+   | `retract_request` | retract a running request; a role request it was approving stays as it was (a key that may make changes) |
 
    Changes follow the approval setting like any other. When the refresh token stops working (30 days on the lab, or
    revoked), the tools answer `authorize-again` and the key shows *authorize again*; its person types their password

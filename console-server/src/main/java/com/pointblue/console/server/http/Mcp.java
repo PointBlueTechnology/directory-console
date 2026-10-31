@@ -678,6 +678,17 @@ final class Mcp {
                 case "requestPrd" -> session.requestPrd(Json.asString(a.get("id")), data(a.get("data")), strings(a.get("recipients")));
                 case "requestPermission" -> session.requestPermission(Json.asString(a.get("id")), Json.asString(a.get("entityType")),
                     strings(a.get("recipients")), Json.asString(a.get("reason")));
+                case "revoke" -> session.revoke(Json.asString(a.get("id")), Json.asString(a.get("entityType")), holders(a.get("holders")),
+                    Json.asString(a.get("reason")));
+                case "retract" -> session.retract(Json.asString(a.get("id")), Json.asString(a.get("entityType")));
+                case "actWithForm" -> {
+                    // one call per task: the JSON approval form's path, with the form's fields
+                    Map<String, Object> last = Map.of();
+                    for (String t : strings(a.get("tasks"))) {
+                        last = session.actWithForm(t, Json.asString(a.get("taskAction")), Json.asString(a.get("comment")), data(a.get("data")));
+                    }
+                    yield last;
+                }
                 default -> throw new IllegalArgumentException("no Identity Applications operation " + r.path());
             });
             // a 200 with "success": false is a refusal the applications explain in the answer
@@ -686,6 +697,16 @@ final class Mcp {
             out = problem(p.status, p.type, p.getMessage());
         }
         server.audit.log(Server.who(s), "apps." + r.tool(), r.target(), Map.of("summary", r.summary()), out.status() < 400 ? "ok" : "failed");
+        return out;
+    }
+
+    /** Holders to revoke from, as kept in a change: [{dn, instanceId?}]. */
+    private static List<com.pointblue.dirxml.dev.apps.IdApps.Session.Holder> holders(Object o) {
+        List<com.pointblue.dirxml.dev.apps.IdApps.Session.Holder> out = new ArrayList<>();
+        for (Object h : Json.asList(o)) {
+            Map<String, Object> m = Json.asMap(h);
+            out.add(new com.pointblue.dirxml.dev.apps.IdApps.Session.Holder(Json.asString(m.get("dn")), "user", Json.asString(m.get("instanceId"))));
+        }
         return out;
     }
 
@@ -759,8 +780,10 @@ final class Mcp {
             c -> apps(c, s -> s.permission(c.s("prd"), "prd")));
 
         for (String action : List.of("approve", "deny")) {
-            appsChange(action + "_tasks", "Identity Applications: " + action + " approval tasks, as the person.",
-                args("task_ids", "string[]", "the tasks' ids, from my_tasks", "comment", "string", "optional: a comment for the request's history"),
+            appsChange(action + "_tasks", "Identity Applications: " + action + " approval tasks, as the person. With form_data, each task is "
+                    + "submitted through its JSON approval form (for forms with fields to fill).",
+                args("task_ids", "string[]", "the tasks' ids, from my_tasks", "comment", "string", "optional: a comment for the request's history",
+                    "form_data", "object", "optional: the approval form's fields, key to value (or a list of values)"),
                 List.of("task_ids"), c -> {
                     List<String> ids = strings(c.args.get("task_ids"));
                     List<String> what = new ArrayList<>();
@@ -772,8 +795,13 @@ final class Mcp {
                     String summary = (action.equals("approve") ? "Approve " : "Deny ") + String.join("; ", what) + (ids.size() > 5 ? " and " + (ids.size() - 5) + " more" : "");
                     Map<String, Object> body = new LinkedHashMap<>();
                     body.put("tasks", ids);
-                    body.put("action", action);
                     body.put("comment", c.s("comment"));
+                    if (c.args.get("form_data") instanceof Map<?, ?> form) {
+                        body.put("taskAction", action.equals("approve") ? "ApprovalAction" : "DenyAction");
+                        body.put("data", form);
+                        return new AgentChanges.Request(action + "_tasks", summary, null, APPS, "actWithForm", body);
+                    }
+                    body.put("action", action);
                     return new AgentChanges.Request(action + "_tasks", summary, null, APPS, "act", body);
                 });
         }
@@ -787,6 +815,67 @@ final class Mcp {
                 body.put("data", c.args.get("data") instanceof Map<?, ?> m ? m : Map.of());
                 body.put("recipients", to);
                 return new AgentChanges.Request("start_request", "Start " + c.s("prd") + (to.isEmpty() ? "" : " for " + String.join(", ", to)), c.s("prd"), APPS, "requestPrd", body);
+            });
+        appsTool("search_permissions", "Identity Applications: find roles or resources in the permission index, with their DNs.",
+            args("type", "string", "role or resource", "q", "string", "optional: search text"), List.of("type"),
+            c -> apps(c, s -> s.searchPermissions(c.s("type"), c.s("q"), 1, 100)));
+        appsTool("who_has", "Identity Applications: the people holding a role or resource. Only people under the applications' user search root "
+                + "are listed; someone elsewhere is left out without an error.",
+            args("permission", "string", "the role's or resource's DN", "type", "string", "role or resource"), List.of("permission", "type"),
+            c -> apps(c, s -> s.holders(c.s("permission"), c.s("type"), 1, 500)));
+        appsTool("others_tasks", "Identity Applications: other people's approval tasks (needs a help desk or administrator in the applications).",
+            args("q", "string", "optional: search text", "recipient", "string", "optional: a recipient's DN", "size", "integer", "optional: how many, up to 100"),
+            List.of(), c -> apps(c, s -> s.tasksOfOthers(c.s("q"), c.s("recipient"), num(c, "size", 20, 100))));
+        appsTool("request_tasks", "Identity Applications: a request's approval tasks: who they are addressed to and what they may do.",
+            args("request_id", "string", "the request's id, from my_requests"), List.of("request_id"),
+            c -> apps(c, s -> s.workEntries(c.s("request_id"), 50)));
+        for (String type : List.of("role", "resource")) {
+            appsChange("revoke_" + type, "Identity Applications: take a " + type + " away from people (a revocation request, as the person).",
+                args(type, "string", "the " + type + "'s DN", "people", "string[]", "the holders' DNs", "reason", "string", "why (required)"),
+                List.of(type, "people", "reason"), c -> {
+                    List<String> people = strings(c.args.get("people"));
+                    List<Map<String, Object>> holders = new ArrayList<>();
+                    Map<String, String> instance = new LinkedHashMap<>();
+                    if (type.equals("resource")) {
+                        // a resource revocation names each assignment's instance id, from the resource's assignments
+                        Reply r = apps(c, s -> s.resourceAssignments(c.s(type), 1, 500));
+                        if (r.status() != 200) {
+                            throw new Refusal(r);
+                        }
+                        for (Object o : Json.asList(r.json().get("assignmentStatusList"))) {
+                            Map<String, Object> m = Json.asMap(o);
+                            instance.put(String.valueOf(m.get("recipientDn")).toLowerCase(java.util.Locale.ROOT), Json.asString(m.get("instanceGuId")));
+                        }
+                    }
+                    for (String p : people) {
+                        Map<String, Object> h = new LinkedHashMap<>();
+                        h.put("dn", p);
+                        if (type.equals("resource")) {
+                            String id = instance.get(p.toLowerCase(java.util.Locale.ROOT));
+                            if (id == null) {
+                                throw new Refusal(problem(409, "not-a-holder", p + " does not hold " + c.s(type) + " (or is outside the applications' user search root)"));
+                            }
+                            h.put("instanceId", id);
+                        }
+                        holders.add(h);
+                    }
+                    Map<String, Object> body = new LinkedHashMap<>();
+                    body.put("id", c.s(type));
+                    body.put("entityType", type);
+                    body.put("holders", holders);
+                    body.put("reason", c.s("reason"));
+                    return new AgentChanges.Request("revoke_" + type, "Revoke the " + type + " " + c.s(type) + " from " + String.join(", ", people),
+                        c.s(type), APPS, "revoke", body);
+                });
+        }
+        appsChange("retract_request", "Identity Applications: retract a request that is still running. A role or resource request it was "
+                + "approving stays as it was in the history.",
+            args("id", "string", "the request's id, from my_requests", "entity_type", "string", "optional: its entityType from my_requests (prd by default)"),
+            List.of("id"), c -> {
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("id", c.s("id"));
+                body.put("entityType", c.s("entity_type") == null ? "prd" : c.s("entity_type"));
+                return new AgentChanges.Request("retract_request", "Retract the request " + c.s("id"), null, APPS, "retract", body);
             });
         for (String type : List.of("role", "resource")) {
             appsChange("request_" + type, "Identity Applications: request a " + type + " for the person or for others.",

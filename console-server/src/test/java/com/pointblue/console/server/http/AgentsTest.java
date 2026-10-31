@@ -470,7 +470,13 @@ public class AgentsTest {
                     send(ex, 200, Map.of("tasks", List.of(Map.of("taskId", "t1", "processName", "Access", "recipientName", "Alice Ali")), "arraySize", 1));
                 } else if (path.endsWith("/tasks/item")) {
                     send(ex, 200, Map.of("taskId", "t1", "processName", "Access", "recipientName", "Alice Ali"));
-                } else if (path.endsWith("/assignments/list")) {
+                } else if (path.endsWith("/resources/resource/assignments")) {
+                    send(ex, 200, Map.of("assignmentStatusList", List.of(Map.of("recipientDn", "cn=alice,ou=Sales,o=acme", "instanceGuId", "inst-1"))));
+                } else if (path.endsWith("/assignments/identities")) {
+                    send(ex, 200, Map.of("assignmentToList", List.of(Map.of("subtype", "USER", "assignedToDn", "cn=alice,ou=Sales,o=acme")), "totalCount", 1));
+                } else if (path.endsWith("/tasks/v2")) {
+                    send(ex, 200, Map.of("success", true, "message", "Form submission successfully processed."));
+                } else if (ex.getRequestMethod().equals("POST") && path.endsWith("/assignments/list")) {
                     send(ex, 200, Map.of("total", 1, "assignments", List.of(Map.of("id", "cn=Sales Role,o=system", "entityType", "role"))));
                 } else {
                     send(ex, 200, Map.of("success", true));
@@ -552,6 +558,38 @@ public class AgentsTest {
             assertEquals(String.valueOf(reauth.body()), "authorized", reauth.body().get("apps"));
             apps.refreshWorks = true;
             assertFalse(tool(key, "my_tasks", Map.of()).error());
+        }
+    }
+
+    @Test
+    public void identityApplicationsRevokeWhoHasRetractAndForms() throws Exception {
+        agentKeys(true, false);   // changes made at once: the calls themselves are what this checks
+        try (FakeApps apps = new FakeApps()) {
+            Map<String, String> admin = signIn("cn=admin,o=system", "admin-pw");
+            assertEquals(200, call("PUT", "/api/v2/directories/acme/apps", Map.of("url", apps.url(), "clientSecret", "apps-secret"), admin).status());
+            Map<String, String> ed = signIn("cn=ed,ou=Sales,o=acme", "ed-pw");
+            String key = makeKey(ed, Map.of("label", "apps", "password", "ed-pw", "roles", List.of("editor")));
+            assertTrue(toolNames(key).containsAll(List.of("who_has", "search_permissions", "others_tasks", "request_tasks", "revoke_role", "revoke_resource", "retract_request")));
+
+            Result holders = tool(key, "who_has", Map.of("permission", "cn=Role,o=system", "type", "role"));
+            assertTrue(String.valueOf(holders.body()), holders.body().toString().contains("cn=alice,ou=Sales,o=acme"));
+
+            assertFalse(tool(key, "revoke_role", Map.of("role", "cn=Role,o=system", "people", List.of("cn=alice,ou=Sales,o=acme"), "reason", "left")).error());
+            assertTrue(apps.seen.stream().anyMatch(x -> x.startsWith("DELETE /IDMProv/rest/access/assignments/list ")
+                && x.contains("\"assignmentToList\":[{\"subtype\":\"user\",\"assignedToDn\":\"cn=alice,ou=Sales,o=acme\"}]") && x.contains("\"reason\":\"left\"")));
+
+            assertFalse(tool(key, "revoke_resource", Map.of("resource", "cn=Res,o=system", "people", List.of("cn=alice,ou=Sales,o=acme"), "reason", "left")).error());
+            assertTrue("a resource revocation carries the assignment's instance id",
+                apps.seen.stream().anyMatch(x -> x.startsWith("DELETE /IDMProv/rest/access/assignments/list ") && x.contains("\"instanceId\":\"inst-1\"")));
+            Result notHolder = tool(key, "revoke_resource", Map.of("resource", "cn=Res,o=system", "people", List.of("cn=bob,o=acme"), "reason", "x"));
+            assertEquals("not-a-holder", notHolder.body().get("title"));
+
+            assertFalse(tool(key, "retract_request", Map.of("id", "f517")).error());
+            assertTrue(apps.seen.stream().anyMatch(x -> x.startsWith("DELETE /IDMProv/rest/access/requests/history ") && x.contains("\"id\":\"f517\"")));
+
+            assertFalse(tool(key, "approve_tasks", Map.of("task_ids", List.of("t1"), "form_data", Map.of("justification", "ok"))).error());
+            assertTrue("form data goes through the JSON approval form", apps.seen.stream().anyMatch(x -> x.startsWith("POST /IDMProv/rest/access/tasks/v2 ")
+                && x.contains("\"taskAction\":\"ApprovalAction\"") && x.contains("\"data\":[{\"key\":\"justification\",\"value\":[\"ok\"]}]")));
         }
     }
 

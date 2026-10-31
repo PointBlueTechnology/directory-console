@@ -52,9 +52,13 @@ public final class LiveAgentsAppsCheck {
         URI u = URI.create(env.url);
         Path dataPath = Files.createTempDirectory("dc-live-apps-");
         Server server = new Server(new DataDir(dataPath), ServerClient.loopback(), "https://localhost:8443", new PrintStream(new ByteArrayOutputStream()));
+        String ts = null;
         String container = null;
         String userGuid = null;
         String groupGuid = null;
+        String roleDn = null;
+        String holderGuid = null;
+        com.pointblue.dirxml.dev.apps.IdApps.Session appsSession = null;
         try {
             server.start();
             LiveSetupCheck.base = "https://127.0.0.1:" + server.port();
@@ -62,7 +66,7 @@ public final class LiveAgentsAppsCheck {
             setUp(dataPath, u.getHost(), u.getPort() > 0 ? u.getPort() : 636, env.bindDn, env.password);
             System.out.println("# Agent keys with Identity Applications, live: " + args[1] + " as " + appsUser);
 
-            String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
             String parent = (String) call("GET", "/api/v2/trees/" + TREE + "/objects?dn=" + enc(args[2]), null, admin).body().get("guid");
             LiveSetupCheck.Reply c = call("POST", "/api/v2/trees/" + TREE + "/objects/" + parent + "/children",
                 Map.of("objectClass", "organizationalUnit", "name", Map.of("type", "ou", "value", "dcapps-" + ts)), admin);
@@ -114,10 +118,78 @@ public final class LiveAgentsAppsCheck {
                 approved.status() == 200 && "failed".equals(approved.body().get("state")), approved.body().get("state") + " " + result.get("status") + " "
                     + String.valueOf(result.get("body")).replaceAll("\\s+", " ").substring(0, Math.min(200, String.valueOf(result.get("body")).length())));
 
+            // revoke and who-has: a scratch role (made through the catalog API, as the apps user) and a holder in the user search root
+            javax.net.ssl.SSLContext trustAll = javax.net.ssl.SSLContext.getInstance("TLS");
+            trustAll.init(null, new javax.net.ssl.TrustManager[] {new javax.net.ssl.X509TrustManager() {
+                public void checkClientTrusted(java.security.cert.X509Certificate[] c, String s) { }
+                public void checkServerTrusted(java.security.cert.X509Certificate[] c, String s) { }
+                public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+            }}, null);
+            com.pointblue.dirxml.dev.apps.IdApps client = new com.pointblue.dirxml.dev.apps.IdApps(args[3], "rbpmrest", appsSecret, trustAll);
+            appsSession = client.session(client.password(appsUser, appsPassword.toCharArray()));
+            Map<String, Object> role = appsSession.call("POST", com.pointblue.dirxml.dev.apps.IdApps.CATALOG + "/roles", null,
+                Map.of("id", "dclive" + ts, "name", "DC live check " + ts, "description", "scratch role for the agent live check", "level", 10));
+            roleDn = String.valueOf(role.get("id"));
+            ok("a scratch role, made through the catalog API", roleDn.startsWith("cn=dclive"), roleDn);
+            String usersRoot = args.length > 5 ? args[5] : "ou=users,o=data";
+            String rootGuid = (String) call("GET", "/api/v2/trees/" + TREE + "/objects?dn=" + enc(usersRoot), null, admin).body().get("guid");
+            LiveSetupCheck.Reply holder = call("POST", "/api/v2/trees/" + TREE + "/objects/" + rootGuid + "/children",
+                Map.of("objectClass", "inetOrgPerson", "name", Map.of("type", "cn", "value", "dclive-" + ts),
+                    "attributes", Map.of("sn", List.of("Livecheck"), "givenName", List.of("Agent"))), admin);
+            holderGuid = (String) holder.body().get("guid");
+            String holderDn = String.valueOf(holder.body().get("dn"));
+            ok("a scratch user in the user search root", holder.status() == 201, holderDn);
+
+            Map<String, Object> grant = tool(key, "request_role", Map.of("role", roleDn, "recipients", List.of(holderDn), "reason", "live check " + ts));
+            LiveSetupCheck.Reply granted = call("POST", "/api/v2/agent-changes/" + grant.get("id") + "/approve", Map.of(), me);
+            ok("request_role, approved in the console", "approved".equals(granted.body().get("state")), granted.body().get("state"));
+            boolean held = false;
+            for (int i = 0; i < 12 && !held; i++) {
+                Thread.sleep(5000);
+                held = String.valueOf(tool(key, "who_has", Map.of("permission", roleDn, "type", "role"))).contains(holderDn);
+            }
+            ok("who_has lists the holder", held, holderDn);
+            Map<String, Object> revoke = tool(key, "revoke_role", Map.of("role", roleDn, "people", List.of(holderDn), "reason", "live check: revoke " + ts));
+            ok("revoke_role waits for approval", "pending".equals(revoke.get("state")), revoke.get("summary"));
+            LiveSetupCheck.Reply revoked = call("POST", "/api/v2/agent-changes/" + revoke.get("id") + "/approve", Map.of(), me);
+            ok("approved: revoked as the person", "approved".equals(revoked.body().get("state")), revoked.body().get("state") + " " + Json.asMap(revoked.body().getOrDefault("result", Map.of())).get("body"));
+            boolean gone = false;
+            for (int i = 0; i < 12 && !gone; i++) {
+                Thread.sleep(5000);
+                gone = !String.valueOf(tool(key, "who_has", Map.of("permission", roleDn, "type", "role"))).contains(holderDn);
+            }
+            ok("the holder no longer has the role", gone, "");
+
             ok("revoke the key", call("DELETE", "/api/v2/agent-keys/" + keyId, null, me).status() == 204, "");
             String keys = Files.readString(dataPath.resolve("agents/keys.json"));
             ok("no token or password in the console's files", !keys.contains(appsPassword) && !keys.contains(key.substring(3)), "");
         } finally {
+            if (roleDn != null && appsSession != null) {
+                try {
+                    Map<String, Object> del = appsSession.call("DELETE", com.pointblue.dirxml.dev.apps.IdApps.CATALOG + "/roles/role", null, Map.of("roles", List.of(Map.of("id", roleDn))));
+                    ok("cleanup: delete the scratch role through the catalog API", Boolean.TRUE.equals(del.get("success")), "");
+                } catch (Exception e) {
+                    ok("cleanup: delete the scratch role through the catalog API", false, e.getMessage());
+                }
+                // the run's request objects (grant and revoke): found by their reasons, which carry this run's time, then removed one by one
+                String requests = "cn=Requests,cn=RoleConfig,cn=AppConfig,cn=User Application Driver,cn=driverset1,o=system";
+                LiveSetupCheck.Reply found = call("POST", "/api/v2/trees/" + TREE + "/search", Map.of("base", Map.of("dn", requests), "scope", "one",
+                    "ldapFilter", "(|(nrfDescription=live check " + ts + ")(nrfDescription=live check: revoke " + ts + "))", "page", Map.of("offset", 1, "count", 50)), admin);
+                int removed = 0;
+                for (Object o : Json.asList(found.body().get("items"))) {
+                    Map<String, String> h = new HashMap<>(admin);
+                    h.put("If-Match", "*");
+                    if (call("DELETE", "/api/v2/trees/" + TREE + "/objects/" + Json.asMap(o).get("guid"), null, h).status() / 100 == 2) {
+                        removed++;
+                    }
+                }
+                ok("cleanup: the role's request objects", found.status() == 200, "removed " + removed + detail(found));
+            }
+            if (holderGuid != null) {
+                Map<String, String> h = new HashMap<>(admin);
+                h.put("If-Match", "*");
+                ok("cleanup: the scratch user", call("DELETE", "/api/v2/trees/" + TREE + "/objects/" + holderGuid, null, h).status() / 100 == 2, "");
+            }
             if (userGuid != null && groupGuid != null) {
                 LiveSetupCheck.Reply rm = call("POST", "/api/v2/trees/" + TREE + "/objects/" + userGuid + "/memberships", Map.of("add", List.of(), "remove", List.of(groupGuid)), admin);
                 ok("cleanup: remove the membership", rm.status() == 200 || rm.status() == 207, rm.status() + detail(rm));
