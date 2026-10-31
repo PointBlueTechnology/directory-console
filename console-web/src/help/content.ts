@@ -827,6 +827,15 @@ export const CONTENT: Record<string, HelpTopic> = {
       },
       { title: 'Sessions', paragraphs: ['Idle sign-out and the longest session apply to everyone on this directory, at once. People are warned two minutes before an idle sign-out, and told when the longest session will end.'] },
       {
+        title: 'Agent keys',
+        list: [
+          'Off by default. On, people make keys for their AI agents under their name > Agent keys; it needs the service account.',
+          'The longest life applies to new keys: 1 to 90 days. Keys made with single sign-on live at most 14 days, and any key unused for 14 days stops.',
+          'Turning keys off stops every key on this directory at once; turning them on again lets the unexpired ones work again.',
+          'Approval of changes is on by default: a change an agent asks for waits until the person approves it in the console. The agent tools of this version only read, so nothing waits yet.',
+        ],
+      },
+      {
         title: 'Service account',
         paragraphs: [
           'The account the console uses to find people by a short name at sign-in, and for single sign-on. It needs to read the people it finds. Without one, people sign in with their full name (DN).',
@@ -842,6 +851,30 @@ export const CONTENT: Record<string, HelpTopic> = {
         ],
       },
     ],
+  },
+  'agent-keys': {
+    title: 'Agent keys',
+    summary: 'Keys that let an AI agent use this console through its MCP server, as you, with your own eDirectory rights.',
+    sections: [
+      {
+        title: 'Making a key',
+        list: [
+          'Give it a label that names the agent or machine: the audit log names the key by it.',
+          'Choose how long it lasts, and what it may do: reading always, and changing objects or running Identity Manager only if you have those roles. A key never has the admin role.',
+          'Type your password to confirm it is you (with single sign-on: a sign-in within the last 10 minutes).',
+          'The key is shown once. Copy it, with the command or settings for your agent, and keep it like a password.',
+        ],
+      },
+      {
+        title: 'What the agent can do',
+        paragraphs: [
+          'Everything the agent does runs as you, with your eDirectory rights and at most the key\'s roles. If your account is disabled, expires or is locked by intruder detection, or you lose your role, the key stops working at its next call.',
+          'The agent tools of this version only read: objects, groups, sign-in status, drivers, jobs, associations, caches, statistics and versions.',
+        ],
+      },
+      { title: 'Revoking a key', paragraphs: ['Revoke stops a key at once. Administrators can see and revoke everyone\'s keys here.'] },
+    ],
+    related: ['settings.directory'],
   },
   'settings.roles': {
     title: 'Role mappings',

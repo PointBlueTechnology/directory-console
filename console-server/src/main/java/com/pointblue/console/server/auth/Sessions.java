@@ -19,7 +19,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class Sessions {
 
     /**
-     * Who is signed in. {@code via} is {@code direct}, {@code break-glass} or {@code oidc}. {@code roles}
+     * Who is signed in. {@code via} is {@code direct}, {@code break-glass}, {@code oidc} or {@code agent} (an agent
+     * key, see {@link AgentKeys}). {@code roles}
      * are every role any grant gives, scoped or not, for what the UI offers; {@link #may} decides for
      * an object.
      */
@@ -32,6 +33,14 @@ public final class Sessions {
         /** Unscoped grants of {@code roles}. */
         public Principal(String subject, String dn, String name, String directoryId, Set<Role> roles, String via) {
             this(subject, dn, name, directoryId, roles, via, roles.stream().map(Grant::everywhere).toList());
+        }
+
+        /**
+         * Whether the console acts as this person on its service account's connection (the proxied-authorization
+         * control): single sign-on and agent keys. Such a person reaches every server without signing in again.
+         */
+        public boolean proxied() {
+            return "oidc".equals(via) || "agent".equals(via);
         }
 
         /** Whether some grant gives {@code r} (or admin), anywhere. */
@@ -67,11 +76,18 @@ public final class Sessions {
         public final com.pointblue.dirxml.dev.operate.Operate.Engine engine;
         public final String engineProblem;
         final AutoCloseable engineHandle;
+        /** The agent key this session stands for (its label and id), for the audit; null for a browser's session. */
+        public final String agent;
         volatile Instant lastSeen;
         volatile Instant authenticatedAt;
 
         Session(String id, String csrf, Principal principal, Ldap ldap, com.pointblue.console.server.idm.Engines.Opened engine, String engineProblem, Instant now) {
+            this(id, csrf, principal, ldap, engine, engineProblem, now, null);
+        }
+
+        Session(String id, String csrf, Principal principal, Ldap ldap, com.pointblue.console.server.idm.Engines.Opened engine, String engineProblem, Instant now, String agent) {
             this.id = id;
+            this.agent = agent;
             this.csrf = csrf;
             this.principal = principal;
             this.ldap = ldap;
@@ -136,6 +152,16 @@ public final class Sessions {
     public Session create(Principal p, Ldap ldap, com.pointblue.console.server.idm.Engines.Opened engine, String engineProblem) {
         Session s = new Session(token(), token(), p, ldap, engine, engineProblem, clock.instant());
         sessions.put(s.id, s);
+        return s;
+    }
+
+    /**
+     * A session for one agent key's calls, not kept here: the caller (see {@code Agents}) keeps it and closes its
+     * connections. It never counts as a recent sign-in, so changes that need one are refused.
+     */
+    public static Session agent(Principal p, Ldap ldap, com.pointblue.console.server.idm.Engines.Opened engine, String engineProblem, String agent) {
+        Session s = new Session(token(), token(), p, ldap, engine, engineProblem, Instant.now(), agent);
+        s.authenticatedAt = Instant.EPOCH;
         return s;
     }
 

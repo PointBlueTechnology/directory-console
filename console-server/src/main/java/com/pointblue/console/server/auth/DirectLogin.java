@@ -174,12 +174,7 @@ public final class DirectLogin {
             if (breakGlass) {
                 grants.add(Grant.everywhere(Role.ADMIN));
             }
-            List<Object> groups = me == null ? List.of() : me.attributes().getOrDefault("groupmembership", List.of());
-            for (DirectoryConfig.RoleMapping m : d.roles()) {
-                if (groups.stream().anyMatch(g -> sameDn(String.valueOf(g), m.group()))) {
-                    grants.add(m.grant());
-                }
-            }
+            grants.addAll(grants(d, me == null ? List.of() : me.attributes().getOrDefault("groupmembership", List.of())));
             Set<Role> roles = roles(grants);
             if (grants.isEmpty()) {
                 conn.close();
@@ -207,8 +202,19 @@ public final class DirectLogin {
         }
     }
 
+    /** The grants of {@code d}'s role mappings whose group is among {@code groups} (a person's {@code groupMembership}). */
+    public static List<Grant> grants(DirectoryConfig d, List<Object> groups) {
+        List<Grant> out = new ArrayList<>();
+        for (DirectoryConfig.RoleMapping m : d.roles()) {
+            if (groups.stream().anyMatch(g -> sameDn(String.valueOf(g), m.group()))) {
+                out.add(m.grant());
+            }
+        }
+        return out;
+    }
+
     /** Every role the grants give, scoped or not. */
-    static Set<Role> roles(List<Grant> grants) {
+    public static Set<Role> roles(List<Grant> grants) {
         Set<Role> roles = EnumSet.noneOf(Role.class);
         grants.stream().filter(g -> g.role() != null).forEach(g -> roles.add(g.role()));
         return Set.copyOf(roles);

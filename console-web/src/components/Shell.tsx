@@ -30,6 +30,7 @@ const ServerPage = lazy(() => import('../pages/EdirPage').then((m) => ({ default
 const SecurityPage = lazy(() => import('../pages/SecurityPage').then((m) => ({ default: m.SecurityPage })));
 const PasswordPolicyPage = lazy(() => import('../pages/PolicyPages').then((m) => ({ default: m.PasswordPolicyPage })));
 const AuditPage = lazy(() => import('../pages/AuditPage').then((m) => ({ default: m.AuditPage })));
+const AgentKeysPage = lazy(() => import('../pages/AgentKeysPage').then((m) => ({ default: m.AgentKeysPage })));
 const ChallengeSetPage = lazy(() => import('../pages/PolicyPages').then((m) => ({ default: m.ChallengeSetPage })));
 
 const NAV: { to: string; label: string; show?: (s: ReturnType<typeof useSession>) => boolean }[] = [
@@ -115,6 +116,9 @@ export function Shell() {
                         : version.update?.enabled && version.update.error ? 'Cannot check for new versions' : undefined}>
                         Directory Console {version.version}
                       </DropdownItem>
+                    )}
+                    {(me.via === 'direct' || me.via === 'oidc') && (
+                      <DropdownItem key="agent-keys" onClick={() => { setUserOpen(false); navigate('/agent-keys'); }}>Agent keys</DropdownItem>
                     )}
                     <DropdownItem key="out" onClick={signOut}>Sign out</DropdownItem>
                   </DropdownList>
@@ -234,6 +238,9 @@ function route(path: string) {
   }
   if (path === '/audit') {
     return <AuditPage />;
+  }
+  if (path === '/agent-keys') {
+    return <AgentKeysPage />;
   }
   if (path === '/certificates') {
     return null;   // on its way to Settings > Trusted certificates

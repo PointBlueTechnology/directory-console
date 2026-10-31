@@ -83,6 +83,9 @@ export function topicForPath(path: string): string {
   if (p.startsWith('/edir/servers/')) {
     return 'edir.server';
   }
+  if (p === '/agent-keys') {
+    return 'agent-keys';
+  }
   if (p.startsWith('/idm/drivers/')) {
     return 'idm.driver';
   }

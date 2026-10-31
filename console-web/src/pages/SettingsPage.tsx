@@ -119,6 +119,9 @@ function DirectorySection({ s, api, etag, onSaved }: {
   const [saDn, setSaDn] = useState(s.serviceAccount ?? '');
   const [idleMinutes, setIdleMinutes] = useState(String(s.session.idleMinutes));
   const [maxHours, setMaxHours] = useState(String(s.session.maxHours));
+  const [agentOn, setAgentOn] = useState(s.agentKeys.enabled);
+  const [agentDays, setAgentDays] = useState(String(s.agentKeys.maxDays));
+  const [agentApprove, setAgentApprove] = useState(s.agentKeys.approveChanges);
   const [saPassword, setSaPassword] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -158,6 +161,30 @@ function DirectorySection({ s, api, etag, onSaved }: {
             <Button variant="secondary" isDisabled={busy || !sessionOk(idleMinutes, 5, 240) || !sessionOk(maxHours, 1, 24)
               || (Number(idleMinutes) === s.session.idleMinutes && Number(maxHours) === s.session.maxHours)}
               onClick={() => go('The session limits are saved.', () => api.sessionLimits({ idleMinutes: Number(idleMinutes), maxHours: Number(maxHours) }, etag))}>Save the session limits</Button>
+          </ActionGroup>
+        </FormSection>
+        <FormSection title="Agent keys" titleElement="h3">
+          <p className="dc-subtle">
+            People make agent keys under their name &gt; Agent keys, so an AI agent can use this console&apos;s MCP server as them, with their own rights.
+            Keys need the service account. Turning them off stops every key here at once.
+          </p>
+          <FormGroup fieldId="dir-agent-on">
+            <Checkbox id="dir-agent-on" label="Allow agent keys" isChecked={agentOn} onChange={(_e, v) => setAgentOn(v)} isDisabled={!s.serviceAccount && !agentOn} />
+          </FormGroup>
+          <FormGroup label="Longest life of a key, in days" fieldId="dir-agent-days">
+            <TextInput id="dir-agent-days" type="number" min={1} max={90} value={agentDays} onChange={(_e, v) => setAgentDays(v)}
+              validated={sessionOk(agentDays, 1, 90) ? 'default' : 'error'} />
+            <FormHelperText><HelperText><HelperTextItem variant={sessionOk(agentDays, 1, 90) ? 'default' : 'error'}>1 to 90 days; 90 by default. Keys made with single sign-on live at most 14 days.</HelperTextItem></HelperText></FormHelperText>
+          </FormGroup>
+          <FormGroup fieldId="dir-agent-approve">
+            <Checkbox id="dir-agent-approve" label="Changes an agent asks for wait for the person's approval in the console" isChecked={agentApprove}
+              onChange={(_e, v) => setAgentApprove(v)}
+              description="On by default. Off, an agent's changes go ahead within its key's roles. The agent tools of this version make no changes yet." />
+          </FormGroup>
+          <ActionGroup>
+            <Button variant="secondary" isDisabled={busy || !sessionOk(agentDays, 1, 90) || (agentOn && !s.serviceAccount)
+              || (agentOn === s.agentKeys.enabled && Number(agentDays) === s.agentKeys.maxDays && agentApprove === s.agentKeys.approveChanges)}
+              onClick={() => go('The agent key settings are saved.', () => api.agentKeys({ enabled: agentOn, maxDays: Number(agentDays), approveChanges: agentApprove }, etag))}>Save the agent key settings</Button>
           </ActionGroup>
         </FormSection>
         <FormSection title="Service account" titleElement="h3">

@@ -1,6 +1,8 @@
 # Agents over MCP (design)
 
-**Status:** design note, decided 2026-10-30. Nothing here is built yet. The decisions are at the end.
+**Status:** decided 2026-10-30. Phase 1 is built: agent keys, the `/mcp` endpoint and the read tools (see
+[Using it](#using-it)). Phases 2 (changes) and 3 (Identity Applications) are not built yet. The decisions are at the
+end.
 
 This note proposes letting a person's AI agent do day-to-day administration through the console, over the Model
 Context Protocol (MCP). Examples are looking up an account, finding out why a user did not synchronize, starting a
@@ -90,8 +92,10 @@ The console keeps only a SHA-256 of the key, with:
   `ServiceAccountCheck` already checks this for single sign-on. Without a service account, keys are off for that
   directory.
 - **Roles:** what a key may do is its role ceiling intersected with the person's current grants.
-  - **Direct sign-in:** grants come from eDirectory group membership, so the console re-reads them on use, cached
-    for five minutes. A role taken away reaches the person's keys within minutes.
+  - **Direct sign-in:** grants come from eDirectory group membership. The console reads them on every call, in the
+    same read as the intruder lockout, so a role taken away reaches the person's keys at their next call.
+  - **A role the key does not carry:** the grant still reads, with the same container scopes; admin becomes each
+    of the key's roles. Task presets never reach a key: they are changes.
   - **Single sign-on:** grants come from the provider's groups, which the console cannot read without a sign-in. It
     keeps the grants from the person's last sign-in. Their next sign-in with fewer roles narrows their keys at once.
     Such keys get a shorter longest life.
@@ -111,9 +115,11 @@ The console keeps only a SHA-256 of the key, with:
 - **Audit:** every entry made with a key names the person and the key (its label and the first characters of its
   id), with `via` set to `agent`.
 
-## Production directories
+## Approving agents' changes
 
-On a directory marked production, writes from a key need a person's approval:
+Each directory has a setting, *Changes an agent asks for wait for the person's approval*, on by default (changed
+2026-10-30: it was going to apply to production directories only, always). While it is on, writes from a key need a
+person's approval:
 
 1. The tool records the change as pending: what, on which object, and with which key. It answers with the pending
    change's id and a link.
@@ -122,6 +128,9 @@ On a directory marked production, writes from a key need a person's approval:
 3. The agent can ask for the pending change's state.
 
 Pending changes expire after an hour. Reads need no approval.
+
+With the setting off, a key's writes go ahead within its roles, and are audited as the agent's. On a production
+directory they still need what any change there needs.
 
 Two alternatives were considered:
 - **`confirm` argument:** a `confirm` argument carrying the directory's name, as in DirXMLDevWeb. This is weaker: the
@@ -176,7 +185,7 @@ needs OSP. A directory without it works as above, and the Identity Applications 
   - **Reads:** my approval tasks; a request's status; a person's role and resource assignments; the request
     definitions a person can start.
   - **Writes:** approve or deny a task; request a role or a resource; start a request definition.
-  - **Production:** writes follow the production rule above.
+  - **Approval:** writes follow the approval setting above.
 - **Checked on the lab** (Identity Applications 24.4, 2026-10-30):
   - **Lifetimes:** OSP sets them in `ism-configuration.properties`. `com.netiq.idm.osp.oauth.refreshTokenTTL` is
     2592000 s (30 days) for a client with a secret, such as `rbpmrest`. `…public.refreshTokenTTL` is 2700 s for public
@@ -196,6 +205,43 @@ needs OSP. A directory without it works as above, and the Identity Applications 
     past `sessionTTL` (2700 s), and the new access token worked (`tasks/list` 200). An idle key's token therefore
     stays usable for the refresh token's 30 days, not just the 45-minute session.
 
+## Using it
+
+Phase 1 (0.4.0) has keys, the endpoint and the read tools.
+
+1. **An administrator turns keys on:** Settings > Directory > Agent keys. Keys need the directory's service account,
+   with Supervisor over the people who make keys. The same section sets the longest life (1 to 90 days, 90 by
+   default) and whether agents' changes wait for approval.
+2. **A person makes a key:** under their name > Agent keys > New agent key: a label, a life, and what it may do
+   (reading always; changing objects or running Identity Manager only with those roles). Direct sign-in types the
+   password again; single sign-on needs a sign-in within the last 10 minutes. The key is shown once, with the
+   command for Claude Code:
+
+   ```bash
+   claude mcp add --transport http directory-console https://console.example.com/mcp --header "Authorization: Bearer dc_…"
+   ```
+
+   Other clients take the same address and header. The agent's machine must trust the console's certificate.
+3. **The agent calls `whoami` first,** then the read tools:
+
+   | Tool | What it reads |
+   |---|---|
+   | `whoami` | the person, the directory and its tier, the key's roles and expiry |
+   | `search_objects`, `read_object`, `list_children`, `object_servers` | directory objects (secret attributes only as set) |
+   | `account_status`, `group_memberships`, `group_members` | sign-in status and lockout, groups |
+   | `object_associations` | the object inspector: associations and password synchronization |
+   | `idm_status`, `list_driver_sets`, `driver_set`, `driver_status`, `driver_health` | Identity Manager's drivers and their state |
+   | `list_jobs`, `job_definition` | jobs |
+   | `driver_password_sync`, `driver_associations`, `driver_cache`, `driver_cache_events` | a driver's password synchronization, association and cache inspectors |
+   | `driver_set_statistics`, `versions` | statistics and versions, per server |
+
+   Objects, drivers, driver sets and jobs are named by GUID or DN. A `server` argument asks another server's
+   replica or engine.
+
+A key works only at `/mcp`: the API's other routes ignore it. Each tool call goes through the API in-process, as the
+key's session. Revoking a key, turning keys off for the directory, or a locked, disabled or expired account stops it
+at the next call.
+
 ## Not in scope
 
 - Development work: policies, deploys and promotion stay in DirXMLDevWeb.
@@ -208,7 +254,8 @@ needs OSP. A directory without it works as above, and the Identity Applications 
 2. **The role ceiling:** viewer, editor and operator, never admin. Default: read only.
 3. **Roles under single sign-on:** keep the grants from the last sign-in, narrowed at the next one. These keys get a
    shorter longest life: 14 days.
-4. **Production writes:** pending changes, approved in the console.
+4. **Agents' writes:** pending changes, approved in the console. Changed the same day: approval is a per-directory
+   setting, required by default, that an administrator can turn off.
 5. **Setting passwords:** generated, then applied by an operator in the console.
 6. **The Identity Applications token:** one password grant when the key is made, then refresh tokens. The lab
    confirmed a 30-day lifetime that outlives OSP's session, and that refreshes do not touch `oidpInstanceData`.
