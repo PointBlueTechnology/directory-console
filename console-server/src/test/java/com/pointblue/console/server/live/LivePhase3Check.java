@@ -31,7 +31,8 @@ import java.util.regex.Pattern;
  * service account, a fake identity provider on loopback vouches for a test user made for the run, and
  * the console must act with that user's own eDirectory rights (RFC 4370). In a new container under
  * {@code parent}: a user with a uid, then sign-in through the provider, reads, a write the admin can
- * make and the user cannot, Identity Manager under the user's rights, and a disabled account. No password is set or used for the test user; no
+ * make and the user cannot, Identity Manager under the user's rights, an account locked by intruder
+ * detection (and one whose lock's reset time has passed), and a disabled account. No password is set or used for the test user; no
  * rights or IRFs are written. The container is deleted at the end. Not a JUnit test.
  *
  *   java -cp … LivePhase3Check <environments.properties> <env> <parent DN>
@@ -121,6 +122,23 @@ public final class LivePhase3Check {
                     asUserDrv.status() != 200 || asUserDrv.body().get("state") == null || "unknown".equals(asUserDrv.body().get("state")),
                     asUserDrv.status() + " state=" + asUserDrv.body().get("state") + detail(asUserDrv));
             }
+
+            // eDirectory accepts the control for an account locked by intruder detection; the console refuses it
+            String future = DateTimeFormatter.ofPattern("yyyyMMddHHmmss'Z'").format(java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).plusHours(1));
+            String past = DateTimeFormatter.ofPattern("yyyyMMddHHmmss'Z'").format(java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).minusHours(1));
+            LiveSetupCheck.Reply lock = call("PATCH", "/api/v2/trees/" + TREE + "/objects/" + userGuid, Map.of("changes", List.of(
+                Map.of("op", "replace", "attribute", "lockedByIntruder", "values", List.of("TRUE")),
+                Map.of("op", "replace", "attribute", "loginIntruderResetTime", "values", List.of(future)))), withEtag(admin, userGuid));
+            ok("lock the test user until " + future, lock.status() == 200, lock.status() + detail(lock));
+            String locked = sso(idp, "tester").raw().headers().firstValue("Location").orElse("");
+            ok("a locked account cannot sign in", locked.equals("/?sso-error=locked"), locked);
+            LiveSetupCheck.Reply lapse = call("PATCH", "/api/v2/trees/" + TREE + "/objects/" + userGuid, Map.of("changes", List.of(
+                Map.of("op", "replace", "attribute", "loginIntruderResetTime", "values", List.of(past)))), withEtag(admin, userGuid));
+            ok("move the lock's reset time to " + past, lapse.status() == 200, lapse.status() + detail(lapse));
+            String lapsed = sso(idp, "tester").raw().headers().firstValue("Location").orElse("");
+            ok("a lock whose reset time has passed is over", lapsed.equals("/"), lapsed);
+            LiveSetupCheck.Reply unlock = call("POST", "/api/v2/trees/" + TREE + "/objects/" + userGuid + "/unlock", Map.of(), admin);
+            ok("unlock the test user", unlock.status() == 200, unlock.status() + detail(unlock));
 
             LiveSetupCheck.Reply account = call("GET", "/api/v2/trees/" + TREE + "/objects/" + userGuid + "/account", null, admin);
             Map<String, String> h = new HashMap<>(admin);

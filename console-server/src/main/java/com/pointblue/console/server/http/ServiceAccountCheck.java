@@ -80,7 +80,9 @@ final class ServiceAccountCheck {
         DirectoryConfig.Oidc o = d.oidc();
         List<String> bases = o.searchBases().isEmpty() ? d.searchBases() : o.searchBases();
         for (String base : bases(bases)) {
-            people("single sign-on", base, o.objectClasses(), List.of(o.attribute()), true);
+            List<String> attrs = new ArrayList<>(List.of(o.attribute()));
+            attrs.addAll(List.of(com.pointblue.console.server.auth.OidcLogin.LOCK_ATTRIBUTES));   // a locked person is refused
+            people("single sign-on", base, o.objectClasses(), attrs, true);
         }
     }
 
@@ -146,7 +148,7 @@ final class ServiceAccountCheck {
                 add(purpose, person.dn(), "rights", "unknown", Ldap.Failure.of(e).getMessage());
                 continue;
             }
-            String what = actAs ? "match the claim's attribute" : "match and read the sign-in attributes";
+            String what = actAs ? "match the claim's attribute and read the intruder lockout" : "match and read the sign-in attributes";
             add(purpose, person.dn(), what, lacking.isEmpty() ? "ok" : "missing",
                 lacking.isEmpty() ? String.join(", ", attrs) : "missing on " + String.join(", ", lacking));
         }

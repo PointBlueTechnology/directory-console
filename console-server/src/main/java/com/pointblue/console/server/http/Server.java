@@ -605,7 +605,9 @@ public final class Server {
     /**
      * The connection for an operation on server {@code guid}'s replica (null or the session's own
      * server: the session's connection). A single sign-on session reaches another server the way it
-     * reaches its own: the service account with the proxied-authorization control. A direct sign-in
+     * reaches its own: the service account with the proxied-authorization control, once it has checked
+     * on that server that the person is not locked by intruder detection (eDirectory accepts the control
+     * for a locked account; see {@link com.pointblue.console.server.auth.OidcLogin#locked}). A direct sign-in
      * has no password to reuse, so the first use of a server answers {@code server-sign-in-required}
      * and the person signs in to it once ({@code POST /session/servers}).
      */
@@ -649,6 +651,21 @@ public final class Server {
                 throw untrusted(where, u);
             } catch (com.pointblue.console.server.ldap.Ldap.BadCredentials e) {
                 throw new Http.Problem(503, "unavailable", "the console's service account could not sign in to " + where.name());
+            }
+            com.pointblue.console.server.ldap.Ldap.Entry person;
+            try {
+                person = l.read(s.principal.dn(), com.pointblue.console.server.auth.OidcLogin.LOCK_ATTRIBUTES);
+            } catch (javax.naming.NamingException e) {
+                l.close();
+                throw new Http.Problem(503, "unavailable", "your account could not be read on " + where.name() + ": " + e.getMessage());
+            }
+            if (person == null) {
+                l.close();
+                throw new Http.Problem(403, "no-account", "your account was not found on " + where.name());
+            }
+            if (oidc.locked(person)) {
+                l.close();
+                throw new Http.Problem(403, "locked", "your account is locked by intruder detection on " + where.name());
             }
             l.actAs(s.principal.dn());
             SsoEngine e = ssoEngine(d, l, new com.pointblue.console.server.ldap.Ldap.Target(d.id(), where.host(), where.port()), s.principal.dn(), where.name());

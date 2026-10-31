@@ -7,8 +7,10 @@ import com.pointblue.console.server.tls.TrustStore;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -26,13 +28,16 @@ import javax.net.ssl.SSLContext;
  * own rights. Before a session is made, the person's own entry is read under the control: eDirectory
  * refuses the control for disabled and expired accounts, and when the service account lacks
  * Supervisor over the person, so a sign-in that could not act is refused here rather than later.
+ * eDirectory does accept the control for an account locked by intruder detection (checked on 9.3.3:
+ * the account's own bind fails, a proxied read as it succeeds), so the console checks that itself,
+ * from the service account's search: see {@link #locked}.
  *
  * <p>The service account itself, the break-glass accounts and the directory's {@code neverProxy} list
  * are never acted as; they sign in directly. Console grants come from the provider's groups.
  */
 public final class OidcLogin {
 
-    /** {@code code}: {@code not-configured}, {@code provider}, {@code claim-missing}, {@code no-account}, {@code ambiguous-account}, {@code never-proxy}, {@code no-role}, {@code proxy-refused}, {@code unavailable}. */
+    /** {@code code}: {@code not-configured}, {@code provider}, {@code claim-missing}, {@code no-account}, {@code ambiguous-account}, {@code never-proxy}, {@code locked}, {@code no-role}, {@code proxy-refused}, {@code unavailable}. */
     public record Refused(String code, String message) {
     }
 
@@ -41,6 +46,8 @@ public final class OidcLogin {
 
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final DateTimeFormatter GENERALIZED = DateTimeFormatter.ofPattern("yyyyMMddHHmmss'Z'").withZone(ZoneOffset.UTC);
+    /** What {@link #locked} reads. */
+    public static final String[] LOCK_ATTRIBUTES = {"lockedByIntruder", "loginIntruderResetTime"};
 
     private record Client(DirectoryConfig.Oidc settings, String secret, OidcClient client) {
     }
@@ -147,6 +154,9 @@ public final class OidcLogin {
             if (neverProxy(d).stream().anyMatch(n -> DirectLogin.sameDn(n, dn))) {
                 return new Refused("never-proxy", "This account signs in directly, not through single sign-on.");
             }
+            if (locked(found.get(0))) {
+                return new Refused("locked", "Your account is locked by intruder detection. Ask an administrator or the help desk to unlock it, or wait for the lock to reset.");
+            }
             if (grants.isEmpty()) {
                 return new Refused("no-role", "Your account has no Directory Console role. Ask an administrator to map one of your groups to a role.");
             }
@@ -194,13 +204,39 @@ public final class OidcLogin {
         List<String> bases = !o.searchBases().isEmpty() ? o.searchBases() : d.searchBases().isEmpty() ? List.of("") : d.searchBases();
         List<Ldap.Entry> out = new ArrayList<>();
         for (String base : bases) {
-            for (Ldap.Entry e : svc.search(base, f.toString(), args.toArray(), SearchControls.SUBTREE_SCOPE, new String[] {"1.1"}, 2)) {
+            for (Ldap.Entry e : svc.search(base, f.toString(), args.toArray(), SearchControls.SUBTREE_SCOPE, LOCK_ATTRIBUTES, 2)) {
                 if (out.stream().noneMatch(x -> DirectLogin.sameDn(x.dn(), e.dn()))) {
                     out.add(e);
                 }
             }
         }
         return out;
+    }
+
+    /** Whether {@code person} (read with {@link #LOCK_ATTRIBUTES}) is locked by intruder detection now. */
+    public boolean locked(Ldap.Entry person) {
+        return locked(person, clock.instant());
+    }
+
+    /**
+     * {@code lockedByIntruder} TRUE, unless its {@code loginIntruderResetTime} has passed: eDirectory
+     * releases the lock then but leaves the attribute TRUE until the next login (checked on 9.3.3). A reset time that
+     * cannot be read counts as still locked. The service account can read both, since acting as the
+     * person needs Supervisor over them.
+     */
+    static boolean locked(Ldap.Entry person, Instant now) {
+        if (!"TRUE".equalsIgnoreCase(person.first("lockedByIntruder"))) {
+            return false;
+        }
+        String reset = person.first("loginIntruderResetTime");
+        if (reset == null) {
+            return true;
+        }
+        try {
+            return Instant.from(GENERALIZED.parse(reset.trim())).isAfter(now);
+        } catch (DateTimeParseException e) {
+            return true;
+        }
     }
 
     /** The DNs a claim value maps to (none, one, or the first two of several), for testing a mapping. */

@@ -143,8 +143,9 @@ People sign in with their eDirectory name and password, and act with their own e
 
 The provider (Entra ID, Okta, Keycloak, OpenText Access Manager or any OpenID Connect provider) says who the person
 is. The console finds their eDirectory account through the service account, and then acts as them with eDirectory's
-proxied authorization, so they still have only their own rights, in Identity Manager too. Password sign-in stays available alongside it,
-unless you limit it to the break-glass and listed accounts (step 7 below).
+proxied authorization, so they still have only their own rights, in Identity Manager too. Accounts that are
+disabled, expired or locked by intruder detection cannot sign in this way.
+Password sign-in stays available alongside it, unless you limit it to the break-glass and listed accounts (step 7 below).
 
 **At the provider,** register an application (a "web" or "confidential" client):
 
