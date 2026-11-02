@@ -257,4 +257,82 @@ public class IdmTest {
         assertEquals(503, call("GET", "/api/v2/trees/acme/idm/driversets", null, h).status());
         assertEquals("the rest of the console still works", 200, call("GET", "/api/v2/trees/acme/roots", null, h).status());
     }
+
+    @Test
+    public void roleBasedEntitlementPolicies() throws Exception {
+        Map<String, String> h = signIn();
+        String set = (String) Json.asMap(((List<?>) call("GET", "/api/v2/trees/acme/idm/driversets", null, h).body().get("items")).get(0)).get("guid");
+        String rbe = "/api/v2/trees/acme/idm/driversets/" + set + "/rbe";
+        Reply none = call("GET", rbe, null, h);
+        assertEquals(String.valueOf(none.body()), 200, none.status());
+        assertEquals("no container yet", null, none.body().get("container"));
+
+        String c = "cn=Entitlement Policies,cn=Driver Set,o=system";
+        edir.add("dn: cn=Entitlements,cn=Driver Set,o=system", "objectClass: DirXML-Driver", "cn: Entitlements",
+            "DirXML-JavaModule: com.novell.nds.dirxml.driver.entitlement.EntitlementServiceDriver");
+        edir.add("dn: cn=UserAccount,cn=AD,cn=Driver Set,o=system", "objectClass: DirXML-Entitlement", "cn: UserAccount");
+        edir.add("dn: " + c, "objectClass: DirXML-SharedProfileSet", "cn: Entitlement Policies",
+            "DirXML-SPPriority: cn=Staff," + c + "#0#0", "DirXML-SPPriority: cn=Managers," + c + "#1#0");
+        edir.add("dn: cn=Staff," + c, "objectClass: DirXML-SharedProfile", "cn: Staff", "description: everyone on staff",
+            "memberQueryURL: ldap:///ou=Users,o=acme??sub?(title=staff)?x-sparse", "dgIdentity: cn=console,o=system",
+            "member: cn=admin,o=system", "excludedMember: cn=console,o=system",
+            "DirXML-EntitlementRef: cn=UserAccount,cn=AD,cn=Driver Set,o=system#0#<ref/>",
+            "DirXML-SPFilterXML: <selection-criterion/>");
+        edir.add("dn: cn=Managers," + c, "objectClass: DirXML-SharedProfile", "cn: Managers", "member: cn=admin,o=system");
+
+        Reply list = call("GET", rbe, null, h);
+        assertEquals(String.valueOf(list.body()), 200, list.status());
+        List<?> policies = (List<?>) list.body().get("policies");
+        assertEquals("in priority order", List.of("Staff", "Managers"), policies.stream().map(p -> Json.asMap(p).get("name")).toList());
+        assertEquals(List.of(), list.body().get("problems"));
+        assertEquals("Entitlements", Json.asMap(((List<?>) list.body().get("serviceDrivers")).get(0)).get("name"));
+        Map<String, Object> staff = Json.asMap(policies.get(0));
+        assertEquals(0, Json.asInt(staff.get("priority"), -1));
+        Map<String, Object> grant = Json.asMap(((List<?>) staff.get("grants")).get(0));
+        assertEquals("UserAccount", grant.get("entitlement"));
+        assertEquals("AD", grant.get("driver"));
+        assertEquals("(title=staff)", Json.asMap(staff.get("membership")).get("filter"));
+        assertEquals("sub", Json.asMap(staff.get("membership")).get("scope"));
+        assertEquals("ou=Users,o=acme", Json.asMap(staff.get("membership")).get("base"));
+        String staffGuid = (String) staff.get("guid");
+        String managersGuid = (String) Json.asMap(policies.get(1)).get("guid");
+
+        Reply one = call("GET", "/api/v2/trees/acme/idm/rbe/policies/" + staffGuid, null, h);
+        assertEquals(String.valueOf(one.body()), 200, one.status());
+        assertEquals("console", Json.asMap(one.body().get("identity")).get("name"));
+        assertEquals(1, ((List<?>) one.body().get("excludedMembers")).size());
+        assertEquals(true, Json.asMap(((List<?>) one.body().get("grants")).get(0)).get("exists"));
+        assertEquals("<selection-criterion/>", one.body().get("criteria"));
+        assertEquals(1, Json.asInt(call("GET", "/api/v2/trees/acme/idm/rbe/policies/" + staffGuid + "/members", null, h).body().get("total"), 0));
+        assertEquals("a driver is not a policy", 404, call("GET", "/api/v2/trees/acme/idm/rbe/policies/" + set, null, h).status());
+
+        // reorder: from the version read, naming every policy once
+        String version = (String) list.body().get("version");
+        assertEquals(400, call("PUT", rbe + "/priorities", Map.of("version", version, "order", List.of(managersGuid)), h).status());
+        assertEquals(409, call("PUT", rbe + "/priorities", Map.of("version", "stale", "order", List.of(managersGuid, staffGuid)), h).status());
+        Reply moved = call("PUT", rbe + "/priorities", Map.of("version", version, "order", List.of(managersGuid, staffGuid)), h);
+        assertEquals(String.valueOf(moved.body()), 200, moved.status());
+        assertEquals(List.of("Managers", "Staff"), ((List<?>) moved.body().get("policies")).stream().map(p -> Json.asMap(p).get("name")).toList());
+        assertEquals(java.util.Set.of("cn=Managers," + c + "#0#0", "cn=Staff," + c + "#1#0"),
+            java.util.Set.of(edir.entry(c).getAttributeValues("DirXML-SPPriority")));
+
+        // delete: the name typed; the rest renumbered without a gap
+        assertEquals(400, call("DELETE", "/api/v2/trees/acme/idm/rbe/policies/" + managersGuid, Map.of("name", "managers?"), h).status());
+        assertEquals(200, call("DELETE", "/api/v2/trees/acme/idm/rbe/policies/" + managersGuid, Map.of("name", "Managers"), h).status());
+        assertEquals(List.of("cn=Staff," + c + "#0#0"), List.of(edir.entry(c).getAttributeValues("DirXML-SPPriority")));
+        String audit;
+        try (var files = Files.list(dataPath.resolve("audit"))) {
+            StringBuilder all = new StringBuilder();
+            for (Path f : files.toList()) {
+                all.append(Files.readString(f));
+            }
+            audit = all.toString();
+        }
+        assertTrue(audit.contains("idm.rbe.priorities"));
+        assertTrue(audit.contains("idm.rbe.delete"));
+
+        // priorities the Entitlements Service driver would refuse are reported
+        edir.server.modify(c, new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.REPLACE, "DirXML-SPPriority", "cn=Staff," + c + "#2#0"));
+        assertEquals(List.of("the priorities are not 0, 1, 2 … without gaps or repeats"), call("GET", rbe, null, h).body().get("problems"));
+    }
 }

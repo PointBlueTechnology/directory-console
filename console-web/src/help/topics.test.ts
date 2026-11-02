@@ -8,7 +8,7 @@ const PAGES = [
   'security.certificates', 'security.password-policies', 'security.challenge-sets', 'security.login-methods', 'security.eba',
   'security.password-policy', 'security.challenge-set',
   ...['attributes', 'account', 'certificates', 'groups', 'members', 'associations', 'rights', 'replicas', 'identity'].map((t) => `object.${t}`),
-  ...['drivers', 'jobs', 'servers', 'properties', 'statistics', 'versions', 'trace', 'mapping-tables', 'log', 'passwords'].map((t) => `idm.${t}`),
+  ...['drivers', 'jobs', 'servers', 'properties', 'statistics', 'versions', 'trace', 'mapping-tables', 'rbe', 'log', 'passwords'].map((t) => `idm.${t}`),
   ...['overview', 'jobs', 'associations', 'cache', 'health', 'properties', 'trace', 'mapping-tables', 'log', 'passwords', 'password-sync'].map((t) => `idm.driver.${t}`),
   ...['directory', 'roles', 'presets', 'sso', 'trees', 'other', 'certificate', 'expiry', 'syslog', 'backup', 'trust', 'updates', 'proxy'].map((t) => `settings.${t}`),
 ];

@@ -57,6 +57,7 @@ import javax.naming.directory.SearchControls;
  * POST /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/jobs        a new job of one of those types (see Jobs)
  * /api/v2/trees/{tree}/idm/mapping-tables[/{guid}]                                    mapping tables (see MappingTables)
  * GET /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/properties                a driver's or driver set's properties, read-only (see DriverProperties)
+ * /api/v2/trees/{tree}/idm/driversets/{guid}/rbe…, /api/v2/trees/{tree}/idm/rbe/policies/{guid}…  role-based entitlement policies (see Rbe)
  * </pre>
  */
 final class Idm {
@@ -70,6 +71,7 @@ final class Idm {
     private final Jobs jobs;
     private final MappingTables mappingTables;
     private final DriverProperties driverProperties;
+    private final Rbe rbe;
 
     Idm(Server server) {
         this.server = server;
@@ -78,6 +80,7 @@ final class Idm {
         this.jobs = new Jobs(server);
         this.mappingTables = new MappingTables(server);
         this.driverProperties = new DriverProperties(server);
+        this.rbe = new Rbe(server);
     }
 
     private record Target(String dn, String name, String driverSetDn, boolean isDriverSet) {
@@ -109,6 +112,15 @@ final class Idm {
         // a driver's properties, read-only: LDAP alone
         if (route.equals("GET drivers/{guid}/properties") || route.equals("GET driversets/{guid}/properties")) {
             driverProperties.handle(ex, s, guid, route.contains("driversets/"));
+            return;
+        }
+        // role-based entitlement policies are dynamic groups under the driver set: LDAP alone
+        if (route.matches("(GET|PUT) driversets/\\{guid}/rbe(/.*)?")) {
+            rbe.handle(ex, s, method, guid, null, p.length > 5 ? String.join("/", java.util.Arrays.copyOfRange(p, 5, p.length)) : "");
+            return;
+        }
+        if (p.length > 4 && p[2].equals("rbe") && p[3].equals("policies") && Names.guid(p[4])) {
+            rbe.handle(ex, s, method, null, p[4], p.length > 5 ? String.join("/", java.util.Arrays.copyOfRange(p, 5, p.length)) : "");
             return;
         }
         // mapping tables are resource objects: LDAP alone

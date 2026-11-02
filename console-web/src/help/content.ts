@@ -685,6 +685,30 @@ export const CONTENT: Record<string, HelpTopic> = {
       },
     ],
   },
+  'idm.rbe': {
+    title: 'Role-based entitlements',
+    summary: 'Policies that grant entitlements on connected systems to everyone who matches a query, through the Entitlements Service driver.',
+    sections: [
+      {
+        title: 'How it works',
+        list: [
+          'Each policy is a dynamic group: a query (an LDAP filter under a container) plus static members, minus excluded ones.',
+          'It grants entitlements defined on drivers, sometimes with values (a group to join, for example).',
+          'The Entitlements Service driver writes the grants onto each member; the drivers holding the entitlements act on them.',
+          'The driver reads the policies, and works out who is a member, only when it starts: restart it after a change, or to re-evaluate membership.',
+        ],
+      },
+      {
+        title: 'Priority',
+        paragraphs: [
+          'When policies grant different values of one entitlement, its conflict resolution (set in its driver) decides whether they merge or the higher policy wins.',
+          'Priorities must run 1, 2, 3 … with one per policy, or the Entitlements Service driver will not start; the page says so, and saving an order fixes it.',
+        ],
+      },
+      { title: 'Deleting', caution: true, paragraphs: ['Deleting a policy asks for its name. Its members lose what it granted when the Entitlements Service driver restarts; the other policies keep their order.'] },
+    ],
+    related: ['idm', 'idm.drivers'],
+  },
   'idm.mapping-tables': {
     title: 'Mapping tables',
     summary: 'Lookup tables that policies use to translate values, such as department codes into names.',

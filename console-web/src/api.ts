@@ -543,6 +543,36 @@ export interface CacheEvent {
 }
 export interface CacheEvents { events: CacheEvent[]; next: number | null }
 
+/** One entitlement a role-based entitlement policy grants: the entitlement, its driver, and the values (the ref document). */
+export interface RbeGrant { dn: string; entitlement: string; driver: string; ref: string; exists?: boolean; guid?: string | null }
+/** A policy's dynamic membership: the query's base, scope and LDAP filter. */
+export interface RbeMembership { url: string; base: string; scope: 'base' | 'one' | 'sub'; filter: string }
+export interface RbePolicy extends Identity {
+  guid: string;
+  description: string | null;
+  membership: RbeMembership | null;
+  excluded: number;
+  grants: RbeGrant[];
+  /** A legacy entitlements document the Entitlements Service driver refuses ("unconverted policy"). */
+  legacy: boolean;
+  priority?: number | null;
+}
+/** An object named in a policy: its display name and DN. */
+export interface RbeRef { name: string; dn: string }
+export interface RbePolicyDetail extends RbePolicy {
+  identity: RbeRef | null;
+  excludedMembers: RbeRef[];
+  criteria: string | null;
+}
+export interface RbeState {
+  container: (Identity & { guid: string }) | null;
+  version?: string;
+  serviceDrivers: (Identity & { guid: string })[];
+  policies: RbePolicy[];
+  /** Why the Entitlements Service driver would refuse the priorities; empty when it would not. */
+  problems: string[];
+}
+
 export interface ChannelStats { lastReset: string | null; groups: Record<string, Record<string, number>> }
 export interface DriverSetStatistics {
   server: { dn: string; name: string };
@@ -721,6 +751,17 @@ export function idm(id: string, server?: string) {
     /** Delete a table; {@code name} is its name, typed. */
     deleteMappingTable: (guid: string, name: string, confirm?: string) =>
       request<void>('DELETE', `${base}/mapping-tables/${guidPath(guid)}`, { name }, h(confirm)),
+    /** A driver set's role-based entitlement policies, in priority order, with its Entitlements Service drivers. */
+    rbe: (setGuid: string) => request<RbeState>('GET', `${base}/driversets/${guidPath(setGuid)}/rbe`).then((r) => r.data),
+    /** Reorder the policies (every one, highest priority first), as read at {@code version}. */
+    rbePriorities: (setGuid: string, version: string, order: string[], confirm?: string) =>
+      request<RbeState>('PUT', `${base}/driversets/${guidPath(setGuid)}/rbe/priorities`, { version, order }, h(confirm)).then((r) => r.data),
+    rbePolicy: (guid: string) => request<RbePolicyDetail>('GET', `${base}/rbe/policies/${guidPath(guid)}`).then((r) => r.data),
+    /** A policy's members as the directory computes them (from the query, and static). */
+    rbeMembers: (guid: string) => request<{ items: RbeRef[]; total: number }>('GET', `${base}/rbe/policies/${guidPath(guid)}/members`).then((r) => r.data),
+    /** Delete a policy; {@code name} is its name, typed. The others keep their order. */
+    deleteRbePolicy: (guid: string, name: string, confirm?: string) =>
+      request<void>('DELETE', `${base}/rbe/policies/${guidPath(guid)}`, { name }, h(confirm)),
     /** A job's definition, servers and scope (read over LDAP). */
     /** The job types the chosen server's engine offers for a driver or driver set. */
     jobTypes: (kind: 'drivers' | 'driversets', guid: string) => get<{ server: { dn: string; name: string }; types: JobType[] }>(`/${kind}/${guidPath(guid)}/job-types`),

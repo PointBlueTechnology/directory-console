@@ -77,6 +77,11 @@
   gap: var(--pf-t--global--spacer--sm);
 }
 
+/* a control set beside text on the same line */
+.dc-inline-gap {
+  margin-inline-start: var(--pf-t--global--spacer--sm);
+}
+
 .dc-tab-body {
   margin-block-start: var(--pf-t--global--spacer--md);
 }

@@ -13,6 +13,7 @@ import { ServerChooser } from '../components/ServerChooser';
 import { ProblemAlert } from '../components/Problem';
 import { useAreYouSure, useConfirmed } from '../components/Confirm';
 import { JobsTable, LogLevelPanel, PasswordsPanel, StateLabel } from '../components/IdmParts';
+import { RbePanel } from '../components/RbePanel';
 import { BulkLifecycleModal } from '../components/BulkLifecycle';
 import { TracePanel } from '../components/TracePanel';
 import { MappingTablesPanel } from '../components/MappingTables';
@@ -125,6 +126,9 @@ function DriverSetView({ api: connected, guid }: { api: ReturnType<typeof idm>; 
           <Tab eventKey="versions" title={<TabTitleText>Versions</TabTitleText>}><VersionsPanel api={api} guid={guid} /></Tab>
           <Tab eventKey="trace" title={<TabTitleText>Trace</TabTitleText>}><TracePanel kind="driversets" guid={guid} /></Tab>
           <Tab eventKey="mapping-tables" title={<TabTitleText>Mapping tables</TabTitleText>}><MappingTablesPanel under={guid} canCreate /></Tab>
+          <Tab eventKey="rbe" title={<TabTitleText>Role-based entitlements</TabTitleText>}>
+            <RbePanel api={api} setGuid={guid} drivers={set.drivers} onDriversChanged={load} />
+          </Tab>
           <Tab eventKey="log" title={<TabTitleText>Log level</TabTitleText>}>
             <LogLevelPanel load={() => api.setPart(guid, 'log-level')} />
           </Tab>
