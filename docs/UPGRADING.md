@@ -100,7 +100,7 @@ Back up first: a volume snapshot of the `console-data` claim, or a backup from *
 Then change the image tag to the new version (pin versions on Kubernetes rather than following `latest`):
 
 ```bash
-kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.4.4
+kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.4.5
 ```
 
 ```bash
@@ -117,10 +117,10 @@ restoring the backup if the release notes say the configuration format changed. 
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.4.4
+    image: ghcr.io/pointbluetechnology/directory-console:0.4.5
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.4.4 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.4.5 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -140,6 +140,10 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.4.5:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.4.4
+  needs no restore. Role-based entitlement policies can be created, changed, emptied and deleted, and given rights to
+  other objects. A policy that still covers people is not deleted unless forced: the Entitlements Service driver
+  ignores a deleted policy, so remove everyone first and let it revoke.
 - **0.4.4:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.4.3
   needs no restore. A driver set has a Role-based entitlements tab (list, view, reorder, delete, re-evaluate). A group
   can no longer be added as a member of itself, and the cache inspector shows events holding characters XML does not
