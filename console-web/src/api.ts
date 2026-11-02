@@ -796,6 +796,10 @@ export function idm(id: string, server?: string) {
     /** A policy changed, from the version read; what is left out is cleared. */
     rbeChange: (guid: string, body: RbePolicySpec & { version: string }, confirm?: string) =>
       request<{ guid: string; dn: string }>('PUT', `${base}/rbe/policies/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
+    /** The objects under a container (the whole tree when none) whose ACL names the policy as trustee. */
+    rbeRights: (guid: string, under?: string) =>
+      request<{ items: (Reference & { guid: string; acls: Acl[] })[]; scanned: number; complete: boolean }>('GET',
+        `${base}/rbe/policies/${guidPath(guid)}/rights${under ? `?under=${encodeURIComponent(under)}` : ''}`).then((r) => r.data),
     /** Remove everyone from a policy, keeping its grants, so the Entitlements Service driver revokes them. */
     rbeEmpty: (guid: string, confirm?: string) => request<unknown>('POST', `${base}/rbe/policies/${guidPath(guid)}/empty`, {}, h(confirm)).then(() => undefined),
     /** Delete a policy; {@code name} is its name, typed. Refused while it has members unless forced (its grants then stay). */

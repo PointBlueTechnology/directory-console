@@ -718,6 +718,14 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Designer and Identity Console can still edit what is saved here. A filter with a test their editors lack (starts with, contains, ends with) or deeper nesting shows there only as its query.',
         ],
       },
+      {
+        title: 'Rights to other objects',
+        paragraphs: [
+          'A policy can be a trustee of other objects; its members get those rights, being security-equivalent to it when they sign in.',
+          'eDirectory cannot search ACLs by trustee, so "Find its rights" reads the ACLs under a container (the whole tree by default) and stops after 50,000 objects; look under a smaller container on a large tree.',
+          'Grant or remove rights here as on an object\'s Rights tab; the policy is the trustee.',
+        ],
+      },
       { title: 'Deleting', caution: true, paragraphs: ['The Entitlements Service driver ignores a deleted policy, so what it granted would stay. Remove everyone first: the driver revokes as people leave it. Then delete it, typing its name; the other policies keep their order. Deleting a policy that still covers people leaves its grants in place.'] },
     ],
     related: ['idm', 'idm.drivers'],

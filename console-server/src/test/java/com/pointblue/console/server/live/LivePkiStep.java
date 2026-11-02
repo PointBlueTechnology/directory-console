@@ -549,6 +549,21 @@ public final class LivePkiStep {
                 // migrate to the application: sync events for objects of a class under a base (args: driver DN, base DN, class)
                 case "migrate-to-app" -> show(call("POST", t + "/idm/drivers/" + guid(t, h, args[3]) + "/migrate/to-app",
                     Map.of("base", guid(t, h, args[4]), "class", args[5]), h));
+                case "rbe-rights" -> show(call("GET", t + "/idm/rbe/policies/" + guid(t, h, args[3]) + "/rights?under="
+                    + URLEncoder.encode(args[4], "UTF-8"), null, h));
+                // one ACL value on an object (args: object DN, trustee DN, comma-separated entry rights), added or removed
+                case "acl-add", "acl-remove" -> {
+                    String g = guid(t, h, args[3]);
+                    LiveSetupCheck.Reply o = call("GET", t + "/objects/" + g, null, h);
+                    Map<String, String> w = new HashMap<>(h);
+                    w.put("If-Match", o.raw().headers().firstValue("ETag").orElse("*"));
+                    Map<String, Object> acl = Map.of("privileges", List.of(args[5].split(",")), "scope", "subtree",
+                        "trustee", Map.of("dn", args[4]), "attribute", "[Entry Rights]");
+                    show(call("PATCH", t + "/objects/" + g, Map.of("changes", List.of(Map.of("op", op.equals("acl-add") ? "add" : "remove",
+                        "attribute", "ACL", "values", List.of(acl)))), w));
+                }
+                // effective rights of one object (args[4]) on another (args[3])
+                case "rights-of" -> show(call("GET", t + "/objects/" + guid(t, h, args[3]) + "/rights?trustee=" + guid(t, h, args[4]), null, h));
                 case "rbe-entitlements" -> show(call("GET", t + "/idm/driversets/" + guid(t, h, args[3]) + "/rbe/entitlements", null, h));
                 // a policy from a JSON file (args[4]): created under the set (args[3]), or changed (args[3]: its DN) from the version just read
                 case "rbe-post" -> show(call("POST", t + "/idm/driversets/" + guid(t, h, args[3]) + "/rbe/policies",

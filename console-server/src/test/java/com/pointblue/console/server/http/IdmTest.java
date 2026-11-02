@@ -305,6 +305,22 @@ public class IdmTest {
         assertEquals(true, Json.asMap(((List<?>) one.body().get("grants")).get(0)).get("exists"));
         assertEquals("<selection-criterion/>", one.body().get("criteria"));
         assertEquals(1, Json.asInt(call("GET", "/api/v2/trees/acme/idm/rbe/policies/" + staffGuid + "/members", null, h).body().get("total"), 0));
+
+        // rights to other objects: found by reading the ACLs, as eDirectory matches an ACL value only whole
+        edir.server.modify("cn=console,o=system", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD, "ACL",
+            "3#entry#cn=Staff," + c + "#[Entry Rights]", "2#subtree#cn=admin,o=system#[All Attributes Rights]"));
+        Reply rights = call("GET", "/api/v2/trees/acme/idm/rbe/policies/" + staffGuid + "/rights", null, h);
+        assertEquals(String.valueOf(rights.body()), 200, rights.status());
+        List<?> trusted = (List<?>) rights.body().get("items");
+        assertEquals(1, trusted.size());
+        assertEquals("cn=console,o=system", Json.asMap(trusted.get(0)).get("dn"));
+        Map<String, Object> acl = Json.asMap(((List<?>) Json.asMap(trusted.get(0)).get("acls")).get(0));
+        assertEquals(List.of("browse", "add"), acl.get("privileges"));
+        assertEquals("[Entry Rights]", acl.get("attribute"));
+        assertEquals(true, rights.body().get("complete"));
+        assertEquals("under a DN, too", 1, ((List<?>) call("GET", "/api/v2/trees/acme/idm/rbe/policies/" + staffGuid + "/rights?under="
+            + java.net.URLEncoder.encode("o=system", java.nio.charset.StandardCharsets.UTF_8), null, h).body().get("items")).size());
+        assertEquals("none under another container", 0, ((List<?>) call("GET", "/api/v2/trees/acme/idm/rbe/policies/" + staffGuid + "/rights?under=" + set, null, h).body().get("items")).size());
         assertEquals("a driver is not a policy", 404, call("GET", "/api/v2/trees/acme/idm/rbe/policies/" + set, null, h).status());
 
         // reorder: from the version read, naming every policy once

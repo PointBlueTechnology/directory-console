@@ -103,14 +103,19 @@ export function RightsTab({ obj, etag, onChanged }: { obj: DirObject; etag: stri
   );
 }
 
-function AclModal({ obj, etag, mode, initial, onClose, onDone }: {
-  obj: DirObject; etag: string; mode: 'trustee' | 'irf'; initial?: Acl; onClose: () => void; onDone: () => void;
+/**
+ * Add or change one ACL value on {@code obj}: a trustee's rights, or the Inherited Rights Filter. With
+ * {@code fixedTrustee}, the trustee is set and cannot be changed (an entitlement policy granting rights on the object).
+ */
+export function AclModal({ obj, etag, mode, initial, fixedTrustee, onClose, onDone }: {
+  obj: DirObject; etag: string; mode: 'trustee' | 'irf'; initial?: Acl; fixedTrustee?: { dn: string; name: string }; onClose: () => void; onDone: () => void;
 }) {
   const { tree } = useSession();
   const [attrOffers, setAttrOffers] = useState<NameOption[]>([]);
   useEffect(() => { tree.attributes().then((a) => setAttrOffers(attributeOptions(a))).catch(() => undefined); }, [tree]);
   const [trustee, setTrustee] = useState<{ dn?: string; name?: string; special?: string } | null>(
-    mode === 'irf' ? { special: MASK } : initial ? ('special' in initial.trustee ? { special: initial.trustee.special } : { dn: initial.trustee.dn, name: initial.trustee.name }) : null);
+    mode === 'irf' ? { special: MASK } : initial ? ('special' in initial.trustee ? { special: initial.trustee.special } : { dn: initial.trustee.dn, name: initial.trustee.name })
+      : fixedTrustee ? { ...fixedTrustee } : null);
   const [appliesTo, setAppliesTo] = useState(initial?.attribute ?? '[Entry Rights]');
   const kind: 'entry' | 'all' | 'one' = appliesTo === '[Entry Rights]' ? 'entry' : appliesTo === '[All Attributes Rights]' ? 'all' : 'one';
   const [attribute, setAttribute] = useState(kind === 'one' ? appliesTo : '');
@@ -163,7 +168,7 @@ function AclModal({ obj, etag, mode, initial, onClose, onDone }: {
                 ? (
                   <Flex spaceItems={{ default: 'spaceItemsSm' }}>
                     <FlexItem>{trustee.special ? <code>{trustee.special}</code> : <><strong>{trustee.name}</strong> <span className="dc-mono dc-subtle">{trustee.dn}</span></>}</FlexItem>
-                    {!initial && <FlexItem><Button variant="link" isInline onClick={() => setTrustee(null)}>Change</Button></FlexItem>}
+                    {!initial && !fixedTrustee && <FlexItem><Button variant="link" isInline onClick={() => setTrustee(null)}>Change</Button></FlexItem>}
                   </Flex>
                 )
                 : (

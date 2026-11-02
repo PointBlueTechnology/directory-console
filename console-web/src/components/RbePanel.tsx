@@ -11,6 +11,7 @@ import { useConfirmed } from './Confirm';
 import { ProblemAlert } from './Problem';
 import { StateLabel } from './IdmParts';
 import { RbePolicyEditor } from './RbePolicyEditor';
+import { RbeRights } from './RbeRights';
 
 type Idm = ReturnType<typeof idm>;
 
@@ -266,6 +267,7 @@ function PolicyModal({ api, guid, operator, onClose, onEdit, onDeleted }: {
                 </>
               )}
             </div>
+            <RbeRights policy={{ guid: p.guid, dn: p.dn, name: p.name }} operator={operator} />
             {deleting && !p.emptied && (
               <Alert variant="warning" isInline title={`${p.name} still covers people`} className="dc-tab-body"
                 actionLinks={<Button variant="link" isInline onClick={empty} isDisabled={busy}>Remove everyone first</Button>}>

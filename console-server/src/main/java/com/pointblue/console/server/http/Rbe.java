@@ -45,6 +45,7 @@ import org.w3c.dom.Node;
  * PUT    /api/v2/trees/{tree}/idm/driversets/{guid}/rbe/priorities   {"version", "order": [policy guid…]}
  * GET    /api/v2/trees/{tree}/idm/rbe/policies/{guid}                one policy
  * GET    /api/v2/trees/{tree}/idm/rbe/policies/{guid}/members        its members, as the directory computes them
+ * GET    /api/v2/trees/{tree}/idm/rbe/policies/{guid}/rights         ?under={guid or DN}: the objects whose ACL names it as trustee
  * DELETE /api/v2/trees/{tree}/idm/rbe/policies/{guid}                {"name", "force"?}: the policy's name, typed; refused (409)
  *                                                                    while it has members, unless forced (its grants then stay)
  * </pre>
@@ -92,6 +93,7 @@ final class Rbe {
             switch (method + " " + rest) {
                 case "GET " -> Http.json(ex, 200, detail(l, p));
                 case "GET members" -> Http.json(ex, 200, members(l, p));
+                case "GET rights" -> Http.json(ex, 200, rights(l, p, Http.query(ex).get("under")));
                 case "PUT " -> edit.change(ex, l, s, policyGuid, p);
                 case "POST empty" -> edit.empty(ex, l, s, policyGuid, p);
                 case "DELETE " -> delete(ex, l, s, policyGuid, p);
@@ -307,6 +309,49 @@ final class Rbe {
         }
         items.sort(Comparator.comparing(m -> String.valueOf(m.get("name")).toLowerCase(Locale.ROOT)));
         return Map.of("items", items, "total", items.size());
+    }
+
+    /** How many objects a rights scan reads at most: eDirectory matches an ACL value only whole, so no search finds a trustee. */
+    static final int RIGHTS_SCAN_LIMIT = 50_000;
+
+    /**
+     * Rights to other objects: its members get them, being security-equivalent to the dynamic group. eDirectory matches
+     * an ACL value only whole (privileges, scope, trustee and attribute alike, a lab tree), so the objects under
+     * {@code under} (the whole tree by default) with an ACL are read a page at a time, and the values naming the policy kept.
+     */
+    private Map<String, Object> rights(Ldap l, Ldap.Entry p, String under) throws NamingException {
+        String base = under == null || under.isBlank() ? "" : Names.guid(under) ? server.objects.dnOf(l, under) : Names.parse(under).toString();
+        String policy = Names.canonical(p.dn());
+        List<Map<String, Object>> items = new ArrayList<>();
+        int scanned = 0;
+        byte[] cookie = null;
+        do {
+            Ldap.Paged page = l.page(base, "(ACL=*)", null, SearchControls.SUBTREE_SCOPE, new String[] {"GUID", "ACL"}, 500, cookie);
+            for (Ldap.Entry e : page.entries()) {
+                scanned++;
+                List<Map<String, Object>> acls = new ArrayList<>();
+                for (Object o : e.attributes().getOrDefault("acl", List.of())) {
+                    Map<String, Object> acl = com.pointblue.console.server.ldap.Values.acl(text(o));
+                    if (acl != null && acl.get("trustee") instanceof Map<?, ?> t && t.get("dn") != null) {
+                        try {
+                            if (Names.canonical(String.valueOf(t.get("dn"))).equals(policy)) {
+                                acls.add(acl);
+                            }
+                        } catch (IllegalArgumentException x) {
+                            // not a DN: not this policy
+                        }
+                    }
+                }
+                if (!acls.isEmpty()) {
+                    Map<String, Object> m = ref(e);
+                    m.put("acls", acls);
+                    items.add(m);
+                }
+            }
+            cookie = page.cookie();
+        } while (cookie != null && scanned < RIGHTS_SCAN_LIMIT);
+        items.sort(Comparator.comparing(m -> String.valueOf(m.get("dn")).toLowerCase(Locale.ROOT)));
+        return Map.of("items", items, "scanned", scanned, "complete", cookie == null, "under", base);
     }
 
     private void priorities(HttpExchange ex, Ldap l, Sessions.Session s, String setDn) throws IOException, NamingException {
