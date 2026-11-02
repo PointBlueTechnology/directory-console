@@ -175,6 +175,23 @@ public final class LivePkiStep {
                             + " reason=" + r.body().get("reason") + (r.status() == 200 ? " governing=" + Json.asMap(Json.asMap(r.body().get("policy")).get("governing")).get("name") : " " + r.body()));
                     }
                 }
+                // NMAS's check of a password read from a file, then of an ASCII base with each of its other characters
+                // added alone, to find which one a policy or eDirectory refuses; nothing is set, and no value is printed
+                case "pw-try" -> {
+                    String g = guid(t, h, args[3]);
+                    String value = Files.readString(Path.of(args[4]), java.nio.charset.StandardCharsets.UTF_8).strip();
+                    Map<String, String> candidates = new java.util.LinkedHashMap<>();
+                    candidates.put("the whole value", value);
+                    String base = "Abcdef12";
+                    candidates.put("ASCII base", base);
+                    value.codePoints().filter(cp -> !Character.isLetterOrDigit(cp) || cp > 0x7f).distinct().forEach(cp ->
+                        candidates.put(String.format("base + U+%04X", cp), base + Character.toString(cp)));
+                    for (Map.Entry<String, String> c : candidates.entrySet()) {
+                        LiveSetupCheck.Reply r = call("POST", t + "/security/objects/" + g + "/password-check", Map.of("password", c.getValue()), h);
+                        System.out.println(c.getKey() + ": [" + r.status() + "] passes=" + r.body().get("passes") + " code=" + r.body().get("code")
+                            + " reason=" + r.body().get("reason"));
+                    }
+                }
                 // a throwaway policy with strict rules, assigned to the test OU only: one candidate per rule broken, then removed
                 case "pw-rules" -> {
                     String ou = guid(t, h, args[3]);
@@ -505,6 +522,17 @@ public final class LivePkiStep {
                     Map.of("name", args[4], "displayName", args[4], "value", java.util.UUID.randomUUID().toString()), h));
                 case "job-pw-list" -> show(call("GET", t + "/idm/jobs/" + guid(t, h, args[3]) + "/passwords", null, h));
                 case "job-pw-remove" -> show(call("DELETE", t + "/idm/jobs/" + guid(t, h, args[3]) + "/passwords", Map.of("name", args[4]), h));
+                // a driver's authentication password, read from a file (UTF-8, one trailing newline dropped) and never printed
+                case "app-pw-set" -> {
+                    String value = Files.readString(Path.of(args[4]), java.nio.charset.StandardCharsets.UTF_8);
+                    show(call("POST", t + "/idm/drivers/" + guid(t, h, args[3]) + "/passwords",
+                        Map.of("kind", "app", "value", value.endsWith("\n") ? value.substring(0, value.length() - 1) : value), h));
+                }
+                case "app-pw-clear" -> show(call("DELETE", t + "/idm/drivers/" + guid(t, h, args[3]) + "/passwords", Map.of("kind", "app"), h));
+                case "driver-pw-list" -> show(call("GET", t + "/idm/drivers/" + guid(t, h, args[3]) + "/passwords", null, h));
+                case "driver-status" -> show(call("GET", t + "/idm/drivers/" + guid(t, h, args[3]), null, h));
+                case "driver-start-option" -> show(call("PUT", t + "/idm/drivers/" + guid(t, h, args[3]) + "/start-option", Map.of("option", args[4]), h));
+                case "driver-start", "driver-stop" -> show(call("POST", t + "/idm/drivers/" + guid(t, h, args[3]) + "/" + op.substring(7), Map.of(), h));
                 // a job's parameter and scope changed, at the version just read (args[4]: a container for the scope)
                 case "job-edit" -> {
                     String g = guid(t, h, args[3]);
