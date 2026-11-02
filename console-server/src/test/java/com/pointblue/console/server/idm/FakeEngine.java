@@ -247,6 +247,25 @@ public final class FakeEngine implements Operate.Engine {
         named.getOrDefault(key(dn), new ArrayList<>()).remove(name);
     }
 
+    /** Whether a clear-text authentication password is there for the next set or clear to repair. */
+    public boolean clearTextAppPassword;
+
+    @Override
+    public boolean setAppPassword(String dn, char[] value) {
+        actions.add("app-set " + dn);
+        boolean was = clearTextAppPassword;
+        clearTextAppPassword = false;
+        return was;
+    }
+
+    @Override
+    public boolean clearAppPassword(String dn) {
+        actions.add("app-clear " + dn);
+        boolean was = clearTextAppPassword;
+        clearTextAppPassword = false;
+        return was;
+    }
+
     @Override
     public void setRemoteLoaderPassword(String dn, char[] value) {
         actions.add("remote-loader-set " + dn);

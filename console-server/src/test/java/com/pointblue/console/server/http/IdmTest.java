@@ -145,6 +145,12 @@ public class IdmTest {
         assertEquals(204, call("POST", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/passwords",
             Map.of("kind", "remote-loader", "value", "rl-S3cret"), h).status());
         assertEquals(400, call("POST", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/passwords", Map.of("kind", "bogus", "value", "x"), h).status());
+        var app = call("POST", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/passwords", Map.of("kind", "app", "value", "app-S3cret"), h);
+        assertEquals(200, app.status());
+        assertEquals(false, app.body().get("repaired"));
+        engine.clearTextAppPassword = true;
+        assertEquals("a clear-text value the engine cannot read is deleted first, and the reply says so", true,
+            call("DELETE", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/passwords", Map.of("kind", "app"), h).body().get("repaired"));
         String auditText;
         try (var files = Files.list(dataPath.resolve("audit"))) {
             StringBuilder b = new StringBuilder();
@@ -154,7 +160,9 @@ public class IdmTest {
             auditText = b.toString();
         }
         assertTrue(auditText.contains("idm.driver.start") && auditText.contains("idm.password.set"));
-        assertFalse("no secret reaches the audit log", auditText.contains("S3cret-named!") || auditText.contains("rl-S3cret"));
+        assertTrue(auditText.contains("idm.password.remove") && auditText.contains("was deleted first"));
+        assertTrue(engine.actions.contains("app-set cn=LDAP\\, primary,cn=Driver Set,o=system"));
+        assertFalse("no secret reaches the audit log", auditText.contains("S3cret-named!") || auditText.contains("rl-S3cret") || auditText.contains("app-S3cret"));
 
         // a production directory wants its name typed
         server.config.update(server.config.version(), "test", "production", doc ->

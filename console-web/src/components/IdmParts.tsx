@@ -12,7 +12,7 @@ import { ProblemAlert } from './Problem';
 import { useAreYouSure, useConfirmed } from './Confirm';
 import { JobDetailsModal } from './JobDetails';
 import { NewJobModal } from './NewJob';
-import { explain } from '../help/glossary';
+import { type Term, explain } from '../help/glossary';
 import { Hint } from '../help/Help';
 
 /** A driver's state as a coloured label. */
@@ -94,10 +94,19 @@ export function JobsTable({ api, load, owner }: { api: Idm; load: () => Promise<
 }
 
 const KIND_LABEL: Record<PasswordKind, string> = {
-  named: 'Named password', 'remote-loader': 'Remote Loader password', key: 'Mutual authentication key password', keystore: 'Mutual authentication keystore password',
+  named: 'Named password', app: 'Authentication password', 'remote-loader': 'Remote Loader password', key: 'Mutual authentication key password', keystore: 'Mutual authentication keystore password',
 };
 
-/** Named passwords (and, on a driver, the Remote Loader and mutual-authentication passwords): set or remove, never shown. */
+/** A driver's own passwords, beside its named ones. */
+type DriverKind = Exclude<PasswordKind, 'named'>;
+const DRIVER_KINDS: DriverKind[] = ['app', 'remote-loader', 'key', 'keystore'];
+
+const HINT: Record<DriverKind, Term> = { app: 'appPassword', 'remote-loader': 'remoteLoaderPassword', key: 'mutualAuthKey', keystore: 'mutualAuthKey' };
+
+/** What a set or clear says when an unreadable clear-text authentication password had to be deleted first. */
+const REPAIRED = ' The value there was clear text the engine could not read (written directly over LDAP), so it was deleted first.';
+
+/** Named passwords (and, on a driver, its authentication, Remote Loader and mutual-authentication passwords): set or remove, never shown. */
 export function PasswordsPanel({ api, kind, guid }: { api: Idm; kind: 'drivers' | 'driversets'; guid: string }) {
   const level = useHeading();
   const { can } = useSession();
@@ -114,8 +123,8 @@ export function PasswordsPanel({ api, kind, guid }: { api: Idm; kind: 'drivers' 
   const remove = async (k: PasswordKind, name?: string) => {
     setError(null);
     try {
-      await run((c) => api.removePassword(kind, guid, { kind: k, name }, c));
-      setNotice(name ? `Removed ${name}.` : `${KIND_LABEL[k]} cleared.`);
+      const repaired = await run((c) => api.removePassword(kind, guid, { kind: k, name }, c));
+      setNotice((name ? `Removed ${name}.` : `${KIND_LABEL[k]} cleared.`) + (repaired ? REPAIRED : ''));
       refresh();
     } catch (e) {
       setError(e);
@@ -129,8 +138,8 @@ export function PasswordsPanel({ api, kind, guid }: { api: Idm; kind: 'drivers' 
         <Toolbar>
           <ToolbarContent>
             <ToolbarItem><Button variant="secondary" icon={<PlusIcon />} onClick={() => setSetting('named')}>Set a named password</Button></ToolbarItem>
-            {kind === 'drivers' && (['remote-loader', 'key', 'keystore'] as PasswordKind[]).map((k) => (
-              <ToolbarItem key={k}><Hint text={explain(k === 'remote-loader' ? 'remoteLoaderPassword' : 'mutualAuthKey')}><Button variant="link" onClick={() => setSetting(k)}>Set the {KIND_LABEL[k].toLowerCase()}</Button></Hint></ToolbarItem>
+            {kind === 'drivers' && DRIVER_KINDS.map((k) => (
+              <ToolbarItem key={k}><Hint text={explain(HINT[k])}><Button variant="link" onClick={() => setSetting(k)}>Set the {KIND_LABEL[k].toLowerCase()}</Button></Hint></ToolbarItem>
             ))}
           </ToolbarContent>
         </Toolbar>
@@ -153,7 +162,7 @@ export function PasswordsPanel({ api, kind, guid }: { api: Idm; kind: 'drivers' 
       )}
       {operator && kind === 'drivers' && (
         <p className="dc-tab-body">
-          {(['remote-loader', 'key', 'keystore'] as PasswordKind[]).map((k) => (
+          {DRIVER_KINDS.map((k) => (
             <Button key={k} variant="link" isInline isDanger onClick={() => remove(k)} className="dc-gap-right">Clear the {KIND_LABEL[k].toLowerCase()}</Button>
           ))}
         </p>
@@ -161,9 +170,9 @@ export function PasswordsPanel({ api, kind, guid }: { api: Idm; kind: 'drivers' 
       {setting && (
         <SetPasswordModal kindLabel={KIND_LABEL[setting]} named={setting === 'named'} onClose={() => setSetting(null)}
           onSave={async (name, value) => {
-            await run((c) => api.setPassword(kind, guid, { kind: setting, name: setting === 'named' ? name : undefined, value }, c));
+            const repaired = await run((c) => api.setPassword(kind, guid, { kind: setting, name: setting === 'named' ? name : undefined, value }, c));
             setSetting(null);
-            setNotice(`${setting === 'named' ? name : KIND_LABEL[setting]} set.`);
+            setNotice(`${setting === 'named' ? name : KIND_LABEL[setting]} set.${repaired ? REPAIRED : ''}`);
             refresh();
           }} />
       )}

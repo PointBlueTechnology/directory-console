@@ -628,7 +628,8 @@ export interface JobDefinition extends Identity {
   scope: { raw: string; dn?: string; scope?: string | null }[];
 }
 
-export type PasswordKind = 'named' | 'remote-loader' | 'key' | 'keystore';
+/** 'app': the driver's authentication password, the one its shim signs in to the connected system with. */
+export type PasswordKind = 'named' | 'app' | 'remote-loader' | 'key' | 'keystore';
 
 /** Trace settings. A driver has level, file, name, encoding and sizeLimitKb, and its driver set's beside them; a driver set has level, xslLevel, javaDebugPort, file, encoding and sizeLimitKb. */
 export interface TraceSettings {
@@ -732,10 +733,13 @@ export function idm(id: string, server?: string) {
     setJobPassword: (guid: string, body: { name: string; displayName?: string; value: string }, confirm?: string) =>
       request<void>('POST', at(`${base}/jobs/${guidPath(guid)}/passwords`), body, h(confirm)),
     passwords: (kind: 'drivers' | 'driversets', guid: string) => get<{ named: string[] }>(`/${kind}/${guidPath(guid)}/passwords`),
+    /** Resolves true when the engine could not read the authentication password there, so it was deleted first. */
     setPassword: (kind: 'drivers' | 'driversets', guid: string, body: { kind: PasswordKind; name?: string; displayName?: string; value: string }, confirm?: string) =>
-      request<void>('POST', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm)),
+      request<{ repaired?: boolean } | undefined>('POST', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm))
+        .then((r) => r.data?.repaired === true),
     removePassword: (kind: 'drivers' | 'driversets', guid: string, body: { kind: PasswordKind; name?: string }, confirm?: string) =>
-      request<void>('DELETE', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm)),
+      request<{ repaired?: boolean } | undefined>('DELETE', at(`${base}/${kind}/${guidPath(guid)}/passwords`), body, h(confirm))
+        .then((r) => r.data?.repaired === true),
     /** Trace settings: a driver's (null: the driver set's applies) with the driver set's beside them, or a driver set's. */
     trace: (kind: 'drivers' | 'driversets', guid: string) => request<TraceSettings>('GET', `${base}/${kind}/${guidPath(guid)}/trace`).then((r) => r.data),
     /** Each named setting: a value, or null to remove it (a driver then uses the driver set's). */

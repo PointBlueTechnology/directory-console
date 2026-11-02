@@ -62,7 +62,7 @@ import javax.naming.directory.SearchControls;
 final class Idm {
 
     private static final int WAIT_SECONDS = 30;
-    private static final List<String> KINDS = List.of("named", "remote-loader", "key", "keystore");
+    private static final List<String> KINDS = List.of("named", "app", "remote-loader", "key", "keystore");
 
     private final Server server;
     private final Associations associations;
@@ -749,9 +749,11 @@ final class Idm {
         char[] value = Http.string(b, "value", true).toCharArray();
         confirmed(d, confirm);
         String name = Http.string(b, "name", kind.equals("named"));
+        boolean repaired = false;
         try {
             switch (kind) {
                 case "named" -> engine.setNamedPassword(t.dn(), name, b.get("displayName") == null ? name : Http.string(b, "displayName", true), value);
+                case "app" -> repaired = engine.setAppPassword(t.dn(), value);
                 case "remote-loader" -> engine.setRemoteLoaderPassword(t.dn(), value);
                 case "key" -> engine.setMutualAuthKeyPassword(t.dn(), value);
                 default -> engine.setMutualAuthKeystorePassword(t.dn(), value);
@@ -759,9 +761,8 @@ final class Idm {
         } finally {
             java.util.Arrays.fill(value, '\0');
         }
-        server.audit.log(Server.who(s), "idm.password.set", guid,
-            Map.of("dn", t.dn(), "kind", kind, "name", name == null ? "" : name), "ok");
-        Http.json(ex, 204, Map.of());
+        audit(s, "idm.password.set", guid, t, kind, name, repaired);
+        reply(ex, kind, repaired);
     }
 
     private void removePassword(HttpExchange ex, Sessions.Session s, DirectoryConfig d, Operate.Engine engine, Target t, String guid, String confirm, boolean job)
@@ -770,15 +771,37 @@ final class Idm {
         String kind = kind(b, job);
         confirmed(d, confirm);
         String name = Http.string(b, "name", kind.equals("named"));
+        boolean repaired = false;
         switch (kind) {
             case "named" -> engine.removeNamedPassword(t.dn(), name);
+            case "app" -> repaired = engine.clearAppPassword(t.dn());
             case "remote-loader" -> engine.clearRemoteLoaderPassword(t.dn());
             case "key" -> engine.clearMutualAuthKeyPassword(t.dn());
             default -> engine.clearMutualAuthKeystorePassword(t.dn());
         }
-        server.audit.log(Server.who(s), "idm.password.remove", guid,
-            Map.of("dn", t.dn(), "kind", kind, "name", name == null ? "" : name), "ok");
-        Http.json(ex, 204, Map.of());
+        audit(s, "idm.password.remove", guid, t, kind, name, repaired);
+        reply(ex, kind, repaired);
+    }
+
+    /**
+     * The audit line for a password change. {@code repaired}: the engine could not read a clear-text
+     * DirXML-ShimAuthPassword (written by a plain LDAP modify, as DirXMLDev before 0.61.0 did), so it was deleted first.
+     */
+    private void audit(Sessions.Session s, String action, String guid, Target t, String kind, String name, boolean repaired) throws IOException {
+        Map<String, Object> detail = new java.util.LinkedHashMap<>(Map.of("dn", t.dn(), "kind", kind, "name", name == null ? "" : name));
+        if (repaired) {
+            detail.put("repaired", "a clear-text DirXML-ShimAuthPassword the engine could not read was deleted first");
+        }
+        server.audit.log(Server.who(s), action, guid, detail, "ok");
+    }
+
+    /** 204, except for the authentication password: {@code {"repaired"}} says whether an unreadable value was deleted first. */
+    private static void reply(HttpExchange ex, String kind, boolean repaired) throws IOException {
+        if (kind.equals("app")) {
+            Http.json(ex, 200, Map.of("repaired", repaired));
+        } else {
+            Http.json(ex, 204, Map.of());
+        }
     }
 
     private static String kind(Map<String, Object> b, boolean job) {

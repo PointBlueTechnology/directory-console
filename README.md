@@ -94,7 +94,7 @@ docker compose up -d
   - a daily expiry check, with e-mail and signed webhook notices;
   - the console's own certificate from an ACME CA (Let's Encrypt or internal), proven with DNS-01, and renewed automatically.
 - **Identity Manager:**
-  - **driver sets and drivers:** state, start and stop (one at a time or all), start options, trace and log levels, named passwords, read-only properties, statistics and versions;
+  - **driver sets and drivers:** state, start and stop (one at a time or all), start options, trace and log levels, named and authentication passwords, read-only properties, statistics and versions;
   - **jobs:** run, abort, create, edit and delete;
   - **inspection:** the cache inspector, the association inspector, the object inspector, and per-user password synchronization status;
   - **data:** migrate and synchronize, and mapping tables.

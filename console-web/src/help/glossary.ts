@@ -88,6 +88,7 @@ export const GLOSSARY = {
   unprocessed: 'Cached events the driver has not processed yet.',
   traceLevel: '0 to 10: how much the driver writes to its trace. 5 shows password synchronization.',
   resync: 'Sends the driver\'s objects again, optionally only those changed since a date. On a large driver this loads the connected system.',
+  appPassword: 'The password the driver signs in to the connected system with, with the authentication ID in its properties. The engine keeps it encrypted.',
   remoteLoaderPassword: 'The password the engine and the Remote Loader use to trust each other.',
   mutualAuthKey: 'Passwords for the key and keystore used when the engine and the Remote Loader authenticate each other with certificates.',
   subscriber: 'The subscriber channel carries changes from the vault to the connected system.',
