@@ -534,7 +534,13 @@ export interface Versions {
 }
 
 export interface CacheSummary { size?: number | null; unprocessedSize?: number | null; oldest?: string | null; newest?: string | null; counts?: Record<string, number> }
-export interface CacheEvent { position: number; type: string; className: string | null; srcDn: string | null; eventId: string | null; cachedTime: string | null; attributes: string[]; xml: string | null }
+export interface CacheEvent {
+  position: number; type: string; className: string | null; srcDn: string | null; eventId: string | null; cachedTime: string | null; attributes: string[]; xml: string | null;
+  /** Characters XML does not allow were removed from the cached text to read it. */
+  cleaned?: boolean;
+  /** Set when the entry could not be read at all (type "unreadable"): why; its text is in xml. */
+  problem?: string;
+}
 export interface CacheEvents { events: CacheEvent[]; next: number | null }
 
 export interface ChannelStats { lastReset: string | null; groups: Record<string, Record<string, number>> }

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.OutputKeys;
@@ -26,6 +27,10 @@ import org.w3c.dom.Node;
  * <li>The events come from ViewCacheEntries, which answers only for a stopped driver. Its position token is
  *     a byte offset into the cache (336 for a 336-byte cache), so reading one event at a time gives each
  *     event's position.</li>
+ * <li>Cached values can hold characters XML 1.0 does not allow (control characters, raw or as character
+ *     references), which a strict parser refuses: they are removed before parsing and the event says so
+ *     (Identity Console 26.1.2 added the same clean-up). A page that still cannot be read is shown as
+ *     unreadable at its position, with its text, rather than ending the list there.</li>
  * <li>A delete names each event by position and event-id; the event at that position is read again first
  *     and must still have that event-id, then DeleteCacheEntries removes that one event. Several go from
  *     the last to the first, so the earlier positions stay valid.</li>
@@ -34,6 +39,15 @@ import org.w3c.dom.Node;
 final class Cache {
 
     private Cache() {
+    }
+
+    /** What XML 1.0 forbids: control characters other than tab, newline and return, lone surrogates, U+FFFE and U+FFFF, and character references to them. */
+    private static final Pattern NOT_XML = Pattern.compile("[^\\x09\\x0A\\x0D\\x20-\\uD7FF\\uE000-\\uFFFD\\x{10000}-\\x{10FFFF}]"
+        + "|&#(?:0*(?:[0-8]|1[124-9]|2[0-9]|3[01])|[xX]0*(?:[0-8bBcCeEfF]|1[0-9a-fA-F]|[fF]{3}[eEfF]));");
+
+    /** {@code xml} without what XML 1.0 forbids; the same string when there is nothing to remove. */
+    static String clean(String xml) {
+        return xml == null ? null : NOT_XML.matcher(xml).replaceAll("");
     }
 
     /** The driver statistics' cache section, or null when the engine gives none. */
@@ -70,19 +84,27 @@ final class Cache {
         boolean more = true;
         for (int i = 0; i < count; i++) {
             Operate.CachePage page = engine.viewCache(driverDn, pos, 1);
-            List<Element> got = page.empty ? List.of() : events(page.xds);
-            if (got.isEmpty() || page.nextToken <= pos) {
+            if (page.empty || page.nextToken <= pos) {
                 more = false;
                 break;
             }
-            Map<String, Object> e = event(got.get(0));
+            Element root = parse(page.xds);
+            List<Element> got = root == null ? List.of() : events(root);
+            if (root != null && got.isEmpty()) {
+                // read, but no event: the end of the cache
+                more = false;
+                break;
+            }
+            Map<String, Object> e = root == null ? unreadable(page.xds) : event(got.get(0));
+            if (root != null && !clean(page.xds).equals(page.xds)) {
+                e.put("cleaned", true);
+            }
             e.put("position", pos);
             events.add(e);
             pos = page.nextToken;
         }
         if (more) {
-            Operate.CachePage peek = engine.viewCache(driverDn, pos, 1);
-            more = !peek.empty && !events(peek.xds).isEmpty();
+            more = !engine.viewCache(driverDn, pos, 1).empty;
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("events", events);
@@ -100,7 +122,12 @@ final class Cache {
     /** The events of a cache page: the elements of {@code <nds><input>}. */
     static List<Element> events(String xds) {
         Element root = parse(xds);
-        Element input = root == null ? null : child(root, "input");
+        return root == null ? List.of() : events(root);
+    }
+
+    /** The elements of {@code <nds><input>}. */
+    private static List<Element> events(Element root) {
+        Element input = child(root, "input");
         List<Element> out = new ArrayList<>();
         if (input != null) {
             for (Node n = input.getFirstChild(); n != null; n = n.getNextSibling()) {
@@ -110,6 +137,21 @@ final class Cache {
             }
         }
         return out;
+    }
+
+    /** A cache page that is not XML even when cleaned: shown with its text, and no event-id, so it cannot be chosen for delete. */
+    static Map<String, Object> unreadable(String xds) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("type", "unreadable");
+        m.put("className", null);
+        m.put("srcDn", null);
+        m.put("eventId", null);
+        m.put("cachedTime", null);
+        m.put("attributes", List.of());
+        String text = xds == null ? "" : xds;
+        m.put("xml", text.length() > 20000 ? text.substring(0, 20000) + "…" : text);
+        m.put("problem", "the engine returned this cache entry, but it is not XML that can be read");
+        return m;
     }
 
     static Map<String, Object> event(Element e) {
@@ -161,7 +203,7 @@ final class Cache {
             f.setExpandEntityReferences(false);
             javax.xml.parsers.DocumentBuilder b = f.newDocumentBuilder();
             b.setErrorHandler(new org.xml.sax.helpers.DefaultHandler());
-            return b.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8))).getDocumentElement();
+            return b.parse(new ByteArrayInputStream(clean(xml).getBytes(StandardCharsets.UTF_8))).getDocumentElement();
         } catch (Exception x) {
             return null;
         }

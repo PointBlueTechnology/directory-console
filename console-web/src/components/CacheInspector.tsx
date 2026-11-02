@@ -116,7 +116,10 @@ export function CacheInspector({ api, guid, onChanged }: { api: Idm; guid: strin
                       {operator && <Td select={{ rowIndex: i, isSelected: selected.includes(e.position), isDisabled: !e.eventId,
                         onSelect: (_x, on) => setSelected(on ? [...selected, e.position] : selected.filter((p) => p !== e.position)) }} />}
                       <Td expand={{ rowIndex: i, isExpanded: isOpen, onToggle: () => setOpen(isOpen ? open.filter((p) => p !== e.position) : [...open, e.position]) }} />
-                      <Td dataLabel="Event"><Label isCompact>{e.type}</Label></Td>
+                      <Td dataLabel="Event">
+                        <Label isCompact color={e.problem ? 'red' : undefined}>{e.type}</Label>
+                        {e.cleaned && <> <Label isCompact color="orange" title="Characters XML does not allow were removed to read this event">cleaned</Label></>}
+                      </Td>
                       <Td dataLabel="Class">{e.className ?? '—'}</Td>
                       <Td dataLabel="Object" className="dc-mono">{e.srcDn ?? '—'}</Td>
                       <Td dataLabel="Attributes">{e.attributes.length ? e.attributes.join(', ') : <span className="dc-subtle">—</span>}</Td>
@@ -124,7 +127,10 @@ export function CacheInspector({ api, guid, onChanged }: { api: Idm; guid: strin
                     </Tr>
                     {isOpen && (
                       <Tr isExpanded>
-                        <Td colSpan={operator ? 7 : 6}><pre className="dc-mono dc-pre">{e.xml}</pre><div className="dc-subtle dc-mono">{e.eventId}</div></Td>
+                        <Td colSpan={operator ? 7 : 6}>
+                          {e.problem && <p className="dc-subtle">{e.problem}. It cannot be deleted here; the text below is what the engine returned.</p>}
+                          {e.cleaned && <p className="dc-subtle">Characters XML does not allow (control characters) were removed from this event to show it.</p>}
+                          <pre className="dc-mono dc-pre">{e.xml}</pre><div className="dc-subtle dc-mono">{e.eventId}</div></Td>
                       </Tr>
                     )}
                   </Fragment>

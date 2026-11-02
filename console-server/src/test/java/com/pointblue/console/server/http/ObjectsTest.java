@@ -728,6 +728,16 @@ public class ObjectsTest {
         assertEquals(List.of("Smith, John", "viewer"), ((List<?>) members.body().get("items")).stream().map(i -> Json.asMap(i).get("name")).toList());
         assertEquals(false, members.body().get("dynamic"));
 
+        // a group is never its own member, from either side (eDirectory would take it)
+        for (String side : List.of("/members", "/memberships")) {
+            Reply self = call("POST", "/api/v2/trees/acme/objects/" + viewers + side, Map.of("add", List.of(viewers)), h);
+            assertEquals(207, self.status());
+            Map<String, Object> refused = Json.asMap(((List<?>) self.body().get("results")).get(0));
+            assertEquals("refused", refused.get("status"));
+            assertEquals("a group cannot be a member of itself", refused.get("detail"));
+        }
+        assertFalse(String.valueOf(resolve(h, "cn=Viewers,ou=Groups,o=acme").body().get("attributes")).contains("cn=Viewers,ou=Groups,o=acme"));
+
         assertEquals(200, call("POST", "/api/v2/trees/acme/objects/" + viewers + "/members",
             Map.of("remove", List.of(Map.of("dn", "cn=Smith\\, John,ou=Users,o=acme"))), h).status());
         user = Json.asMap(resolve(h, "cn=Smith\\, John,ou=Users,o=acme").body().get("attributes"));

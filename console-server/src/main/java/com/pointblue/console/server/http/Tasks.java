@@ -308,6 +308,12 @@ final class Tasks {
             result.put("detail", "outside your editor scope: " + (s.principal.may(Role.EDITOR, groupDn) ? memberDn : groupDn));
             return result;
         }
+        if (add && Names.same(groupDn, memberDn)) {
+            // eDirectory would take it, and the group would then be its own member and security equivalent
+            result.put("status", "refused");
+            result.put("detail", "a group cannot be a member of itself");
+            return result;
+        }
         Ldap.Entry g = l.read(groupDn, "member", "equivalentToMe");
         Ldap.Entry m = l.read(memberDn, "groupMembership", "securityEquals");
         if (g == null || m == null) {

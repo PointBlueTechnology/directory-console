@@ -755,7 +755,7 @@ export const CONTENT: Record<string, HelpTopic> = {
     title: 'Cache inspector',
     summary: 'The events waiting in this driver\'s cache on this server.',
     sections: [
-      { title: 'Reading events', paragraphs: ['The summary is always shown; the events themselves can be read only while the driver is stopped.'] },
+      { title: 'Reading events', paragraphs: ['The summary is always shown; the events themselves can be read only while the driver is stopped.', 'A cached value can hold characters XML does not allow, such as control characters. They are removed so the event can be shown, and the event is marked cleaned. An entry that still cannot be read is listed as unreadable with the text the engine returned; it cannot be deleted here.'] },
       { title: 'Deleting', caution: true, paragraphs: ['Deleted events, and a cleared cache, are never sent to the connected system.'] },
     ],
   },
