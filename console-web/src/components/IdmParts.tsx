@@ -11,6 +11,7 @@ import { useHeading } from '../heading';
 import { ProblemAlert } from './Problem';
 import { useAreYouSure, useConfirmed } from './Confirm';
 import { JobDetailsModal } from './JobDetails';
+import { outsideBmp } from '../passwordgen';
 import { NewJobModal } from './NewJob';
 import { type Term, explain } from '../help/glossary';
 import { Hint } from '../help/Help';
@@ -210,7 +211,15 @@ function SetPasswordModal({ kindLabel, named, onClose, onSave }: { kindLabel: st
           )}
           <FormGroup label="Value" fieldId="np-value" isRequired>
             <TextInput id="np-value" type="password" autoComplete="new-password" value={value} onChange={(_e, v) => setValue(v)} autoFocus={!named} />
-            <FormHelperText><HelperText><HelperTextItem>Kept exactly as typed: spaces at either end and any character, accented or not.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText>
+              <HelperTextItem>Kept exactly as typed: spaces at either end and any character, accented or not.</HelperTextItem>
+              {outsideBmp(value) && (
+                <HelperTextItem variant="warning">
+                  This has an emoji or another character eDirectory refuses in passwords. If the account it signs in as is in
+                  eDirectory, that account cannot have this password and the sign-in will fail.
+                </HelperTextItem>
+              )}
+            </HelperText></FormHelperText>
           </FormGroup>
           <ProblemAlert error={error} />
         </Form>

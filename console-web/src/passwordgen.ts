@@ -30,6 +30,14 @@ export function cryptoRandom(n: number): number {
 
 const kindOf = (c: string): Kind => (UPPER.includes(c) || /[A-Z]/.test(c) ? 'upper' : LOWER.includes(c) || /[a-z]/.test(c) ? 'lower' : /[0-9]/.test(c) ? 'digit' : 'special');
 
+/**
+ * Whether {@code pw} has a character eDirectory refuses in any password: one outside Unicode's Basic Multilingual
+ * Plane, such as an emoji (NMAS answers -1665, whatever the policy).
+ */
+export function outsideBmp(pw: string): boolean {
+  return /[\u{10000}-\u{10FFFF}]/u.test(pw);
+}
+
 /** Why {@code pw} breaks the policy's character rules, or null when it keeps them (NMAS still has the last word). */
 export function breaks(pw: string, r: PolicyRules): string | null {
   const count = (k: Kind) => [...pw].filter((c) => kindOf(c) === k).length;

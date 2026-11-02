@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { breaks, contradictions, describeRules, generatePassword } from './passwordgen';
+import { breaks, contradictions, describeRules, generatePassword, outsideBmp } from './passwordgen';
+
+describe('outsideBmp', () => {
+  it('finds emoji and other characters eDirectory refuses, not accents or other scripts', () => {
+    expect(outsideBmp('Pä$sw ørd–Ωλ✓"\'\\(*)=,+<>;#漢字é!')).toBe(false);
+    expect(outsideBmp('key🔑')).toBe(true);
+    expect(outsideBmp('𝐀bc')).toBe(true);
+    expect(outsideBmp('')).toBe(false);
+  });
+});
 
 describe('generated passwords', () => {
   it('keep the policy\'s rules', () => {
