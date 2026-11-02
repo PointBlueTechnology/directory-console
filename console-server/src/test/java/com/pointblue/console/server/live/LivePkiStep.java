@@ -531,6 +531,20 @@ public final class LivePkiStep {
                 case "app-pw-clear" -> show(call("DELETE", t + "/idm/drivers/" + guid(t, h, args[3]) + "/passwords", Map.of("kind", "app"), h));
                 case "driver-pw-list" -> show(call("GET", t + "/idm/drivers/" + guid(t, h, args[3]) + "/passwords", null, h));
                 case "driver-status" -> show(call("GET", t + "/idm/drivers/" + guid(t, h, args[3]), null, h));
+                // role-based entitlements (args[3]: the driver set's or the policy's DN)
+                case "rbe-list" -> show(call("GET", t + "/idm/driversets/" + guid(t, h, args[3]) + "/rbe", null, h));
+                case "rbe-policy" -> show(call("GET", t + "/idm/rbe/policies/" + guid(t, h, args[3]), null, h));
+                case "rbe-members" -> show(call("GET", t + "/idm/rbe/policies/" + guid(t, h, args[3]) + "/members", null, h));
+                // the policies in reverse order, from the version just read
+                case "rbe-reverse" -> {
+                    LiveSetupCheck.Reply list = call("GET", t + "/idm/driversets/" + guid(t, h, args[3]) + "/rbe", null, h);
+                    List<Object> order = new ArrayList<>();
+                    for (Object o : (List<?>) list.body().get("policies")) {
+                        order.add(0, Json.asMap(o).get("guid"));
+                    }
+                    show(call("PUT", t + "/idm/driversets/" + guid(t, h, args[3]) + "/rbe/priorities", Map.of("version", list.body().get("version"), "order", order), h));
+                }
+                case "rbe-delete" -> show(call("DELETE", t + "/idm/rbe/policies/" + guid(t, h, args[3]), Map.of("name", args[4]), h));
                 case "driver-start-option" -> show(call("PUT", t + "/idm/drivers/" + guid(t, h, args[3]) + "/start-option", Map.of("option", args[4]), h));
                 case "driver-start", "driver-stop" -> show(call("POST", t + "/idm/drivers/" + guid(t, h, args[3]) + "/" + op.substring(7), Map.of(), h));
                 // a job's parameter and scope changed, at the version just read (args[4]: a container for the scope)
