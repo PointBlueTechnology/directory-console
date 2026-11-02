@@ -45,7 +45,8 @@ import org.w3c.dom.Node;
  * PUT    /api/v2/trees/{tree}/idm/driversets/{guid}/rbe/priorities   {"version", "order": [policy guid…]}
  * GET    /api/v2/trees/{tree}/idm/rbe/policies/{guid}                one policy
  * GET    /api/v2/trees/{tree}/idm/rbe/policies/{guid}/members        its members, as the directory computes them
- * DELETE /api/v2/trees/{tree}/idm/rbe/policies/{guid}                {"name"}: the policy's name, typed
+ * DELETE /api/v2/trees/{tree}/idm/rbe/policies/{guid}                {"name", "force"?}: the policy's name, typed; refused (409)
+ *                                                                    while it has members, unless forced (its grants then stay)
  * </pre>
  * Creating and changing policies, and the entitlements they can grant: {@link RbeEdit}.
  */
@@ -92,6 +93,7 @@ final class Rbe {
                 case "GET " -> Http.json(ex, 200, detail(l, p));
                 case "GET members" -> Http.json(ex, 200, members(l, p));
                 case "PUT " -> edit.change(ex, l, s, policyGuid, p);
+                case "POST empty" -> edit.empty(ex, l, s, policyGuid, p);
                 case "DELETE " -> delete(ex, l, s, policyGuid, p);
                 default -> throw new Http.Problem(404, "not-found", method + " rbe/policies/" + rest);
             }
@@ -371,10 +373,17 @@ final class Rbe {
             throw new Http.Problem(403, "out-of-scope", "deleting an entitlement policy needs an operator role that reaches " + p.dn());
         }
         String name = String.valueOf(Names.identity(p.dn()).get("name"));
-        if (!name.equals(Http.string(Http.body(ex), "name", true).trim())) {
+        Map<String, Object> body = Http.body(ex);
+        if (!name.equals(Http.string(body, "name", true).trim())) {
             throw new Http.Problem(400, "confirm-name", "type the policy's name, " + name + ", to delete it");
         }
-        Map<String, Object> detail = Map.of("dn", p.dn());
+        boolean force = Boolean.TRUE.equals(body.get("force"));
+        if (!force && !RbeEdit.emptied(l.read(p.dn(), "member", "memberQueryURL"))) {
+            // the shim ignores a deleted policy: whatever it granted would stay
+            throw new Http.Problem(409, "not-emptied", name + " still has members. Remove everyone first, and restart the Entitlements Service "
+                + "driver so it revokes what the policy granted; deleting it now would leave those grants in place.");
+        }
+        Map<String, Object> detail = Map.of("dn", p.dn(), "forced", force);
         try {
             l.delete(p.dn());
         } catch (NamingException x) {
@@ -394,11 +403,16 @@ final class Rbe {
         Http.json(ex, 200, Map.of("deleted", p.dn()));
     }
 
-    /** {@code ldap:///<base>??<scope>?<filter>?x-sparse} as its parts, or null when there is no query. */
+    /** {@code ldap:///<base>??<scope>?<filter>?x-sparse} as its parts, or null when there is no query (or {@link RbeEdit#NOBODY}'s). */
     static Map<String, Object> query(String url) {
         if (url == null || url.isBlank()) {
             return null;
         }
+        Map<String, Object> parsed = parse(url);
+        return "base".equals(parsed.get("scope")) && RbeEdit.NOBODY.equals(parsed.get("filter")) ? null : parsed;
+    }
+
+    private static Map<String, Object> parse(String url) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("url", url);
         String rest = url.replaceFirst("(?i)^ldap://[^/]*/", "");

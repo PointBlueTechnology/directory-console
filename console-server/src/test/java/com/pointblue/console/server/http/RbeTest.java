@@ -35,8 +35,8 @@ public class RbeTest {
     @Test
     public void theQueryUrlEncodesWhatRfc4516Reserves() {
         assertEquals("ldap:///ou=Users,o=acme??sub?(title=clerk)?x-sparse", RbeEdit.queryUrl("ou=Users,o=acme", "sub", "(title=clerk)"));
-        assertEquals("a ? and % are encoded, as is what is not printable ASCII",
-            "ldap:///ou=R%3FD,o=acme??one?(cn=100%25%20%C3%A9*)?x-sparse", RbeEdit.queryUrl("ou=R?D,o=acme", "one", "(cn=100% é*)"));
+        assertEquals("a ? and % are encoded, as is what is not ASCII; spaces stay",
+            "ldap:///ou=R%3FD,o=acme??one?(cn=100%25 %C3%A9*)?x-sparse", RbeEdit.queryUrl("ou=R?D,o=acme", "one", "(cn=100% é*)"));
         Map<String, Object> back = Rbe.query(RbeEdit.queryUrl("ou=R?D,o=acme", "one", "(cn=100% é+*)"));
         assertEquals("ou=R?D,o=acme", back.get("base"));
         assertEquals("(cn=100% é+*)", back.get("filter"));

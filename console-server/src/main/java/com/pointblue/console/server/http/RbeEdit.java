@@ -38,6 +38,9 @@ import org.w3c.dom.Node;
  *     unless another, or none, is chosen.</li>
  * <li>{@code DirXML-EntitlementRef} {@code <entitlement dn>#0#<ref/>}, or one value per granted value
  *     {@code …#0#<ref><param>value</param></ref>}; and Designer's display copy, {@code DirXML-SPDisplayEntitlements}.</li>
+ * <li>Every policy has a query: the Entitlements Service shim reads each policy's on every evaluation, and one
+ *     without makes it fail for everyone (-603, a lab tree). A policy of static members only gets {@link #NOBODY},
+ *     which matches nothing, and reads back as having no query.</li>
  * <li>{@code DirXML-SPPriority} is a typed name, so a value must name a policy that exists (a lab tree, -613):
  *     a new policy is written first, then the priorities, with it last.</li>
  * </ul>
@@ -47,13 +50,18 @@ import org.w3c.dom.Node;
  * POST /api/v2/trees/{tree}/idm/driversets/{guid}/rbe/test           {"base", "scope", "filter"}: who the query finds now
  * POST /api/v2/trees/{tree}/idm/driversets/{guid}/rbe/policies       {"name", …a policy}: a new policy, lowest priority
  * PUT  /api/v2/trees/{tree}/idm/rbe/policies/{guid}                  {"version", …a policy}: the policy changed
+ * POST /api/v2/trees/{tree}/idm/rbe/policies/{guid}/empty            everyone removed, its grants kept so the shim revokes them
  * </pre>
+ * The shim ignores a policy's deletion (a lab tree: "unhandled command element: delete"), so what it granted would
+ * stay: a policy is emptied first (the shim revokes as members leave, once it restarts), then deleted.
  * A policy: {@code {"description", "membership": {"base", "scope", "filter"} | null, "identity": dn | null,
  * "members": [dn], "excluded": [dn], "grants": [{"entitlement": dn, "values": [text]}], "criteria": xml | null}}.
  */
 final class RbeEdit {
 
     static final String CONTAINER = "Entitlement Policies";
+    /** The filter of a static-only policy's query: it matches nothing, searched on the container alone. */
+    static final String NOBODY = "(!(objectClass=*))";
     static final Set<String> SCOPES = Set.of("base", "one", "sub");
     /** Every attribute a policy's editor writes, so a change can clear what is left out. */
     static final String[] EDITED = {"description", "memberQueryURL", "dgIdentity", "member", "excludedMember", "DirXML-EntitlementRef",
@@ -178,12 +186,15 @@ final class RbeEdit {
         return "ldap:///" + urlPart(base) + "??" + scope + "?" + urlPart(filter) + "?x-sparse";
     }
 
-    /** RFC 4516: "%" and "?" always, and what is not printable ASCII (as UTF-8); the rest stays as typed. */
+    /**
+     * "%" and "?" (which would end the part), control characters, and what is not ASCII (as UTF-8) are percent-encoded;
+     * the rest, spaces included, stays as typed, as eDirectory keeps a query it is given and the editors read it.
+     */
     static String urlPart(String s) {
         StringBuilder b = new StringBuilder();
         for (byte x : s.getBytes(StandardCharsets.UTF_8)) {
             int c = x & 0xff;
-            if (c == '%' || c == '?' || c < 0x21 || c > 0x7e) {
+            if (c == '%' || c == '?' || c < 0x20 || c > 0x7e) {
                 b.append('%').append(String.format("%02X", c));
             } else {
                 b.append((char) c);
@@ -241,10 +252,10 @@ final class RbeEdit {
     }
 
     /** Every edited attribute's values for a policy (an empty list: the attribute is not there). */
-    static Map<String, List<Object>> attributes(Spec p, Map<String, Definition> defs) {
+    static Map<String, List<Object>> attributes(Spec p, Map<String, Definition> defs, String containerDn) {
         Map<String, List<Object>> m = new LinkedHashMap<>();
         m.put("description", p.description() == null ? List.of() : List.of(p.description()));
-        m.put("memberQueryURL", p.filter() == null ? List.of() : List.of(queryUrl(p.base(), p.scope(), p.filter())));
+        m.put("memberQueryURL", List.of(p.filter() == null ? queryUrl(containerDn, "base", NOBODY) : queryUrl(p.base(), p.scope(), p.filter())));
         m.put("dgIdentity", p.identity() == null ? List.of() : List.of(p.identity()));
         m.put("member", new ArrayList<>(p.members()));
         m.put("excludedMember", new ArrayList<>(p.excluded()));
@@ -369,7 +380,7 @@ final class RbeEdit {
             Map<String, List<Object>> attrs = new LinkedHashMap<>();
             attrs.put("objectClass", List.of("Top", Rbe.OC_POLICY));
             attrs.put("cn", List.of(name));
-            attributes(p, defs).forEach((k, v) -> {
+            attributes(p, defs, containerDn).forEach((k, v) -> {
                 if (!v.isEmpty()) {
                     attrs.put(k, v);
                 }
@@ -417,7 +428,7 @@ final class RbeEdit {
         Map<String, Definition> defs = definitions(l, setDn);
         check(l, p, defs);
         List<ModificationItem> mods = new ArrayList<>();
-        attributes(p, defs).forEach((k, v) -> {
+        attributes(p, defs, Names.parent(policy.dn())).forEach((k, v) -> {
             boolean had = stored != null && !stored.attributes().getOrDefault(k.toLowerCase(Locale.ROOT), List.of()).isEmpty();
             if (!v.isEmpty()) {
                 BasicAttribute a = new BasicAttribute(k);
@@ -438,6 +449,39 @@ final class RbeEdit {
         Http.json(ex, 200, Map.of("guid", guid, "dn", policy.dn()));
     }
 
+    /** Everyone removed: no static members or exclusions, a query that matches nobody; the grants stay for the revocations. */
+    void empty(HttpExchange ex, Ldap l, Sessions.Session s, String guid, Ldap.Entry policy) throws IOException, NamingException {
+        if (!s.principal.may(Role.OPERATOR, policy.dn())) {
+            throw new Http.Problem(403, "out-of-scope", "emptying an entitlement policy needs an operator role that reaches " + policy.dn());
+        }
+        Ldap.Entry stored = l.read(policy.dn(), EDITED);
+        List<ModificationItem> mods = new ArrayList<>();
+        for (String a : new String[] {"member", "excludedMember", "dgIdentity", "DirXML-SPFilterXML"}) {
+            if (stored != null && !stored.attributes().getOrDefault(a.toLowerCase(Locale.ROOT), List.of()).isEmpty()) {
+                mods.add(new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute(a)));
+            }
+        }
+        mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute("memberQueryURL", queryUrl(Names.parent(policy.dn()), "base", NOBODY))));
+        Map<String, Object> detail = Map.of("dn", policy.dn());
+        try {
+            l.modify(policy.dn(), mods);
+        } catch (NamingException x) {
+            server.objects.audit(s, "idm.rbe.empty", guid, detail, Ldap.Failure.of(x));
+            throw x;
+        }
+        server.objects.audit(s, "idm.rbe.empty", guid, detail, null);
+        Http.json(ex, 200, Map.of("guid", guid, "dn", policy.dn()));
+    }
+
+    /** Whether a policy has nobody left: no static members, and no query or the one that matches nobody. */
+    static boolean emptied(Ldap.Entry stored) {
+        if (stored == null) {
+            return true;
+        }
+        boolean members = !stored.attributes().getOrDefault("member", List.of()).isEmpty();
+        return !members && Rbe.query(stored.first("memberQueryURL")) == null;
+    }
+
     /** What the editor needs beyond the policy's summary: the stored static members, the grants' values, and the version. */
     static Map<String, Object> editable(Ldap.Entry stored) {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -446,6 +490,7 @@ final class RbeEdit {
             members.add(text(o));
         }
         m.put("staticMembers", members);
+        m.put("emptied", emptied(stored));
         m.put("version", version(stored));
         return m;
     }

@@ -566,6 +566,8 @@ export interface RbePolicyDetail extends RbePolicy {
   criteria: string | null;
   /** The members the policy stores (static), without those its query adds. */
   staticMembers: string[];
+  /** Nobody left: no static members and no query. Only then is it deleted without leaving its grants in place. */
+  emptied: boolean;
   /** Each granted entitlement once, with the values it grants. */
   grantValues: RbeGrantSpec[];
   /** The version an edit is made from: a save is refused when the policy changed meanwhile. */
@@ -794,9 +796,11 @@ export function idm(id: string, server?: string) {
     /** A policy changed, from the version read; what is left out is cleared. */
     rbeChange: (guid: string, body: RbePolicySpec & { version: string }, confirm?: string) =>
       request<{ guid: string; dn: string }>('PUT', `${base}/rbe/policies/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
-    /** Delete a policy; {@code name} is its name, typed. The others keep their order. */
-    deleteRbePolicy: (guid: string, name: string, confirm?: string) =>
-      request<void>('DELETE', `${base}/rbe/policies/${guidPath(guid)}`, { name }, h(confirm)),
+    /** Remove everyone from a policy, keeping its grants, so the Entitlements Service driver revokes them. */
+    rbeEmpty: (guid: string, confirm?: string) => request<unknown>('POST', `${base}/rbe/policies/${guidPath(guid)}/empty`, {}, h(confirm)).then(() => undefined),
+    /** Delete a policy; {@code name} is its name, typed. Refused while it has members unless forced (its grants then stay). */
+    deleteRbePolicy: (guid: string, name: string, confirm?: string, force = false) =>
+      request<void>('DELETE', `${base}/rbe/policies/${guidPath(guid)}`, force ? { name, force } : { name }, h(confirm)),
     /** A job's definition, servers and scope (read over LDAP). */
     /** The job types the chosen server's engine offers for a driver or driver set. */
     jobTypes: (kind: 'drivers' | 'driversets', guid: string) => get<{ server: { dn: string; name: string }; types: JobType[] }>(`/${kind}/${guidPath(guid)}/job-types`),

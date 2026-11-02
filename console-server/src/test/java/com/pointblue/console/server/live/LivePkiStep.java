@@ -545,6 +545,20 @@ public final class LivePkiStep {
                     show(call("PUT", t + "/idm/driversets/" + guid(t, h, args[3]) + "/rbe/priorities", Map.of("version", list.body().get("version"), "order", order), h));
                 }
                 case "rbe-delete" -> show(call("DELETE", t + "/idm/rbe/policies/" + guid(t, h, args[3]), Map.of("name", args[4]), h));
+                case "rbe-empty" -> show(call("POST", t + "/idm/rbe/policies/" + guid(t, h, args[3]) + "/empty", Map.of(), h));
+                // migrate to the application: sync events for objects of a class under a base (args: driver DN, base DN, class)
+                case "migrate-to-app" -> show(call("POST", t + "/idm/drivers/" + guid(t, h, args[3]) + "/migrate/to-app",
+                    Map.of("base", guid(t, h, args[4]), "class", args[5]), h));
+                case "rbe-entitlements" -> show(call("GET", t + "/idm/driversets/" + guid(t, h, args[3]) + "/rbe/entitlements", null, h));
+                // a policy from a JSON file (args[4]): created under the set (args[3]), or changed (args[3]: its DN) from the version just read
+                case "rbe-post" -> show(call("POST", t + "/idm/driversets/" + guid(t, h, args[3]) + "/rbe/policies",
+                    Json.asMap(Json.parse(Files.readString(Path.of(args[4])))), h));
+                case "rbe-put" -> {
+                    String g = guid(t, h, args[3]);
+                    Map<String, Object> body = new HashMap<>(Json.asMap(Json.parse(Files.readString(Path.of(args[4])))));
+                    body.put("version", call("GET", t + "/idm/rbe/policies/" + g, null, h).body().get("version"));
+                    show(call("PUT", t + "/idm/rbe/policies/" + g, body, h));
+                }
                 case "driver-start-option" -> show(call("PUT", t + "/idm/drivers/" + guid(t, h, args[3]) + "/start-option", Map.of("option", args[4]), h));
                 case "driver-start", "driver-stop" -> show(call("POST", t + "/idm/drivers/" + guid(t, h, args[3]) + "/" + op.substring(7), Map.of(), h));
                 // a job's parameter and scope changed, at the version just read (args[4]: a container for the scope)

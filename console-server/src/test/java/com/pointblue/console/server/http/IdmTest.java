@@ -319,6 +319,11 @@ public class IdmTest {
 
         // delete: the name typed; the rest renumbered without a gap
         assertEquals(400, call("DELETE", "/api/v2/trees/acme/idm/rbe/policies/" + managersGuid, Map.of("name", "managers?"), h).status());
+        Reply refused = call("DELETE", "/api/v2/trees/acme/idm/rbe/policies/" + managersGuid, Map.of("name", "Managers"), h);
+        assertEquals("the shim ignores a deleted policy, so one with members is emptied first", 409, refused.status());
+        assertEquals("not-emptied", refused.body().get("title"));
+        assertEquals(200, call("POST", "/api/v2/trees/acme/idm/rbe/policies/" + managersGuid + "/empty", Map.of(), h).status());
+        assertEquals(true, call("GET", "/api/v2/trees/acme/idm/rbe/policies/" + managersGuid, null, h).body().get("emptied"));
         assertEquals(200, call("DELETE", "/api/v2/trees/acme/idm/rbe/policies/" + managersGuid, Map.of("name", "Managers"), h).status());
         assertEquals(List.of("cn=Staff," + c + "#0#0"), List.of(edir.entry(c).getAttributeValues("DirXML-SPPriority")));
         String audit;
@@ -388,6 +393,9 @@ public class IdmTest {
         // a second one goes last; grants must fit their entitlement
         assertEquals(201, call("POST", rbe + "/policies", Map.of("name", "Two", "members", List.of("cn=p1,ou=People,o=system")), h).status());
         assertEquals(List.of("cn=Staff," + c + "#0#0", "cn=Two," + c + "#1#0"), List.of(edir.entry(c).getAttributeValues("DirXML-SPPriority")));
+        assertEquals("static members only: a query that matches nobody, as the shim needs every policy to have one",
+            "ldap:///" + c + "??base?(!(objectClass=*))?x-sparse", edir.entry("cn=Two," + c).getAttributeValue("memberQueryURL"));
+        assertNull("and it reads back as no query", Json.asMap(((List<?>) call("GET", rbe, null, h).body().get("policies")).get(1)).get("membership"));
         assertEquals("not in the list", 400, call("POST", rbe + "/policies", Map.of("name", "Bad", "grants",
             List.of(Map.of("entitlement", "cn=Group,cn=AD,cn=Driver Set,o=system", "values", List.of("g9")))), h).status());
         assertEquals("single-valued", 400, call("POST", rbe + "/policies", Map.of("name", "Bad", "grants",
@@ -427,5 +435,6 @@ public class IdmTest {
         }
         assertTrue(audit.contains("idm.rbe.create"));
         assertTrue(audit.contains("idm.rbe.change"));
+        assertEquals("forced: deleted though it has a query", 200, call("DELETE", "/api/v2/trees/acme/idm/rbe/policies/" + guid, Map.of("name", "Staff", "force", true), h).status());
     }
 }

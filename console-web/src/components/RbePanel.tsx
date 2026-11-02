@@ -69,7 +69,7 @@ export function RbePanel({ api, setGuid, drivers, onDriversChanged }: {
     run((c) => api.lifecycle(d.guid, 'restart', c))
       .then((r) => {
         setPending(false);
-        setNotice(r.error ? `${d.name}: ${r.error}` : `${d.name} restarted: it has read the policies and is evaluating membership again.`);
+        setNotice(r.error ? `${d.name}: ${r.error}` : `${d.name} restarted and has read the policies.`);
         onDriversChanged();
       }, setError)
       .finally(() => setBusy(false));
@@ -95,9 +95,9 @@ export function RbePanel({ api, setGuid, drivers, onDriversChanged }: {
             <div key={d.guid}>
               Entitlements Service driver: <strong>{d.name}</strong> {d.row && <StateLabel state={d.row.state} />}
               {operator && (
-                <Tooltip content="The driver reads the policies, and evaluates who is a member, only when it starts.">
+                <Tooltip content="The driver reads the policies only when it starts. It stops itself when a policy's query changes.">
                   <Button variant={pending ? 'primary' : 'secondary'} size="sm" className="dc-inline-gap" isDisabled={busy} onClick={() => restart(d)}>
-                    {pending ? 'Restart to apply the changes' : 'Re-evaluate membership (restart)'}
+                    {pending ? 'Restart to apply the changes' : 'Restart'}
                   </Button>
                 </Tooltip>
               )}
@@ -144,8 +144,10 @@ export function RbePanel({ api, setGuid, drivers, onDriversChanged }: {
             </div>
           )}
           <p className="dc-subtle dc-tab-body">
-            When policies grant different values of the same entitlement, the higher one wins where that entitlement's conflict
-            resolution says so (set in its driver). Changes take effect when the Entitlements Service driver restarts.
+            The Entitlements Service driver reads these policies when it starts. It then grants and revokes person by person, as
+            something that decides membership changes: an attribute a query uses (when the driver's filter includes it), or a
+            policy's static members. When policies grant different values of the same entitlement, the higher one wins where that
+            entitlement's conflict resolution says so (set in its driver).
           </p>
         </>
       )}
@@ -199,10 +201,15 @@ function PolicyModal({ api, guid, operator, onClose, onEdit, onDeleted }: {
   const [busy, setBusy] = useState(false);
   useEffect(() => { api.rbePolicy(guid).then(setP, setError); }, [api, guid]);
   const scope = useMemo(() => (p?.membership ? SCOPE[p.membership.scope] ?? p.membership.scope : null), [p]);
-  const remove = () => {
+  const remove = (force: boolean) => {
     setBusy(true);
     setError(null);
-    run((c) => api.deleteRbePolicy(guid, typed, c)).then(() => onDeleted(p!.name), setError).finally(() => setBusy(false));
+    run((c) => api.deleteRbePolicy(guid, typed, c, force)).then(() => onDeleted(p!.name), setError).finally(() => setBusy(false));
+  };
+  const empty = () => {
+    setBusy(true);
+    setError(null);
+    run((c) => api.rbeEmpty(guid, c)).then(() => api.rbePolicy(guid).then(setP), setError).finally(() => setBusy(false));
   };
   return (
     <Modal isOpen onClose={onClose} variant="medium" aria-labelledby="rbe-policy-title">
@@ -259,9 +266,16 @@ function PolicyModal({ api, guid, operator, onClose, onEdit, onDeleted }: {
                 </>
               )}
             </div>
+            {deleting && !p.emptied && (
+              <Alert variant="warning" isInline title={`${p.name} still covers people`} className="dc-tab-body"
+                actionLinks={<Button variant="link" isInline onClick={empty} isDisabled={busy}>Remove everyone first</Button>}>
+                The Entitlements Service driver ignores a deleted policy, so whatever it granted would stay. Remove everyone first: the
+                driver then revokes its grants, person by person (restart it if it stopped). Delete the policy once that is done.
+              </Alert>
+            )}
             {deleting && (
-              <Alert variant="danger" isInline title={`Delete the policy ${p.name}?`} className="dc-tab-body">
-                Its members lose what it grants when the Entitlements Service driver restarts. Type its name to confirm.
+              <Alert variant="danger" isInline title={p.emptied ? `Delete the policy ${p.name}?` : `Delete ${p.name} anyway, leaving its grants?`} className="dc-tab-body">
+                Type its name to confirm.
                 <TextInput aria-label="The policy's name" value={typed} onChange={(_e, v) => setTyped(v)} />
               </Alert>
             )}
@@ -271,7 +285,9 @@ function PolicyModal({ api, guid, operator, onClose, onEdit, onDeleted }: {
       <ModalFooter>
         {operator && p && !deleting && <Button variant="secondary" onClick={() => onEdit(p)}>Change</Button>}
         {operator && p && !deleting && <Button variant="link" isDanger onClick={() => setDeleting(true)}>Delete</Button>}
-        {deleting && <Button variant="danger" onClick={remove} isLoading={busy} isDisabled={busy || typed !== p?.name}>Delete the policy</Button>}
+        {deleting && <Button variant="danger" onClick={() => remove(!p?.emptied)} isLoading={busy} isDisabled={busy || typed !== p?.name}>
+          {p?.emptied ? 'Delete the policy' : 'Delete anyway'}
+        </Button>}
         <Button variant="link" onClick={deleting ? () => { setDeleting(false); setTyped(''); } : onClose}>{deleting ? 'Keep it' : 'Close'}</Button>
       </ModalFooter>
     </Modal>
