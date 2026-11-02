@@ -320,6 +320,23 @@ public final class Ldap implements AutoCloseable {
     }
 
     /**
+     * {@link #read} without the ManageDsaIT control that every other request carries (JNDI sends it while referrals are
+     * ignored): the values eDirectory computes, such as a dynamic group's {@code member} with those its query finds. A
+     * plain {@link #read} gives what the entry stores (a dynamic group's static members).
+     */
+    public synchronized Entry readComputed(String dn, String... attrs) throws NamingException {
+        controls();
+        ctx.addToEnvironment(Context.REFERRAL, "throw");
+        try {
+            return entry(dn, ctx.getAttributes(dn, attrs.length == 0 ? null : attrs));
+        } catch (javax.naming.NameNotFoundException e) {
+            return null;
+        } finally {
+            ctx.addToEnvironment(Context.REFERRAL, "ignore");
+        }
+    }
+
+    /**
      * An eDirectory extended operation: {@code value} as the request (null for none), the response's
      * value back (null when it has none). Under single sign-on it carries the proxied-authorization
      * control, so eDirectory decides with the person's rights.

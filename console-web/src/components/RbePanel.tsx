@@ -3,13 +3,14 @@ import {
   Alert, Button, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, Label, Modal, ModalBody,
   ModalFooter, ModalHeader, Spinner, TextInput, Tooltip,
 } from '@patternfly/react-core';
-import { ArrowDownIcon, ArrowUpIcon } from '@patternfly/react-icons';
+import { ArrowDownIcon, ArrowUpIcon, PlusIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { type DriverRow, type RbeGrant, type RbePolicy, type RbePolicyDetail, type RbeRef, type RbeState, idm } from '../api';
 import { useSession } from '../session';
 import { useConfirmed } from './Confirm';
 import { ProblemAlert } from './Problem';
 import { StateLabel } from './IdmParts';
+import { RbePolicyEditor } from './RbePolicyEditor';
 
 type Idm = ReturnType<typeof idm>;
 
@@ -38,6 +39,7 @@ export function RbePanel({ api, setGuid, drivers, onDriversChanged }: {
   const [open, setOpen] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [editing, setEditing] = useState<RbePolicyDetail | 'new' | null>(null);
   const load = useCallback(() => {
     setError(null);
     api.rbe(setGuid).then((s) => { setState(s); setOrder(s.policies); }, setError);
@@ -103,6 +105,9 @@ export function RbePanel({ api, setGuid, drivers, onDriversChanged }: {
           ))}
         </div>
       )}
+      {operator && (
+        <Button variant="secondary" size="sm" icon={<PlusIcon />} className="dc-tab-body" onClick={() => setEditing('new')}>New policy</Button>
+      )}
       {!state.container || order.length === 0 ? (
         <p className="dc-subtle dc-tab-body">No role-based entitlement policies in this driver set.</p>
       ) : (
@@ -145,8 +150,13 @@ export function RbePanel({ api, setGuid, drivers, onDriversChanged }: {
         </>
       )}
       {open && (
-        <PolicyModal api={api} guid={open} operator={operator} onClose={() => setOpen(null)}
+        <PolicyModal api={api} guid={open} operator={operator} onClose={() => setOpen(null)} onEdit={(p) => { setOpen(null); setEditing(p); }}
           onDeleted={(name) => { setOpen(null); setPending(true); setNotice(`${name} deleted; the others keep their order.`); load(); }} />
+      )}
+      {editing && (
+        <RbePolicyEditor api={api} setGuid={setGuid} serviceDriver={state.serviceDrivers[0] ?? null} policy={editing === 'new' ? undefined : editing}
+          onClose={() => setEditing(null)}
+          onSaved={(name) => { setEditing(null); setPending(true); setNotice(`${name} saved.`); load(); }} />
       )}
     </div>
   );
@@ -177,8 +187,8 @@ export function refValues(ref: string): string[] {
   }
 }
 
-function PolicyModal({ api, guid, operator, onClose, onDeleted }: {
-  api: Idm; guid: string; operator: boolean; onClose: () => void; onDeleted: (name: string) => void;
+function PolicyModal({ api, guid, operator, onClose, onEdit, onDeleted }: {
+  api: Idm; guid: string; operator: boolean; onClose: () => void; onEdit: (p: RbePolicyDetail) => void; onDeleted: (name: string) => void;
 }) {
   const { run, dialog } = useConfirmed();
   const [p, setP] = useState<RbePolicyDetail | null>(null);
@@ -259,6 +269,7 @@ function PolicyModal({ api, guid, operator, onClose, onDeleted }: {
         )}
       </ModalBody>
       <ModalFooter>
+        {operator && p && !deleting && <Button variant="secondary" onClick={() => onEdit(p)}>Change</Button>}
         {operator && p && !deleting && <Button variant="link" isDanger onClick={() => setDeleting(true)}>Delete</Button>}
         {deleting && <Button variant="danger" onClick={remove} isLoading={busy} isDisabled={busy || typed !== p?.name}>Delete the policy</Button>}
         <Button variant="link" onClick={deleting ? () => { setDeleting(false); setTyped(''); } : onClose}>{deleting ? 'Keep it' : 'Close'}</Button>

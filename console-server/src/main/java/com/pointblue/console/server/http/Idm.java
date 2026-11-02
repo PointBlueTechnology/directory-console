@@ -115,7 +115,7 @@ final class Idm {
             return;
         }
         // role-based entitlement policies are dynamic groups under the driver set: LDAP alone
-        if (route.matches("(GET|PUT) driversets/\\{guid}/rbe(/.*)?")) {
+        if (route.matches("(GET|PUT|POST) driversets/\\{guid}/rbe(/.*)?")) {
             rbe.handle(ex, s, method, guid, null, p.length > 5 ? String.join("/", java.util.Arrays.copyOfRange(p, 5, p.length)) : "");
             return;
         }

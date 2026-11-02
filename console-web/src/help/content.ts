@@ -705,6 +705,17 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Priorities must run 1, 2, 3 … with one per policy, or the Entitlements Service driver will not start; the page says so, and saving an order fixes it.',
         ],
       },
+      {
+        title: 'Creating and changing',
+        list: [
+          'A query finds members under a container: build its filter or type it, and test it to see who it finds now.',
+          'Search as: eDirectory works out who the query finds as this object, with its rights. A new policy uses the Entitlements Service driver; with nobody, the query adds no members.',
+          'Static members are added whatever the query finds; excluded ones never count.',
+          'Grants: the entitlements this set\'s drivers define. One that takes values needs at least one: picked from its list, or typed as the application names them.',
+          'A new policy goes in last; reorder it here. Changes take effect when the Entitlements Service driver restarts.',
+          'Designer and Identity Console can still edit what is saved here. A filter with a test their editors lack (starts with, contains, ends with) or deeper nesting shows there only as its query.',
+        ],
+      },
       { title: 'Deleting', caution: true, paragraphs: ['Deleting a policy asks for its name. Its members lose what it granted when the Entitlements Service driver restarts; the other policies keep their order.'] },
     ],
     related: ['idm', 'idm.drivers'],

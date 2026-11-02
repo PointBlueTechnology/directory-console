@@ -77,6 +77,26 @@
   gap: var(--pf-t--global--spacer--sm);
 }
 
+/* a field and its buttons on one line */
+.dc-row {
+  display: flex;
+  align-items: center;
+  gap: var(--pf-t--global--spacer--sm);
+}
+
+/* an entitlement in the RBE editor, and the values it grants under it */
+.dc-rbe-grant {
+  margin-block-start: var(--pf-t--global--spacer--sm);
+}
+
+.dc-rbe-values {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-t--global--spacer--xs);
+  margin-inline-start: var(--pf-t--global--spacer--xl);
+  margin-block-start: var(--pf-t--global--spacer--xs);
+}
+
 /* a control set beside text on the same line */
 .dc-inline-gap {
   margin-inline-start: var(--pf-t--global--spacer--sm);

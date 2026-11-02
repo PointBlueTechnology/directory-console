@@ -561,7 +561,30 @@ export interface RbePolicy extends Identity {
 export interface RbeRef { name: string; dn: string }
 export interface RbePolicyDetail extends RbePolicy {
   identity: RbeRef | null;
+  identityDn: string | null;
   excludedMembers: RbeRef[];
+  criteria: string | null;
+  /** The members the policy stores (static), without those its query adds. */
+  staticMembers: string[];
+  /** Each granted entitlement once, with the values it grants. */
+  grantValues: RbeGrantSpec[];
+  /** The version an edit is made from: a save is refused when the policy changed meanwhile. */
+  version: string;
+}
+/** An entitlement a driver defines, and the values it takes: none, a static list, typed, or queried from the application. */
+export interface RbeDefinition {
+  dn: string; guid: string | null; name: string; displayName: string | null; description: string | null;
+  conflictResolution: string | null; multiValued: boolean; kind: 'none' | 'list' | 'input' | 'query'; values: string[];
+}
+export interface RbeGrantSpec { entitlement: string; values: string[] }
+/** A policy as the editor saves it; identity left out: the Entitlements Service driver (on create); null: none. */
+export interface RbePolicySpec {
+  description: string;
+  membership: { base: string; scope: 'base' | 'one' | 'sub'; filter: string } | null;
+  identity?: string | null;
+  members: string[];
+  excluded: string[];
+  grants: RbeGrantSpec[];
   criteria: string | null;
 }
 export interface RbeState {
@@ -759,6 +782,18 @@ export function idm(id: string, server?: string) {
     rbePolicy: (guid: string) => request<RbePolicyDetail>('GET', `${base}/rbe/policies/${guidPath(guid)}`).then((r) => r.data),
     /** A policy's members as the directory computes them (from the query, and static). */
     rbeMembers: (guid: string) => request<{ items: RbeRef[]; total: number }>('GET', `${base}/rbe/policies/${guidPath(guid)}/members`).then((r) => r.data),
+    /** The entitlements the set's drivers define, by driver, with the values each takes. */
+    rbeEntitlements: (setGuid: string) =>
+      request<{ drivers: { driver: { dn: string; name: string }; entitlements: RbeDefinition[] }[] }>('GET', `${base}/driversets/${guidPath(setGuid)}/rbe/entitlements`).then((r) => r.data.drivers),
+    /** Who a membership query finds now, searched with the person's rights (at most 100 shown). */
+    rbeTest: (setGuid: string, membership: { base: string; scope: string; filter: string }) =>
+      request<{ items: RbeRef[]; more: boolean }>('POST', `${base}/driversets/${guidPath(setGuid)}/rbe/test`, membership).then((r) => r.data),
+    /** A new policy, at the lowest priority. */
+    rbeCreate: (setGuid: string, body: RbePolicySpec & { name: string }, confirm?: string) =>
+      request<{ guid: string; dn: string }>('POST', `${base}/driversets/${guidPath(setGuid)}/rbe/policies`, body, h(confirm)).then((r) => r.data),
+    /** A policy changed, from the version read; what is left out is cleared. */
+    rbeChange: (guid: string, body: RbePolicySpec & { version: string }, confirm?: string) =>
+      request<{ guid: string; dn: string }>('PUT', `${base}/rbe/policies/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
     /** Delete a policy; {@code name} is its name, typed. The others keep their order. */
     deleteRbePolicy: (guid: string, name: string, confirm?: string) =>
       request<void>('DELETE', `${base}/rbe/policies/${guidPath(guid)}`, { name }, h(confirm)),

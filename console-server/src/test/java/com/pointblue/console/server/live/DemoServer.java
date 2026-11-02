@@ -79,7 +79,11 @@ public final class DemoServer {
             // role-based entitlements: an Entitlements Service driver, an entitlement on the AD driver, and two policies
             "dn: cn=Entitlements,cn=Driver Set,o=system\nobjectClass: DirXML-Driver\ncn: Entitlements\nDirXML-JavaModule: com.novell.nds.dirxml.driver.entitlement.EntitlementServiceDriver",
             "dn: cn=UserAccount,cn=Active Directory,cn=Driver Set,o=system\nobjectClass: DirXML-Entitlement\ncn: UserAccount",
-            "dn: cn=Group,cn=Active Directory,cn=Driver Set,o=system\nobjectClass: DirXML-Entitlement\ncn: Group",
+            "dn: cn=Group,cn=Active Directory,cn=Driver Set,o=system\nobjectClass: DirXML-Entitlement\ncn: Group\nXmlData: <entitlement conflict-resolution=\"union\""
+                + " display-name=\"Group membership\" description=\"An AD group to join\"><values multi-valued=\"true\"><value>CN=Sales,OU=Groups,DC=acme,DC=example</value>"
+                + "<value>CN=Everyone,OU=Groups,DC=acme,DC=example</value></values></entitlement>",
+            "dn: cn=Mailbox,cn=Active Directory,cn=Driver Set,o=system\nobjectClass: DirXML-Entitlement\ncn: Mailbox\nXmlData: <entitlement conflict-resolution=\"priority\""
+                + " display-name=\"Mailbox database\"><values multi-valued=\"false\"/></entitlement>",
             "dn: cn=Entitlement Policies,cn=Driver Set,o=system\nobjectClass: DirXML-SharedProfileSet\ncn: Entitlement Policies\nDirXML-SPPriority: cn=Sales staff,cn=Entitlement Policies,cn=Driver Set,o=system#0#0\nDirXML-SPPriority: cn=Everyone,cn=Entitlement Policies,cn=Driver Set,o=system#1#0",
             "dn: cn=Sales staff,cn=Entitlement Policies,cn=Driver Set,o=system\nobjectClass: DirXML-SharedProfile\ncn: Sales staff\ndescription: An AD account and the Sales group for everyone in Sales"
                 + "\nmemberQueryURL: ldap:///ou=Sales,ou=Users,o=acme??sub?(objectClass=inetOrgPerson)?x-sparse\nmember: cn=pat,ou=Sales,ou=Users,o=acme"

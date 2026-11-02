@@ -1,6 +1,7 @@
 package com.pointblue.console.server.http;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -334,5 +335,97 @@ public class IdmTest {
         // priorities the Entitlements Service driver would refuse are reported
         edir.server.modify(c, new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.REPLACE, "DirXML-SPPriority", "cn=Staff," + c + "#2#0"));
         assertEquals(List.of("the priorities are not 0, 1, 2 … without gaps or repeats"), call("GET", rbe, null, h).body().get("problems"));
+    }
+
+    @Test
+    public void roleBasedEntitlementPoliciesAreCreatedAndChanged() throws Exception {
+        Map<String, String> h = signIn();
+        String set = (String) Json.asMap(((List<?>) call("GET", "/api/v2/trees/acme/idm/driversets", null, h).body().get("items")).get(0)).get("guid");
+        String rbe = "/api/v2/trees/acme/idm/driversets/" + set + "/rbe";
+        String es = "cn=Entitlements,cn=Driver Set,o=system";
+        edir.add("dn: " + es, "objectClass: DirXML-Driver", "cn: Entitlements", "DirXML-JavaModule: com.novell.nds.dirxml.driver.entitlement.EntitlementServiceDriver");
+        edir.add("dn: cn=UserAccount,cn=AD,cn=Driver Set,o=system", "objectClass: DirXML-Entitlement", "cn: UserAccount");
+        edir.add("dn: cn=Group,cn=AD,cn=Driver Set,o=system", "objectClass: DirXML-Entitlement", "cn: Group",
+            "XmlData: <entitlement conflict-resolution=\"union\"><values multi-valued=\"true\"><value>g1</value><value>g2</value></values></entitlement>");
+        edir.add("dn: cn=Mail,cn=AD,cn=Driver Set,o=system", "objectClass: DirXML-Entitlement", "cn: Mail",
+            "XmlData: <entitlement><values multi-valued=\"false\"/></entitlement>");
+        edir.add("dn: ou=People,o=system", "objectClass: organizationalUnit", "ou: People");
+        edir.add("dn: cn=p1,ou=People,o=system", "objectClass: inetOrgPerson", "cn: p1", "sn: One", "title: staff");
+        edir.add("dn: cn=p2,ou=People,o=system", "objectClass: inetOrgPerson", "cn: p2", "sn: Two", "title: other");
+
+        Reply ents = call("GET", rbe + "/entitlements", null, h);
+        assertEquals(String.valueOf(ents.body()), 200, ents.status());
+        List<?> drivers = (List<?>) ents.body().get("drivers");
+        assertEquals("the service driver's own are left out", 1, drivers.size());
+        List<?> ad = (List<?>) Json.asMap(drivers.get(0)).get("entitlements");
+        assertEquals(List.of("Group", "Mail", "UserAccount"), ad.stream().map(e -> Json.asMap(e).get("name")).toList());
+        assertEquals(List.of("list", "input", "none"), ad.stream().map(e -> Json.asMap(e).get("kind")).toList());
+
+        Map<String, Object> membership = Map.of("base", "ou=People,o=system", "scope", "sub", "filter", "(title=staff)");
+        Reply found = call("POST", rbe + "/test", membership, h);
+        assertEquals(List.of("cn=p1,ou=People,o=system"), ((List<?>) found.body().get("items")).stream().map(e -> Json.asMap(e).get("dn")).toList());
+
+        String crit = "<selection-criterion><group><group-op>and</group-op><row><attribute>Title</attribute><operation>AS.Op.isEqual</operation><value>staff</value><row-op>and</row-op></row></group></selection-criterion>";
+        Map<String, Object> staff = new java.util.HashMap<>(Map.of("name", "Staff", "description", "everyone on staff", "membership", membership,
+            "members", List.of("cn=p2,ou=People,o=system"), "criteria", crit,
+            "grants", List.of(Map.of("entitlement", "cn=UserAccount,cn=AD,cn=Driver Set,o=system"),
+                Map.of("entitlement", "cn=Group,cn=AD,cn=Driver Set,o=system", "values", List.of("g1", "g2")))));
+        Reply made = call("POST", rbe + "/policies", staff, h);
+        assertEquals(String.valueOf(made.body()), 201, made.status());
+        String c = "cn=Entitlement Policies,cn=Driver Set,o=system";
+        com.unboundid.ldap.sdk.Entry p = edir.entry("cn=Staff," + c);
+        assertEquals("the container is made, and the priorities written after the policy", List.of("cn=Staff," + c + "#0#0"),
+            List.of(edir.entry(c).getAttributeValues("DirXML-SPPriority")));
+        assertEquals("ldap:///ou=People,o=system??sub?(title=staff)?x-sparse", p.getAttributeValue("memberQueryURL"));
+        assertEquals("the search identity defaults to the service driver", es, p.getAttributeValue("dgIdentity"));
+        assertEquals(java.util.Set.of("cn=UserAccount,cn=AD,cn=Driver Set,o=system#0#<ref/>",
+            "cn=Group,cn=AD,cn=Driver Set,o=system#0#<ref><param>g1</param></ref>", "cn=Group,cn=AD,cn=Driver Set,o=system#0#<ref><param>g2</param></ref>"),
+            java.util.Set.of(p.getAttributeValues("DirXML-EntitlementRef")));
+        assertEquals(crit, p.getAttributeValue("DirXML-SPFilterXML"));
+        assertTrue(new String(p.getAttributeValueBytes("DirXML-SPDisplayEntitlements"), java.nio.charset.StandardCharsets.UTF_8).contains("<InputValues><value>g1</value><value>g2</value></InputValues>"));
+        assertEquals(409, call("POST", rbe + "/policies", staff, h).status());
+
+        // a second one goes last; grants must fit their entitlement
+        assertEquals(201, call("POST", rbe + "/policies", Map.of("name", "Two", "members", List.of("cn=p1,ou=People,o=system")), h).status());
+        assertEquals(List.of("cn=Staff," + c + "#0#0", "cn=Two," + c + "#1#0"), List.of(edir.entry(c).getAttributeValues("DirXML-SPPriority")));
+        assertEquals("not in the list", 400, call("POST", rbe + "/policies", Map.of("name", "Bad", "grants",
+            List.of(Map.of("entitlement", "cn=Group,cn=AD,cn=Driver Set,o=system", "values", List.of("g9")))), h).status());
+        assertEquals("single-valued", 400, call("POST", rbe + "/policies", Map.of("name", "Bad", "grants",
+            List.of(Map.of("entitlement", "cn=Mail,cn=AD,cn=Driver Set,o=system", "values", List.of("a", "b")))), h).status());
+        assertEquals("takes no values", 400, call("POST", rbe + "/policies", Map.of("name", "Bad", "grants",
+            List.of(Map.of("entitlement", "cn=UserAccount,cn=AD,cn=Driver Set,o=system", "values", List.of("a")))), h).status());
+        assertEquals("a valued entitlement needs a value", 400, call("POST", rbe + "/policies", Map.of("name", "Bad", "grants",
+            List.of(Map.of("entitlement", "cn=Group,cn=AD,cn=Driver Set,o=system"))), h).status());
+        assertEquals("not an entitlement here", 400, call("POST", rbe + "/policies", Map.of("name", "Bad", "grants",
+            List.of(Map.of("entitlement", "cn=AD,cn=Driver Set,o=system"))), h).status());
+        assertEquals("no such member", 400, call("POST", rbe + "/policies", Map.of("name", "Bad", "members", List.of("cn=nobody,o=system")), h).status());
+
+        // change: from the version read; what is left out is cleared
+        String guid = (String) made.body().get("guid");
+        Reply read = call("GET", "/api/v2/trees/acme/idm/rbe/policies/" + guid, null, h);
+        assertEquals(List.of("cn=p2,ou=People,o=system"), read.body().get("staticMembers"));
+        assertEquals(List.of("g1", "g2"), Json.asMap(((List<?>) read.body().get("grantValues")).get(1)).get("values"));
+        Map<String, Object> change = new java.util.HashMap<>(Map.of("version", "stale", "membership", membership, "identity", "",
+            "grants", List.of(Map.of("entitlement", "cn=Mail,cn=AD,cn=Driver Set,o=system", "values", List.of("x@acme.example")))));
+        assertEquals(409, call("PUT", "/api/v2/trees/acme/idm/rbe/policies/" + guid, change, h).status());
+        change.put("version", read.body().get("version"));
+        Reply changed = call("PUT", "/api/v2/trees/acme/idm/rbe/policies/" + guid, change, h);
+        assertEquals(String.valueOf(changed.body()), 200, changed.status());
+        p = edir.entry("cn=Staff," + c);
+        assertNull("identity cleared", p.getAttributeValue("dgIdentity"));
+        assertNull("no criteria sent: cleared", p.getAttributeValue("DirXML-SPFilterXML"));
+        assertNull("description left out: cleared", p.getAttributeValue("description"));
+        assertNull("static members left out: cleared", p.getAttributeValue("member"));
+        assertEquals(List.of("cn=Mail,cn=AD,cn=Driver Set,o=system#0#<ref><param>x@acme.example</param></ref>"), List.of(p.getAttributeValues("DirXML-EntitlementRef")));
+        String audit;
+        try (var files = Files.list(dataPath.resolve("audit"))) {
+            StringBuilder all = new StringBuilder();
+            for (Path f : files.toList()) {
+                all.append(Files.readString(f));
+            }
+            audit = all.toString();
+        }
+        assertTrue(audit.contains("idm.rbe.create"));
+        assertTrue(audit.contains("idm.rbe.change"));
     }
 }

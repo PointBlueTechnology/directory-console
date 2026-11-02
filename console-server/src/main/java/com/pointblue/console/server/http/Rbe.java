@@ -21,6 +21,8 @@ import javax.naming.directory.BasicAttribute;
 import javax.naming.directory.DirContext;
 import javax.naming.directory.ModificationItem;
 import javax.naming.directory.SearchControls;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 
 /**
  * Role-based entitlement (RBE) policies, read and changed over LDAP with the person's own rights. Grounded on
@@ -45,6 +47,7 @@ import javax.naming.directory.SearchControls;
  * GET    /api/v2/trees/{tree}/idm/rbe/policies/{guid}/members        its members, as the directory computes them
  * DELETE /api/v2/trees/{tree}/idm/rbe/policies/{guid}                {"name"}: the policy's name, typed
  * </pre>
+ * Creating and changing policies, and the entitlements they can grant: {@link RbeEdit}.
  */
 final class Rbe {
 
@@ -54,9 +57,11 @@ final class Rbe {
         "DirXML-EntitlementRef", "DirXML-SPEntitlementsXML"};
 
     private final Server server;
+    private final RbeEdit edit;
 
     Rbe(Server server) {
         this.server = server;
+        this.edit = new RbeEdit(server);
     }
 
     /** {@code rest}: what follows {@code driversets/{guid}/rbe} or {@code rbe/policies/{guid}}. */
@@ -71,6 +76,13 @@ final class Rbe {
                 switch (method + " " + rest) {
                     case "GET " -> Http.json(ex, 200, list(l, setDn));
                     case "PUT priorities" -> priorities(ex, l, s, setDn);
+                    case "GET entitlements" -> edit.entitlements(ex, l, setDn);
+                    case "POST test" -> edit.test(ex, l, Http.body(ex));
+                    case "POST policies" -> {
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> drivers = (List<Map<String, Object>>) list(l, setDn).get("serviceDrivers");
+                        edit.create(ex, l, s, setDn, drivers);
+                    }
                     default -> throw new Http.Problem(404, "not-found", method + " rbe/" + rest);
                 }
                 return;
@@ -79,6 +91,7 @@ final class Rbe {
             switch (method + " " + rest) {
                 case "GET " -> Http.json(ex, 200, detail(l, p));
                 case "GET members" -> Http.json(ex, 200, members(l, p));
+                case "PUT " -> edit.change(ex, l, s, policyGuid, p);
                 case "DELETE " -> delete(ex, l, s, policyGuid, p);
                 default -> throw new Http.Problem(404, "not-found", method + " rbe/policies/" + rest);
             }
@@ -253,14 +266,39 @@ final class Rbe {
                 g.put("guid", ref(e).get("guid"));
             }
         }
-        Ldap.Entry withCriteria = l.read(p.dn(), "DirXML-SPFilterXML");
-        m.put("criteria", withCriteria == null ? null : withCriteria.first("DirXML-SPFilterXML"));
+        Ldap.Entry stored = l.read(p.dn(), RbeEdit.EDITED);
+        m.put("criteria", stored == null ? null : stored.first("DirXML-SPFilterXML"));
+        m.putAll(RbeEdit.editable(stored));
+        m.put("identityDn", p.first("dgIdentity"));
+        // the grants as the editor holds them: each entitlement once, with the values its refs grant
+        Map<String, Map<String, Object>> byEntitlement = new LinkedHashMap<>();
+        for (Object o : (List<?>) m.get("grants")) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> g = (Map<String, Object>) o;
+            Map<String, Object> e = byEntitlement.computeIfAbsent(Names.canonical(String.valueOf(g.get("dn"))), k -> {
+                Map<String, Object> n = new LinkedHashMap<>();
+                n.put("entitlement", g.get("dn"));
+                n.put("values", new ArrayList<String>());
+                return n;
+            });
+            Element ref = RbeEdit.xml(String.valueOf(g.get("ref")));
+            if (ref != null) {
+                for (Node n = ref.getFirstChild(); n != null; n = n.getNextSibling()) {
+                    if (n instanceof Element param && param.getTagName().equals("param")) {
+                        @SuppressWarnings("unchecked")
+                        List<String> values = (List<String>) e.get("values");
+                        values.add(param.getTextContent());
+                    }
+                }
+            }
+        }
+        m.put("grantValues", new ArrayList<>(byEntitlement.values()));
         return m;
     }
 
-    /** The policy's members, as the directory gives them for a dynamic group (static and from the query). */
+    /** The policy's members as eDirectory computes them for the dynamic group (static and from the query, as its search identity). */
     private Map<String, Object> members(Ldap l, Ldap.Entry p) throws NamingException {
-        Ldap.Entry e = l.read(p.dn(), "member");
+        Ldap.Entry e = l.readComputed(p.dn(), "member");
         List<Map<String, Object>> items = new ArrayList<>();
         for (Object o : e == null ? List.<Object>of() : e.attributes().getOrDefault("member", List.of())) {
             items.add(Names.identity(text(o)));
