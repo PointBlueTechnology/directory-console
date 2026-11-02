@@ -523,6 +523,8 @@ public final class Server {
         // for the UI's warning: how long it may sit idle, and when it ends however active it is
         Sessions.Limits l = sessions.limitsOf(s);
         m.put("session", Map.of("idleSeconds", l.idle().toSeconds(), "expiresAt", sessions.expiresAt(s).toString()));
+        // Settings > Certificate expiry's window, for the expiry labels and alerts on every page
+        m.put("certificateWarnDays", expiry.warnDays());
         return m;
     }
 
@@ -911,7 +913,7 @@ public final class Server {
             alerts.add(a.json());
         }
         // the warning window set in Settings > Certificate expiry, for the banner
-        Http.json(ex, 200, Map.of("certificates", out, "hostExceptions", exceptions, "alerts", alerts, "warnDays", expiry.settings().get("warnDays")));
+        Http.json(ex, 200, Map.of("certificates", out, "hostExceptions", exceptions, "alerts", alerts, "warnDays", expiry.warnDays()));
     }
 
     private void trustProbe(HttpExchange ex) throws IOException {

@@ -11,6 +11,7 @@ import {
 import { useSession } from '../session';
 import { useAreYouSure, useConfirmed } from './Confirm';
 import { useServerSignIn } from './ServerSignIn';
+import { useWarnDays } from './Certificates';
 
 type Step = 'servers' | 'options' | 'review' | 'running' | 'done';
 const KINDS: DefaultCertificateKind[] = ['dns', 'ec', 'ip'];
@@ -42,6 +43,7 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
   const confirmed = useConfirmed();
   const signIn = useServerSignIn();
   const sure = useAreYouSure();
+  const warnDays = useWarnDays();
   const [states, setStates] = useState<Record<string, DefaultCertificates | Error>>({});
   const [selected, setSelected] = useState<string[] | null>(null);
   const [step, setStep] = useState<Step>('servers');
@@ -196,7 +198,7 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
                 })}
               </Tbody>
             </Table>
-            <p className="dc-subtle dc-tab-body">A certificate needs replacing when it is missing, expired or expiring within 30 days, not issued by the directory's CA, or does not name one of the server's addresses.</p>
+            <p className="dc-subtle dc-tab-body">A certificate needs replacing when it is missing, expired or expiring within {warnDays} day{warnDays === 1 ? '' : 's'} (Settings &gt; Certificate expiry), not issued by the directory's CA, or does not name one of the server's addresses.</p>
           </>
         )}
 

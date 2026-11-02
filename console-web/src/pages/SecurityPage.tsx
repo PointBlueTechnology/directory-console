@@ -18,7 +18,7 @@ import { TrustedRootsCard } from '../components/TrustedRoots';
 import { ImportCertificateModal } from '../components/ImportCertificate';
 import { DefaultCertificatesModal } from '../components/DefaultCertificates';
 import { CaConfigurationPanel } from '../components/CaConfiguration';
-import { ExpiryLabel, Fingerprint, WARN_DAYS } from '../components/Certificates';
+import { ExpiryLabel, Fingerprint, useWarnDays } from '../components/Certificates';
 import { Hint, useHelpTopic } from '../help/Help';
 import { explain, tip } from '../help/glossary';
 
@@ -69,6 +69,7 @@ function CertificatesView() {
   const confirmed = useConfirmed();
   const sure = useAreYouSure();
   const level = useHeading();
+  const warnDays = useWarnDays();
   // making and deleting certificates changes the whole tree's PKI: an editor of the whole tree
   const editor = canAt('editor', '');
   const load = useCallback(() => { api.pki().then(setPki).catch(setError); }, [api]);
@@ -91,7 +92,7 @@ function CertificatesView() {
   ];
   const now = Date.now();
   const expired = all.filter((x) => Date.parse(x.cert.notAfter) < now);
-  const soon = all.filter((x) => Date.parse(x.cert.notAfter) >= now && Date.parse(x.cert.notAfter) - now <= WARN_DAYS * DAY);
+  const soon = all.filter((x) => Date.parse(x.cert.notAfter) >= now && Date.parse(x.cert.notAfter) - now <= warnDays * DAY);
   return (
     <div className="dc-tab-body">
       {expired.length > 0 && (
@@ -100,7 +101,7 @@ function CertificatesView() {
         </Alert>
       )}
       {soon.length > 0 && (
-        <Alert component={level} variant="warning" isInline title={`${soon.length} certificate${soon.length === 1 ? ' expires' : 's expire'} within ${WARN_DAYS} days`} className="dc-tab-body">
+        <Alert component={level} variant="warning" isInline title={`${soon.length} certificate${soon.length === 1 ? ' expires' : 's expire'} within ${warnDays} day${warnDays === 1 ? '' : 's'}`} className="dc-tab-body">
           {soon.map((x) => <div key={x.what + x.name + x.cert.sha256}>{x.what}: <strong>{x.name}</strong> on {new Date(x.cert.notAfter).toLocaleDateString()}</div>)}
         </Alert>
       )}

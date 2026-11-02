@@ -42,6 +42,8 @@ export interface Me {
   csrf: string;
   /** How long the session may sit idle, and when it ends however active it is (the tree's limits). */
   session?: { idleSeconds: number; expiresAt: string };
+  /** Settings > Certificate expiry's warning window, in days: expiry labels and alerts use it. */
+  certificateWarnDays?: number;
 }
 
 /** A PKCS#12 export: its password, and PBES2 (AES) or the older PBES1 for software that cannot read PBES2. */
@@ -1230,6 +1232,8 @@ export type DefaultCertificateKind = 'dns' | 'ec' | 'ip';
 
 export interface DefaultCertificates {
   server: Ref;
+  /** A certificate expiring within this many days needs replacing (Settings > Certificate expiry's window). */
+  warnDays?: number;
   /** The console reaches the directory through this server. */
   connected: boolean;
   tree: string | null;

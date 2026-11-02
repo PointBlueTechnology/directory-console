@@ -696,6 +696,7 @@ public class ServerTest {
             assertEquals("the banner's window, before any is set", 30, Json.asInt(call("GET", "/api/v2/trust/certificates", null, w).body().get("warnDays"), 0));
             assertEquals(200, call("PUT", "/api/v2/console/expiry", Map.of("warnDays", 45), w).status());
             assertEquals("the banner follows Settings > Certificate expiry", 45, Json.asInt(call("GET", "/api/v2/trust/certificates", null, w).body().get("warnDays"), 0));
+            assertEquals("so do the session's labels and alerts", 45, Json.asInt(call("GET", "/api/v2/session", null, w).body().get("certificateWarnDays"), 0));
             assertEquals(400, call("PUT", "/api/v2/console/expiry", Map.of("email", Map.of("host", "127.0.0.1", "security", "none", "user", "u", "password", "p",
                 "from", "console@example.test", "to", List.of("ops@example.test"))), w).status());
             Map<String, Object> mail = new java.util.HashMap<>(Map.of("host", "127.0.0.1", "port", smtp.getLocalPort(), "security", "none",

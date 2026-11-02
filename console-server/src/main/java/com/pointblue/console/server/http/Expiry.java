@@ -326,6 +326,11 @@ final class Expiry {
         out.add(new Watched(key, kind, name, where, Instant.parse(String.valueOf(c.get("notAfter")))));
     }
 
+    /** Settings > Certificate expiry's warning window in days: notices, the banner, alerts and checks all use it. */
+    int warnDays() {
+        return (Integer) settings().get("warnDays");
+    }
+
     /** The level a certificate has reached: expired, within 7 days, within the warning window, or fine (null). */
     static String level(Instant notAfter, Instant now, int warnDays) {
         if (!notAfter.isAfter(now)) {
@@ -338,7 +343,7 @@ final class Expiry {
     /** Look now; with {@code send}, notify about certificates that reached a new level since they were last notified. */
     synchronized void check(boolean send) {
         Instant now = Instant.now();
-        int warn = (Integer) settings().get("warnDays");
+        int warn = warnDays();
         List<String> errors = new ArrayList<>();
         List<Map<String, Object>> findings = new ArrayList<>();
         Map<String, String> notified = readNotified();

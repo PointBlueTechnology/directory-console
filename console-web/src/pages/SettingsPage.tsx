@@ -736,7 +736,7 @@ function ExpirySection() {
         <Checkbox id="expiry-on" label="Check once a day" isChecked={draft.enabled} onChange={(_e, v) => setDraft({ ...draft, enabled: v })} />
         <FormGroup label="Warn this many days ahead" fieldId="expiry-days" labelHelp={<FieldHelp label="Warn this many days ahead">{explain('warnDays')}</FieldHelp>}>
           <TextInput id="expiry-days" type="number" min={1} max={365} value={String(draft.warnDays)} onChange={(_e, v) => setDraft({ ...draft, warnDays: Number(v) })} style={{ maxWidth: '8rem' }} />
-          <FormHelperText><HelperText><HelperTextItem>1 to 365. This sets when notices go out, and when the banner at the top of every page starts warning; Security &gt; Certificates and the default-certificate check always warn 30 days ahead.</HelperTextItem></HelperText></FormHelperText>
+          <FormHelperText><HelperText><HelperTextItem>1 to 365. This sets when notices go out, and how far ahead the console warns everywhere else: the banner at the top of every page, the alerts and expiry labels on Security &gt; Certificates, and the default-certificate check. Other open pages show a change once reloaded.</HelperTextItem></HelperText></FormHelperText>
         </FormGroup>
         <FormSection title="E-mail" titleElement="h3">
           <FormGroup label="Mail server" fieldId="expiry-host">

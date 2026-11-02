@@ -423,6 +423,14 @@ public class SecurityTest {
         assertEquals("nothing wrong: nothing made", "kept", Json.asMap(results.get(0)).get("action"));
         assertEquals(before, edir.pkiOps.requests.size());
 
+        // "expires soon" follows Settings > Certificate expiry's window: these certificates last a year
+        assertEquals(200, call("PUT", "/api/v2/console/expiry", Map.of("warnDays", 365), h).status());
+        state = call("GET", t, null, h).body();
+        assertEquals(365, Json.asInt(state.get("warnDays"), 0));
+        assertTrue(String.valueOf(state), String.valueOf(Json.asMap(((List<?>) state.get("certificates")).get(0)).get("problems")).startsWith("[expires "));
+        assertEquals(200, call("PUT", "/api/v2/console/expiry", Map.of("warnDays", 30), h).status());
+        assertEquals(List.of(), Json.asMap(((List<?>) call("GET", t, null, h).body().get("certificates")).get(0)).get("problems"));
+
         // the server moved: a successor is made beside the old certificate, which stays
         edir.server.modify("cn=edir1,ou=servers,o=system", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.REPLACE, "networkAddress",
             new byte[] {'9', '#', 0x02, 0x0c, 10, 0, 0, 10}));

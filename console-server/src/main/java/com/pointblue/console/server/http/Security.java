@@ -552,8 +552,8 @@ final class Security {
         return out;
     }
 
-    /** Why a default certificate needs replacing; empty when it is fine. */
-    private static List<String> problems(DefaultsState st, DefaultCert d) {
+    /** Why a default certificate needs replacing; empty when it is fine. It expires too soon within {@code warnDays}. */
+    private static List<String> problems(DefaultsState st, DefaultCert d, int warnDays) {
         Ldap.Entry k = st.existing().get(d);
         if (k == null) {
             return List.of("missing");
@@ -566,7 +566,7 @@ final class Security {
         java.time.Instant end = c.getNotAfter().toInstant();
         if (end.isBefore(java.time.Instant.now())) {
             out.add("expired " + end.toString().substring(0, 10));
-        } else if (end.isBefore(java.time.Instant.now().plus(java.time.Duration.ofDays(30)))) {
+        } else if (end.isBefore(java.time.Instant.now().plus(java.time.Duration.ofDays(warnDays)))) {
             out.add("expires " + end.toString().substring(0, 10));
         }
         if (!signedBy(c, st.caRsa()) && !signedBy(c, st.caEc())) {
@@ -586,6 +586,8 @@ final class Security {
         DefaultsState st = defaultsState(l, serverGuid);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("server", ref(st.server()));
+        int warnDays = server.expiry.warnDays();
+        out.put("warnDays", warnDays);
         Ldap.Entry dse = l.read("", "dsaName");
         out.put("connected", dse != null && dse.first("dsaName") != null && Names.same(dse.first("dsaName"), st.server().dn()));
         out.put("tree", st.tree());
@@ -618,7 +620,7 @@ final class Security {
             Ldap.Entry k = st.existing().get(d);
             m.put("guid", k == null ? null : guidOf(k));
             m.put("certificate", k == null ? null : cert(bytes(k, "nDSPKIPublicKeyCertificate")));
-            m.put("problems", problems(st, d));
+            m.put("problems", problems(st, d, warnDays));
             m.put("usedBy", usedBy.getOrDefault(d.cn.toLowerCase(Locale.ROOT), List.of()));
             List<Map<String, Object>> successors = new ArrayList<>();
             for (Ldap.Entry e : mine) {
@@ -702,10 +704,11 @@ final class Security {
         ips.forEach(ip -> sans.add("ip:" + ip));
 
         List<Map<String, Object>> results = new ArrayList<>();
+        int warnDays = server.expiry.warnDays();
         for (DefaultCert d : kinds) {
             Map<String, Object> r = new LinkedHashMap<>(Map.of("kind", d.key(), "name", d.cn));
             results.add(r);
-            List<String> problems = problems(st, d);
+            List<String> problems = problems(st, d, warnDays);
             if (replace.equals("invalid") && problems.isEmpty()) {
                 r.put("action", "kept");
                 r.put("status", "ok");

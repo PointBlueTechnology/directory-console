@@ -527,7 +527,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'A certificate an LDAP server uses cannot be deleted.',
         ],
       },
-      { title: 'Expiry', paragraphs: ['Certificates that have expired, or expire within 30 days, are listed at the top.'] },
+      { title: 'Expiry', paragraphs: ['Certificates that have expired, or expire within the warning window set in Settings > Certificate expiry (30 days unless changed), are listed at the top.'] },
       { title: 'CA configuration', paragraphs: ['Each switch changes the Organizational CA at once. Server self-provisioning lets eDirectory\'s own PKI Health Check create or renew a server\'s SSL CertificateDNS in place when ndsd starts or DSRepair runs there. Suite B mode needs a CA with only an EC P-256 or P-384 certificate.'] },
       { title: 'Revoking', caution: true, paragraphs: ['Revoking cannot be undone, except with the reason "Certificate on hold". The CA lists the certificate on its CRL from the CRL\'s next issue.'] },
     ],
@@ -1013,7 +1013,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       },
       {
         title: 'The warning window',
-        paragraphs: ['Warn this many days ahead (1 to 365) sets when these notices go out, and when the banner at the top of every page starts warning. The alerts on Security > Certificates and the default-certificate check always warn 30 days ahead.'],
+        paragraphs: ['Warn this many days ahead (1 to 365) sets when these notices go out, and how far ahead the console warns everywhere else: the banner at the top of every page, the alerts and expiry labels on Security > Certificates, and the default-certificate check, whose "Only certificates with a problem, or missing" then also replaces certificates expiring within the window. Other open pages show a change once reloaded.'],
       },
       {
         title: 'When notices go out',

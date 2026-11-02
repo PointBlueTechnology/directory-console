@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import {
   Alert, Button, DescriptionList, DescriptionListDescription, DescriptionListGroup, DescriptionListTerm, Form, FormGroup, FormSelect,
   FormSelectOption, Label, Modal, ModalBody, ModalFooter, ModalHeader, Radio, TextInput, Tooltip,
@@ -6,12 +6,19 @@ import {
 import { CopyIcon } from '@patternfly/react-icons';
 import { ApiError, type Directory, type Probe, type ProbedCertificate, daysUntil, trust } from '../api';
 import { useStepUp } from './StepUp';
+import { Session } from '../session';
 
-/** Certificates expiring within this many days are flagged, everywhere in the console. */
+/** The warning window until Settings > Certificate expiry sets one (and before sign-in). */
 export const WARN_DAYS = 30;
 
-/** Expiry as a label: red once expired or within 7 days, orange within WARN_DAYS. */
+/** Certificates expiring within this many days are flagged, everywhere in the console: Settings > Certificate expiry's window. */
+export function useWarnDays(): number {
+  return useContext(Session)?.me.certificateWarnDays ?? WARN_DAYS;
+}
+
+/** Expiry as a label: red once expired or within 7 days, orange within the warning window. */
 export function ExpiryLabel({ notAfter }: { notAfter?: string | null }) {
+  const warnDays = useWarnDays();
   if (!notAfter) {
     return <>—</>;
   }
@@ -20,7 +27,7 @@ export function ExpiryLabel({ notAfter }: { notAfter?: string | null }) {
   if (days < 0) {
     return <>{date} <Label color="red" isCompact>expired</Label></>;
   }
-  if (days <= WARN_DAYS) {
+  if (days <= warnDays) {
     return <>{date} <Label color={days <= 7 ? 'red' : 'orange'} isCompact>{days} {days === 1 ? 'day' : 'days'}</Label></>;
   }
   return <>{date}</>;
