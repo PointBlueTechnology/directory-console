@@ -250,9 +250,13 @@ public final class FakeEngine implements Operate.Engine {
     /** Whether a clear-text authentication password is there for the next set or clear to repair. */
     public boolean clearTextAppPassword;
 
+    /** The last authentication password set, as the engine was given it (a test fixture's own value). */
+    public String lastAppPassword;
+
     @Override
     public boolean setAppPassword(String dn, char[] value) {
         actions.add("app-set " + dn);
+        lastAppPassword = new String(value);
         boolean was = clearTextAppPassword;
         clearTextAppPassword = false;
         return was;

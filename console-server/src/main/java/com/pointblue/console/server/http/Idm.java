@@ -746,7 +746,7 @@ final class Idm {
             throws IOException {
         Map<String, Object> b = Http.body(ex);
         String kind = kind(b, job);
-        char[] value = Http.string(b, "value", true).toCharArray();
+        char[] value = passwordValue(b);
         confirmed(d, confirm);
         String name = Http.string(b, "name", kind.equals("named"));
         boolean repaired = false;
@@ -802,6 +802,34 @@ final class Idm {
         } else {
             Http.json(ex, 204, Map.of());
         }
+    }
+
+    /**
+     * The password exactly as sent: not trimmed or normalized, spaces and any Unicode character kept (core sends
+     * it to the engine as UTF-8). Refused rather than changed: an empty value; a broken character (a lone UTF-16
+     * surrogate, which UTF-8 would turn into "?" and so set a different password); NUL, which the engine may read
+     * as the end of the password.
+     */
+    static char[] passwordValue(Map<String, Object> b) {
+        Object v = b.get("value");
+        if (v == null || (v instanceof String s && s.isEmpty())) {
+            throw new Http.Problem(400, "missing-field", "value is required");
+        }
+        if (!(v instanceof String s)) {
+            throw new Http.Problem(400, "bad-field", "value must be a string");
+        }
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\0') {
+                throw new Http.Problem(400, "bad-field", "the password has a NUL character (U+0000), which the engine may take as its end");
+            }
+            if (Character.isHighSurrogate(c) && i + 1 < s.length() && Character.isLowSurrogate(s.charAt(i + 1))) {
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                throw new Http.Problem(400, "bad-field", "the password has a broken character (an unpaired UTF-16 surrogate at position " + i + ")");
+            }
+        }
+        return s.toCharArray();
     }
 
     private static String kind(Map<String, Object> b, boolean job) {

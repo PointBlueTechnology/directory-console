@@ -776,7 +776,7 @@ export const CONTENT: Record<string, HelpTopic> = {
     title: 'Driver passwords',
     summary: 'Named passwords for this driver\'s policies, its authentication password, and the passwords it uses with the Remote Loader.',
     sections: [
-      { title: 'Write-only', paragraphs: ['Passwords can be set or cleared here, but never read back. Removing a named password leaves policies that read it with nothing.'] },
+      { title: 'Write-only', paragraphs: ['Passwords can be set or cleared here, but never read back. Removing a named password leaves policies that read it with nothing.', 'A password is kept exactly as typed, spaces at either end included, and sent to the engine as UTF-8, so accented letters, symbols and other scripts are fine. A NUL character, or a broken character from a bad paste, is refused rather than changed.'] },
       { title: 'Authentication password', paragraphs: ['The password the driver signs in to the connected system with, beside the authentication ID in its properties (Designer calls it the application password). The engine keeps it encrypted; a restart of the driver uses the new one.', 'A value written directly over LDAP is clear text the engine cannot read, and the driver then starts with no password. Setting or clearing it here deletes such a value first, and says so.'] },
       { title: 'Remote Loader', list: ['Remote Loader password: what the engine and the Remote Loader use to trust each other.', 'Key and keystore passwords: for mutual authentication with certificates.'] },
     ],

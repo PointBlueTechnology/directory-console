@@ -1,6 +1,7 @@
 package com.pointblue.console.server.http;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -148,6 +149,20 @@ public class IdmTest {
         var app = call("POST", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/passwords", Map.of("kind", "app", "value", "app-S3cret"), h);
         assertEquals(200, app.status());
         assertEquals(false, app.body().get("repaired"));
+        // what such passwords hold: spaces at both ends, quotes, backslashes, JSON and LDAP specials, accents, CJK, emoji (a surrogate pair)
+        String special = " p\u00e4ss \"q\" \\ / <>&%+;,=*()#{}[]|`~^$!? \u20ac\u00df\u00f1 \u5bc6\u7801 \ud83d\udd11\t ";
+        assertEquals(200, call("POST", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/passwords", Map.of("kind", "app", "value", special), h).status());
+        assertEquals("the engine gets the password exactly as typed", special, engine.lastAppPassword);
+        assertEquals("spaces are a password", 200,
+            call("POST", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/passwords", Map.of("kind", "app", "value", "   "), h).status());
+        assertEquals("   ", engine.lastAppPassword);
+        // as a browser sends them: JSON.stringify escapes a lone surrogate, which UTF-8 would otherwise turn into "?"
+        Map<String, Object> lone = Json.asMap(Json.parse("{\"kind\":\"app\",\"value\":\"ab\\ud83dcd\"}"));
+        assertEquals("a broken character is refused, not changed", "bad-field",
+            assertThrows(Http.Problem.class, () -> Idm.passwordValue(lone)).type);
+        assertEquals("cd\ud83d\udd11", new String(Idm.passwordValue(Json.asMap(Json.parse("{\"value\":\"cd\\ud83d\\udd11\"}")))));
+        assertEquals(400, call("POST", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/passwords", Map.of("kind", "app", "value", "ab\u0000cd"), h).status());
+        assertEquals(400, call("POST", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/passwords", Map.of("kind", "app", "value", ""), h).status());
         engine.clearTextAppPassword = true;
         assertEquals("a clear-text value the engine cannot read is deleted first, and the reply says so", true,
             call("DELETE", "/api/v2/trees/acme/idm/drivers/" + ldapGuid + "/passwords", Map.of("kind", "app"), h).body().get("repaired"));

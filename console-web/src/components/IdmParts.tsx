@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Button, Form, FormGroup, FormSelect, FormSelectOption, Label, Modal, ModalBody, ModalFooter, ModalHeader, Spinner, TextInput,
+  Alert, Button, Form, FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, Label, Modal, ModalBody, ModalFooter, ModalHeader, Spinner, TextInput,
   Toolbar, ToolbarContent, ToolbarItem,
 } from '@patternfly/react-core';
 import { PlusIcon } from '@patternfly/react-icons';
@@ -210,6 +210,7 @@ function SetPasswordModal({ kindLabel, named, onClose, onSave }: { kindLabel: st
           )}
           <FormGroup label="Value" fieldId="np-value" isRequired>
             <TextInput id="np-value" type="password" autoComplete="new-password" value={value} onChange={(_e, v) => setValue(v)} autoFocus={!named} />
+            <FormHelperText><HelperText><HelperTextItem>Kept exactly as typed: spaces at either end and any character, accented or not.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <ProblemAlert error={error} />
         </Form>
