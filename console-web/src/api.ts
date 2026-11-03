@@ -641,6 +641,71 @@ export interface MappingTable extends MappingTableRef {
   rows: string[][];
 }
 
+/** A Work Order driver of a driver set and the container it polls (from its idv.workorder.container GCV, else the driver object). */
+export interface WorkOrderDriver extends Identity {
+  gcv: string | null;
+  container: string;
+  /** gcv: the GCV names it; gcv-unresolved: the GCV names an object that is not there; driver: no GCV, the driver object. */
+  containerFrom: 'gcv' | 'gcv-unresolved' | 'driver';
+}
+
+/** The fields a person sets on a work order; null clears one. */
+export interface WorkOrderFields {
+  description?: string | null;
+  /** A person sets pending or onhold; the driver sets configured or error when it runs one. */
+  status?: string | null;
+  /** Run at the driver's next poll, with no due date. */
+  now?: boolean | null;
+  /** ISO times. */
+  due?: string | null;
+  deleteDate?: string | null;
+  /** Whole minutes; 0 runs it once. */
+  repeatMinutes?: string | null;
+  deleteOnError?: boolean | null;
+  dependents?: { dn: string; name?: string }[];
+  type?: string | null;
+  number?: string | null;
+  contact?: string | null;
+  content?: string | null;
+}
+
+export interface WorkOrder extends Identity, WorkOrderFields {
+  guid: string;
+  container: string;
+  log: string[];
+  created: string | null;
+  creator: string | null;
+  /** In one work order's detail only. */
+  version?: string;
+  /** The WorkToDo objects the driver made for it; one left behind stops it running again. */
+  todos?: (Identity & { guid: string; type: string | null })[];
+}
+
+export interface TemplateRef extends Identity {
+  guid: string;
+  subject: string | null;
+  package: string | null;
+}
+
+export interface TemplateToken { name: string; description: string }
+
+export interface Template extends TemplateRef {
+  version: string;
+  /** The whole document. */
+  xml: string | null;
+  /** False when the document is not well-formed XML: only the XML can be changed then. */
+  readable: boolean;
+  tokens: TemplateToken[];
+  /** html: the message is XHTML; text: it is plain text (only text follows the tokens). */
+  format: 'html' | 'text';
+  /** The message: what follows the token descriptions in the document's root, as XML. */
+  body: string | null;
+  /** The message as plain text, when it is only text. */
+  text: string | null;
+  /** The $token$ markers in the subject and body. */
+  used: string[];
+}
+
 export interface JobParameter {
   name: string;
   label: string;
@@ -776,6 +841,28 @@ export function idm(id: string, server?: string) {
     /** Delete a table; {@code name} is its name, typed. */
     deleteMappingTable: (guid: string, name: string, confirm?: string) =>
       request<void>('DELETE', `${base}/mapping-tables/${guidPath(guid)}`, { name }, h(confirm)),
+    /** A driver set's Work Order drivers, the containers they poll, and the work orders there. */
+    workOrders: (setGuid: string) =>
+      request<{ drivers: WorkOrderDriver[]; items: WorkOrder[] }>('GET', `${base}/driversets/${guidPath(setGuid)}/work-orders`).then((r) => r.data),
+    workOrder: (guid: string) => request<WorkOrder>('GET', `${base}/work-orders/${guidPath(guid)}`).then((r) => r.data),
+    /** A new work order: pending and run once unless the fields say otherwise. */
+    createWorkOrder: (setGuid: string, body: WorkOrderFields & { name: string; container?: string }, confirm?: string) =>
+      request<WorkOrder>('POST', `${base}/driversets/${guidPath(setGuid)}/work-orders`, body, h(confirm)).then((r) => r.data),
+    /** Change the fields given, as read at {@code version}; refused (409) when it changed meanwhile, as when the driver ran it. */
+    saveWorkOrder: (guid: string, body: WorkOrderFields & { version: string }, confirm?: string) =>
+      request<WorkOrder>('PUT', `${base}/work-orders/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
+    deleteWorkOrder: (guid: string, confirm?: string) => request<void>('DELETE', `${base}/work-orders/${guidPath(guid)}`, {}, h(confirm)),
+    /** The e-mail notification templates in cn=Default Notification Collection,cn=Security. */
+    templates: () => request<{ items: TemplateRef[] }>('GET', `${base}/templates`).then((r) => r.data.items),
+    template: (guid: string) => request<Template>('GET', `${base}/templates/${guidPath(guid)}`).then((r) => r.data),
+    /** Save the subject with the tokens and message (XHTML body or plain text), or with the whole document ({@code xml}), as read at {@code version}. */
+    saveTemplate: (guid: string, body: { version: string; subject: string } & ({ tokens: TemplateToken[]; body: string } | { tokens: TemplateToken[]; text: string } | { xml: string }), confirm?: string) =>
+      request<Template>('PUT', `${base}/templates/${guidPath(guid)}`, body, h(confirm)).then((r) => r.data),
+    /** A new template, blank or a copy of another's message. */
+    createTemplate: (body: { name: string; subject: string; copyOf?: string }, confirm?: string) =>
+      request<Template>('POST', `${base}/templates`, body, h(confirm)).then((r) => r.data),
+    /** Delete a template; {@code name} is its name, typed. */
+    deleteTemplate: (guid: string, name: string, confirm?: string) => request<void>('DELETE', `${base}/templates/${guidPath(guid)}`, { name }, h(confirm)),
     /** A driver set's role-based entitlement policies, in priority order, with its Entitlements Service drivers. */
     rbe: (setGuid: string) => request<RbeState>('GET', `${base}/driversets/${guidPath(setGuid)}/rbe`).then((r) => r.data),
     /** Reorder the policies (every one, highest priority first), as read at {@code version}. */

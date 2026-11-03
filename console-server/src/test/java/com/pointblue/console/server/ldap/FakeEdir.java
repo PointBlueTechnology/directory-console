@@ -70,7 +70,8 @@ public final class FakeEdir implements AutoCloseable {
         SSLContext ctx = SSLContext.getInstance("TLS");
         ctx.init(kmf.getKeyManagers(), null, null);
 
-        InMemoryDirectoryServerConfig cfg = new InMemoryDirectoryServerConfig("o=acme", "o=system");
+        // cn=Security: eDirectory's own top-level container (notification templates), not a naming context the console browses
+        InMemoryDirectoryServerConfig cfg = new InMemoryDirectoryServerConfig("o=acme", "o=system", "cn=Security");
         cfg.setSchema(null);
         // the in-memory server keeps cn=schema for itself; the root DSE names this fake's schema entry instead
         cfg.setRootDSEEntry(new com.unboundid.ldap.sdk.Entry("", new Attribute("objectClass", "top", "ds-root-dse"),

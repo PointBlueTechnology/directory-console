@@ -58,6 +58,8 @@ import javax.naming.directory.SearchControls;
  * /api/v2/trees/{tree}/idm/mapping-tables[/{guid}]                                    mapping tables (see MappingTables)
  * GET /api/v2/trees/{tree}/idm/{drivers|driversets}/{guid}/properties                a driver's or driver set's properties, read-only (see DriverProperties)
  * /api/v2/trees/{tree}/idm/driversets/{guid}/rbe…, /api/v2/trees/{tree}/idm/rbe/policies/{guid}…  role-based entitlement policies (see Rbe)
+ * /api/v2/trees/{tree}/idm/driversets/{guid}/work-orders, /api/v2/trees/{tree}/idm/work-orders/{guid}  work orders (see WorkOrders)
+ * /api/v2/trees/{tree}/idm/templates[/{guid}]                                         e-mail notification templates (see Templates)
  * </pre>
  */
 final class Idm {
@@ -72,6 +74,8 @@ final class Idm {
     private final MappingTables mappingTables;
     private final DriverProperties driverProperties;
     private final Rbe rbe;
+    private final WorkOrders workOrders;
+    private final Templates templates;
 
     Idm(Server server) {
         this.server = server;
@@ -81,6 +85,8 @@ final class Idm {
         this.mappingTables = new MappingTables(server);
         this.driverProperties = new DriverProperties(server);
         this.rbe = new Rbe(server);
+        this.workOrders = new WorkOrders(server);
+        this.templates = new Templates(server);
     }
 
     private record Target(String dn, String name, String driverSetDn, boolean isDriverSet) {
@@ -121,6 +127,20 @@ final class Idm {
         }
         if (p.length > 4 && p[2].equals("rbe") && p[3].equals("policies") && Names.guid(p[4])) {
             rbe.handle(ex, s, method, null, p[4], p.length > 5 ? String.join("/", java.util.Arrays.copyOfRange(p, 5, p.length)) : "");
+            return;
+        }
+        // work orders are objects in the Work Order driver's container, which it polls: LDAP alone
+        if (route.matches("(GET|POST) driversets/\\{guid}/work-orders")) {
+            workOrders.handle(ex, s, method, guid, null);
+            return;
+        }
+        if (p.length == 4 && p[2].equals("work-orders") && Names.guid(p[3])) {
+            workOrders.handle(ex, s, method, null, p[3]);
+            return;
+        }
+        // notification templates are objects under cn=Security: LDAP alone
+        if (p.length > 2 && p[2].equals("templates")) {
+            templates.handle(ex, s, method, p.length > 3 && !p[3].isEmpty() ? p[3] : null);
             return;
         }
         // mapping tables are resource objects: LDAP alone

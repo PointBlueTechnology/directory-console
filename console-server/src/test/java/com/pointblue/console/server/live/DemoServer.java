@@ -115,6 +115,7 @@ public final class DemoServer {
             ldif.add("dn: cn=" + cn + ",ou=Engineering,ou=Users,o=acme\nobjectClass: inetOrgPerson\ncn: " + cn + "\nsn: Person" + i
                 + "\ngivenName: " + given[i % given.length] + "\nmail: " + cn + "@acme.example");
         }
+        workOrdersAndTemplates(ldif);
         FakeEdir edir = new FakeEdir(ldif.toArray(new String[0]));
         // two servers holding three partitions, for the eDirectory pages
         for (String[] srv : new String[][] {{"cn=edir1,ou=servers,o=system", "7f000001"}, {"cn=edir2,ou=servers,o=system", "7f000002"}}) {
@@ -135,6 +136,8 @@ public final class DemoServer {
             engine.states.put("cn=activedirectory,cn=driverset,o=system", com.pointblue.dirxml.dev.deploy.Vault.STATE_RUNNING);
             engine.startOptions.put("cn=activedirectory,cn=driverset,o=system", com.pointblue.dirxml.dev.deploy.Vault.START_AUTO);
             engine.startOptions.put("cn=delimitedtext,cn=driverset,o=system", com.pointblue.dirxml.dev.deploy.Vault.START_DISABLED);
+            engine.states.put("cn=workorders,cn=driverset,o=system", com.pointblue.dirxml.dev.deploy.Vault.STATE_RUNNING);
+            engine.startOptions.put("cn=workorders,cn=driverset,o=system", com.pointblue.dirxml.dev.deploy.Vault.START_AUTO);
             DemoAccess.engines(server, engine.engines());
         }
         server.start();
@@ -232,5 +235,67 @@ public final class DemoServer {
             "nspmNumericCharactersAllowed: TRUE", "nspmSpecialCharactersAllowed: TRUE");
         edir.server.modify("ou=Sales,ou=Users,o=acme", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.REPLACE,
             "nspmPasswordPolicyDN", "cn=Staff,cn=Password Policies," + sec));
+    }
+
+    /**
+     * A Work Order driver whose GCV names its own object as the container (NetIQ's suggestion), four work orders in the
+     * states a lab showed (one run, one in error behind its last WorkToDo, one to run at the next poll, one repeating),
+     * and the notification template collection with three templates.
+     */
+    private static void workOrdersAndTemplates(List<String> ldif) {
+        String wo = "cn=Work Orders,cn=Driver Set,o=system";
+        String gcvs = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><configuration-values><definitions><definition display-name=\"Workorder Container\""
+            + " dn-space=\"dirxml\" dn-type=\"slash\" name=\"idv.workorder.container\" type=\"dn\"><value>system\\Driver Set\\Work Orders</value></definition></definitions></configuration-values>";
+        ldif.add("dn: " + wo + "\nobjectClass: DirXML-Driver\ncn: Work Orders\nDirXML-JavaModule: com.novell.nds.dirxml.driver.workorder.WorkOrderDriverShim"
+            + "\nDirXML-ConfigValues:: " + b64(gcvs));
+        ldif.add("dn: cn=Badge for Ann," + wo + "\nobjectClass: DirXML-WorkOrder\ncn: Badge for Ann\ndescription: Print a badge for Ann Person"
+            + "\nDirXML-nwoStatus: configured\nDirXML-DueDate: 20261102181130Z\nDirXML-nwoDoItNowFlag: TRUE\nDirXML-nwoRepeatInterval: 0\nDirXML-woType: badge"
+            + "\nDirXML-nwoContent: cn=user0000,ou=Engineering,ou=Users,o=acme\nDirXML-nwoProcessLog: ---  SUCCESS  configured 11/02/2026 6:11 PM");
+        ldif.add("dn: cn=DO-Badge for Ann," + wo + "\nobjectClass: DirXML-WorkToDo\ncn: DO-Badge for Ann\ndescription: Print a badge for Ann Person"
+            + "\nDirXML-nwoDN: \\ACME_TREE\\system\\Driver Set\\Work Orders\\Badge for Ann\nDirXML-woType: badge\nDirXML-nwoContent: cn=user0000,ou=Engineering,ou=Users,o=acme");
+        ldif.add("dn: cn=Badge for Bob," + wo + "\nobjectClass: DirXML-WorkOrder\ncn: Badge for Bob\ndescription: Print a badge for Bob Person"
+            + "\nDirXML-nwoStatus: error\nDirXML-DueDate: 20261102181430Z\nDirXML-nwoRepeatInterval: 0\nDirXML-woType: badge"
+            + "\nDirXML-nwoProcessLog: ---  SUCCESS  configured 11/01/2026 9:00 AM\nDirXML-nwoProcessLog: ---  ERROR Print a badge for Bob Person 11/02/2026 6:14 PM");
+        ldif.add("dn: cn=DO-Badge for Bob," + wo + "\nobjectClass: DirXML-WorkToDo\ncn: DO-Badge for Bob"
+            + "\nDirXML-nwoDN: \\ACME_TREE\\system\\Driver Set\\Work Orders\\Badge for Bob\nDirXML-woType: badge");
+        ldif.add("dn: cn=New hire jdoe," + wo + "\nobjectClass: DirXML-WorkOrder\ncn: New hire jdoe\ndescription: Accounts for J. Doe on day one"
+            + "\nDirXML-nwoStatus: pending\nDirXML-nwoDoItNowFlag: TRUE\nDirXML-nwoRepeatInterval: 0\nDirXML-woType: onboard\nDirXML-nwoContactName: Pat Lee");
+        ldif.add("dn: cn=Nightly report," + wo + "\nobjectClass: DirXML-WorkOrder\ncn: Nightly report\ndescription: Send the day's changes to HR"
+            + "\nDirXML-nwoStatus: pending\nDirXML-DueDate: 20261204020000Z\nDirXML-nwoRepeatInterval: 1440\nDirXML-woType: report");
+
+        String c = "cn=Default Notification Collection,cn=Security";
+        ldif.add("dn: cn=Security\nobjectClass: Top\ncn: Security");
+        ldif.add("dn: " + c + "\nobjectClass: notfTemplateCollection\nobjectClass: Top\ncn: Default Notification Collection");
+        String reminder = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><html xmlns:form=\"http://www.novell.com/dirxml/workflow/form\">\n"
+            + "\t<form:token-descriptions>\n\t\t<form:token-description description=\"Request name\" item-name=\"requestTitle\"/>\n"
+            + "\t\t<form:token-description description=\"Submitted by\" item-name=\"initiatorFullName\"/>\n"
+            + "\t\t<form:token-description description=\"Recipient's full name\" item-name=\"recipientFullName\"/>\n\t</form:token-descriptions>\n"
+            + "\t<body>\n\t\t<p>Hi,<br/>\n\t\t\t<br/>\nA request by $initiatorFullName$ for $recipientFullName$ is waiting for your approval.<br/>\n\t\t\t<br/>\n"
+            + "Request Name: $requestTitle$<br/>\nRequest Id: $requestId$<br/>\n\t\t\t<br/>\nApprove from your mail: <a href=\"mailTo:$REPLY_EMAIL$?subject=$EMAIL_APPROVAL_TOKEN_ID$-$APPROVE_PHRASE$&amp;body={Enter a comment}\">APPROVE</a>"
+            + " or <a href=\"mailTo:$REPLY_EMAIL$?subject=$EMAIL_APPROVAL_TOKEN_ID$-$DENY_PHRASE$&amp;body={Enter a comment}\">DENY</a>\n\t\t</p>\n\t</body>\n</html>";
+        ldif.add("dn: cn=Email Based Approval Reminder Notification_en," + c + "\nobjectClass: notfMergeTemplate\nobjectClass: DirXML-PkgItemAux"
+            + "\ncn: Email Based Approval Reminder Notification_en\nnotfMergeTemplateSubject: Reminder - Request $EMAIL_APPROVAL_TOKEN_ID$ is waiting on your approval"
+            + "\nDirXML-pkgGUID: T3Y8FA0M_201610271749070213;com.netiqcorporation.netqprovebat;2.0.1.20190809181859;Email Based Approval Templates;NETQPROVEBAT"
+            + "\nnotfMergeTemplateData:: " + b64(reminder));
+        String expiry = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><html xmlns:form=\"http://www.novell.com/dirxml/workflow/form\">\n"
+            + "\t<form:token-descriptions>\n\t\t<form:token-description description=\"The user's first name\" item-name=\"FirstName\"/>\n"
+            + "\t\t<form:token-description description=\"Days until it expires\" item-name=\"Days\"/>\n\t</form:token-descriptions>\n"
+            + "\t<body>\n\t\t<p>Dear $FirstName$,</p>\n\t\t<p>Your Acme password expires in <b>$Days$ days</b>. Change it at the self-service portal.</p>\n\t</body>\n</html>";
+        ldif.add("dn: cn=Password Expiration Notification," + c + "\nobjectClass: notfMergeTemplate\ncn: Password Expiration Notification"
+            + "\nnotfMergeTemplateSubject: Your password expires in $Days$ days\nnotfMergeTemplateData:: " + b64(expiry));
+        String ticket = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><html xmlns:form=\"http://www.novell.com/dirxml/workflow/form\">\n"
+            + "\t<form:token-descriptions>\n\t\t<form:token-description description=\"helpdesk ticket title\" item-name=\"helpdeskTitle\"/>\n"
+            + "\t\t<form:token-description description=\"Ticket Number of the helpdesk ticket\" item-name=\"ticketNumber\"/>\n\t</form:token-descriptions>"
+            + "Hi,\n\nA new help desk ticket has been submitted that requires your action.\n\nTitle: $helpdeskTitle$\nTicket number: $ticketNumber$\n\n"
+            + "You can review a list of all requests pending your approval at $SECURE_PROTOCOL$://$HOST$:$SECURE_PORT$/#/idmdash/tasks.</html>";
+        ldif.add("dn: cn=helpdesk_ticket_creation_en," + c + "\nobjectClass: notfMergeTemplate\ncn: helpdesk_ticket_creation_en"
+            + "\nnotfMergeTemplateSubject: New help desk ticket $ticketNumber$\nnotfMergeTemplateData:: " + b64(ticket));
+        // a body Designer would refuse, as an old hand edit leaves one: only its XML can be changed
+        ldif.add("dn: cn=Welcome (old),"  + c + "\nobjectClass: notfMergeTemplate\ncn: Welcome (old)\nnotfMergeTemplateSubject: Welcome to Acme"
+            + "\nnotfMergeTemplateData:: " + b64("<html><body><p>Welcome,<br>$FirstName$ &nbsp;</p></body></html>"));
+    }
+
+    private static String b64(String s) {
+        return java.util.Base64.getEncoder().encodeToString(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }

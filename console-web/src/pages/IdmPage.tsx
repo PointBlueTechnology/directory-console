@@ -17,6 +17,8 @@ import { RbePanel } from '../components/RbePanel';
 import { BulkLifecycleModal } from '../components/BulkLifecycle';
 import { TracePanel } from '../components/TracePanel';
 import { MappingTablesPanel } from '../components/MappingTables';
+import { WorkOrdersPanel } from '../components/WorkOrders';
+import { TemplatesPanel } from '../components/Templates';
 import { VersionsPanel } from '../components/VersionsPanel';
 import { StatisticsPanel } from '../components/StatisticsPanel';
 import { DriverSetPropertiesTab } from '../components/DriverProperties';
@@ -129,6 +131,8 @@ function DriverSetView({ api: connected, guid }: { api: ReturnType<typeof idm>; 
           <Tab eventKey="rbe" title={<TabTitleText>Role-based entitlements</TabTitleText>}>
             <RbePanel api={api} setGuid={guid} drivers={set.drivers} onDriversChanged={load} />
           </Tab>
+          <Tab eventKey="work-orders" title={<TabTitleText>Work orders</TabTitleText>}><WorkOrdersPanel api={api} setGuid={guid} drivers={set.drivers} /></Tab>
+          <Tab eventKey="templates" title={<TabTitleText>E-mail templates</TabTitleText>}><TemplatesPanel /></Tab>
           <Tab eventKey="log" title={<TabTitleText>Log level</TabTitleText>}>
             <LogLevelPanel load={() => api.setPart(guid, 'log-level')} />
           </Tab>

@@ -746,6 +746,48 @@ export const CONTENT: Record<string, HelpTopic> = {
       { title: 'When changes apply', caution: true, paragraphs: ['Drivers read a table when they start: restart the drivers that use it.'] },
     ],
   },
+  'idm.work-orders': {
+    title: 'Work orders',
+    summary: 'Work for a Work Order driver to do at a set time, once or repeatedly: the driver polls its container and runs each one that is due.',
+    sections: [
+      {
+        title: 'Where they live',
+        paragraphs: ['In the container the driver\'s idv.workorder.container GCV names, often the driver object itself. The tab shows each Work Order driver of the set and the container it polls.'],
+      },
+      {
+        title: 'What the driver does',
+        list: [
+          'It runs a pending work order at its next poll (every minute by default) once it is due, or at once when it is to run at the next poll.',
+          'It adds a WorkToDo object, carrying the content, description and type, for the policies that act on the work order.',
+          'It marks the work order done (or in error), adds a line to its log, and writes the time it ran as the due date. One that repeats gets its next due date and stays pending.',
+          'On hold keeps it from running.',
+        ],
+      },
+      {
+        title: 'Running one again',
+        caution: true,
+        paragraphs: ['NOVLWOBASE names the WorkToDo after the work order, so while the last run\'s WorkToDo is still there the next run fails and the work order shows an error. Whatever acts on the WorkToDo usually removes it; the work order shows it while it is there, and it can be removed from there.'],
+      },
+    ],
+    related: ['idm', 'idm.drivers'],
+  },
+  'idm.templates': {
+    title: 'E-mail templates',
+    summary: 'The messages Identity Manager sends, such as password notices and approval requests: a subject and an XHTML body in which $token$ markers are filled in.',
+    sections: [
+      {
+        title: 'Editing',
+        list: [
+          'The tokens list describes each marker for whoever edits the template; the sender fills them in, and some markers (such as its reply address) need no description.',
+          'A message is plain text or XHTML, as the template has it. In XHTML, close every element and write &amp; for &; a message that is not well-formed is refused.',
+          'The XML tab shows and changes the whole document, including anything outside the body.',
+          'A template installed by a package may be replaced when the package is upgraded.',
+          'Templates live in cn=Default Notification Collection,cn=Security; deleting one asks for its name.',
+        ],
+      },
+    ],
+    related: ['idm'],
+  },
   'idm.log': {
     title: 'Log level',
     summary: 'Which events the engine records in its log. The driver set\'s level is shown here; each driver\'s is changed on its own Log level tab.',

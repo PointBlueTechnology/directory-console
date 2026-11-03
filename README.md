@@ -97,7 +97,7 @@ docker compose up -d
   - **driver sets and drivers:** state, start and stop (one at a time or all), start options, trace and log levels, named and authentication passwords, read-only properties, statistics and versions;
   - **jobs:** run, abort, create, edit and delete;
   - **inspection:** the cache inspector, the association inspector, the object inspector, and per-user password synchronization status;
-  - **data:** migrate and synchronize, and mapping tables.
+  - **data:** migrate and synchronize, mapping tables, role-based entitlement policies, work orders and e-mail templates.
 - **Sign-in and access:**
   - direct sign-in, or single sign-on with OpenID Connect, optionally the only way in except for listed accounts;
   - several directories, chosen at sign-in;

@@ -83,8 +83,8 @@ chosen user, without setting it. Rules that contradict each other (so no passwor
 ## Identity Manager
 
 **Driver set.** Its drivers with their state and start options; start, stop and restart one or all. The tabs cover
-jobs, servers and activation, properties, statistics, versions, trace, mapping tables, log level and named
-passwords.
+jobs, servers and activation, properties, statistics, versions, trace, mapping tables, role-based entitlements, work
+orders, e-mail templates, log level and named passwords.
 
 ![A driver set and its drivers](images/idm-driver-set.png)
 

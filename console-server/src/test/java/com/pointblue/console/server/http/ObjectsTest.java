@@ -788,4 +788,127 @@ public class ObjectsTest {
         assertNotNull(rights.body().get("attribute"));
         assertEquals("the trustee asked about", "cn=viewer,ou=Groups,o=acme", edir.privilegeRequests.get(edir.privilegeRequests.size() - 1)[1]);
     }
+
+    @Test
+    public void workOrdersAreFoundWhereTheDriverKeepsThemAndChanged() throws Exception {
+        // NOVLWOBASE keeps the container GCV in a GCV object linked to the driver, as a slash DN with the tree's name first
+        String gcvs = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><configuration-values><definitions><definition dn-space=\"dirxml\" dn-type=\"slash\""
+            + " name=\"idv.workorder.container\" type=\"dn\"><value>\\ACME_TREE\\system\\Set1\\WO\\Orders</value></definition></definitions></configuration-values>";
+        edir.add("dn: cn=Set1,o=system", "objectClass: DirXML-DriverSet", "cn: Set1");
+        edir.add("dn: cn=AD,cn=Set1,o=system", "objectClass: DirXML-Driver", "cn: AD", "DirXML-JavaModule: com.novell.nds.dirxml.remote.driver.DriverShimImpl");
+        edir.add("dn: cn=WO,cn=Set1,o=system", "objectClass: DirXML-Driver", "cn: WO", "DirXML-JavaModule: " + WorkOrders.SHIM,
+            "DirXML-Policies: cn=NOVLWOBASE-GCVs,cn=WO,cn=Set1,o=system#0#14");
+        edir.add("dn: cn=NOVLWOBASE-GCVs,cn=WO,cn=Set1,o=system", "objectClass: DirXML-GlobalConfigDef", "cn: NOVLWOBASE-GCVs");
+        edir.server.modify("cn=NOVLWOBASE-GCVs,cn=WO,cn=Set1,o=system", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD,
+            "DirXML-ConfigValues", gcvs.getBytes(StandardCharsets.UTF_8)));
+        edir.add("dn: cn=Orders,cn=WO,cn=Set1,o=system", "objectClass: organizationalUnit", "cn: Orders");
+        // one the driver has run (as seen on a lab): configured, logged, the run time as due date, its WorkToDo beside it
+        edir.add("dn: cn=Old one,cn=Orders,cn=WO,cn=Set1,o=system", "objectClass: DirXML-WorkOrder", "cn: Old one", "DirXML-nwoStatus: configured",
+            "DirXML-DueDate: 20261103001130Z", "DirXML-nwoDoItNowFlag: TRUE", "DirXML-nwoRepeatInterval: 0", "description: First",
+            "DirXML-nwoProcessLog: ---  SUCCESS  configured 11/02/2026 6:11 PM");
+        edir.add("dn: cn=DO-Old one,cn=Orders,cn=WO,cn=Set1,o=system", "objectClass: DirXML-WorkToDo", "cn: DO-Old one",
+            "DirXML-nwoDN: \\ACME_TREE\\system\\Set1\\WO\\Orders\\Old one", "DirXML-woType: onboard");
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String set = (String) resolve(h, "cn=Set1,o=system").body().get("guid");
+        String base = "/api/v2/trees/acme/idm";
+
+        Map<String, Object> listed = call("GET", base + "/driversets/" + set + "/work-orders", null, h).body();
+        List<?> drivers = (List<?>) listed.get("drivers");
+        assertEquals("the Work Order driver only", 1, drivers.size());
+        assertEquals("cn=Orders,cn=WO,cn=Set1,o=system", Json.asMap(drivers.get(0)).get("container"));
+        assertEquals("gcv", Json.asMap(drivers.get(0)).get("containerFrom"));
+        Map<String, Object> old = Json.asMap(((List<?>) listed.get("items")).get(0));
+        assertEquals("configured", old.get("status"));
+        assertEquals("2026-11-03T00:11:30Z", old.get("due"));
+        String oldGuid = (String) old.get("guid");
+
+        Map<String, Object> got = call("GET", base + "/work-orders/" + oldGuid, null, h).body();
+        assertEquals(List.of("---  SUCCESS  configured 11/02/2026 6:11 PM"), got.get("log"));
+        assertEquals("its WorkToDo, by the slash DN the engine wrote", "DO-Old one", Json.asMap(((List<?>) got.get("todos")).get(0)).get("name"));
+        // the driver's status stays when it is not what changes
+        Reply kept = call("PUT", base + "/work-orders/" + oldGuid, Map.of("version", got.get("version"), "status", "configured", "description", "Renamed"), h);
+        assertEquals(String.valueOf(kept.body()), 200, kept.status());
+        assertEquals("Renamed", edir.entry("cn=Old one,cn=Orders,cn=WO,cn=Set1,o=system").getAttributeValue("description"));
+
+        Reply bad = call("POST", base + "/driversets/" + set + "/work-orders", Map.of("name", "X", "status", "configured"), h);
+        assertEquals("a person does not set configured", 400, bad.status());
+        Reply made = call("POST", base + "/driversets/" + set + "/work-orders", Map.of("name", "New hire", "now", true, "content", "jdoe",
+            "dependents", List.of("cn=Old one,cn=Orders,cn=WO,cn=Set1,o=system")), h);
+        assertEquals(String.valueOf(made.body()), 201, made.status());
+        com.unboundid.ldap.sdk.Entry e = edir.entry("cn=New hire,cn=Orders,cn=WO,cn=Set1,o=system");
+        assertEquals("pending", e.getAttributeValue("DirXML-nwoStatus"));
+        assertEquals("0", e.getAttributeValue("DirXML-nwoRepeatInterval"));
+        assertEquals("TRUE", e.getAttributeValue("DirXML-nwoDoItNowFlag"));
+        assertEquals(null, e.getAttributeValue("DirXML-DueDate"));
+        assertEquals(400, call("POST", base + "/driversets/" + set + "/work-orders", Map.of("name", "Y", "dependents", List.of("cn=AD,cn=Set1,o=system")), h).status());
+
+        String guid = (String) made.body().get("guid");
+        Map<String, Object> change = new HashMap<>(Map.of("version", made.body().get("version"), "due", "2026-12-01T08:00:00Z", "status", "onhold", "repeatMinutes", "60"));
+        Reply changed = call("PUT", base + "/work-orders/" + guid, change, h);
+        assertEquals(String.valueOf(changed.body()), 200, changed.status());
+        e = edir.entry("cn=New hire,cn=Orders,cn=WO,cn=Set1,o=system");
+        assertEquals("20261201080000Z", e.getAttributeValue("DirXML-DueDate"));
+        assertEquals("a due date replaces now", null, e.getAttributeValue("DirXML-nwoDoItNowFlag"));
+        assertEquals("onhold", e.getAttributeValue("DirXML-nwoStatus"));
+        assertEquals("the version read is stale", 409, call("PUT", base + "/work-orders/" + guid, change, h).status());
+        change.put("version", changed.body().get("version"));
+        change.put("repeatMinutes", "1.5");
+        assertEquals(400, call("PUT", base + "/work-orders/" + guid, change, h).status());
+
+        Map<String, String> v = signIn("cn=viewer,ou=Users,o=acme", "viewer-pw");
+        assertEquals(403, call("DELETE", base + "/work-orders/" + guid, Map.of(), v).status());
+        assertEquals(204, call("DELETE", base + "/work-orders/" + guid, Map.of(), h).status());
+        assertEquals(null, edir.entry("cn=New hire,cn=Orders,cn=WO,cn=Set1,o=system"));
+    }
+
+    @Test
+    public void templatesAreEditedKeepingTheRestOfTheDocument() throws Exception {
+        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><html xmlns:form=\"http://www.novell.com/dirxml/workflow/form\">\n"
+            + "\t<form:token-descriptions>\n\t\t<form:token-description description=\"Request name\" item-name=\"requestTitle\"/>\n"
+            + "\t\t<form:token-description description=\"Submitted by\" item-name=\"initiatorFullName\"/>\n\t</form:token-descriptions>\n"
+            + "\t<head><style>p { color: navy }</style></head>\n"
+            + "\t<body>\n\t\t<p>Hi,<br/>$initiatorFullName$ asks for $requestTitle$. <a href=\"mailTo:$REPLY_EMAIL$?subject=x&amp;body=y\">APPROVE</a></p>\n\t</body>\n</html>";
+        edir.add("dn: cn=Security", "objectClass: Top", "cn: Security");
+        edir.add("dn: " + Templates.COLLECTION, "objectClass: notfTemplateCollection", "cn: Default Notification Collection");
+        edir.add("dn: cn=Approval_en," + Templates.COLLECTION, "objectClass: notfMergeTemplate", "cn: Approval_en",
+            "notfMergeTemplateSubject: Request $requestTitle$", "DirXML-pkgGUID: X;com.example;1.0;Approval Templates;EXAPPR");
+        edir.server.modify("cn=Approval_en," + Templates.COLLECTION, new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD,
+            "notfMergeTemplateData", xml));
+        Map<String, String> h = signIn("cn=admin,o=system", "admin-pw");
+        String base = "/api/v2/trees/acme/idm/templates";
+
+        Map<String, Object> listed = Json.asMap(((List<?>) call("GET", base, null, h).body().get("items")).get(0));
+        assertEquals("Request $requestTitle$", listed.get("subject"));
+        assertEquals("Approval Templates", listed.get("package"));
+        String guid = (String) listed.get("guid");
+        Map<String, Object> got = call("GET", base + "/" + guid, null, h).body();
+        assertEquals(List.of(Map.of("name", "requestTitle", "description", "Request name"), Map.of("name", "initiatorFullName", "description", "Submitted by")), got.get("tokens"));
+        assertEquals("subject first, then the body; the sender's own markers too", List.of("requestTitle", "initiatorFullName", "REPLY_EMAIL"), got.get("used"));
+        String body = (String) got.get("body");
+        assertTrue(body, body.contains("<a href=\"mailTo:$REPLY_EMAIL$?subject=x&amp;body=y\">APPROVE</a>") && !body.contains("xmlns"));
+
+        Map<String, Object> save = new HashMap<>(Map.of("version", got.get("version"), "subject", "Approve $requestTitle$",
+            "tokens", List.of(Map.of("name", "requestTitle", "description", "Request name"), Map.of("name", "requestId", "description", "Request id")),
+            "body", body.replace("Hi,", "Hello,")));
+        Reply saved = call("PUT", base + "/" + guid, save, h);
+        assertEquals(String.valueOf(saved.body()), 200, saved.status());
+        String now = edir.entry("cn=Approval_en," + Templates.COLLECTION).getAttributeValue("notfMergeTemplateData");
+        assertTrue(now, now.contains("<head><style>p { color: navy }</style></head>") && now.contains("Hello,<br/>"));
+        assertTrue(now, now.contains("item-name=\"requestId\"") && !now.contains("initiatorFullName\"") && now.contains("subject=x&amp;body=y"));
+        assertEquals("Approve $requestTitle$", edir.entry("cn=Approval_en," + Templates.COLLECTION).getAttributeValue("notfMergeTemplateSubject"));
+        assertEquals("the version read is stale", 409, call("PUT", base + "/" + guid, save, h).status());
+
+        save.put("version", saved.body().get("version"));
+        save.put("body", "<p>a<br>b</p>");
+        Reply notXml = call("PUT", base + "/" + guid, save, h);
+        assertEquals(400, notXml.status());
+        assertTrue(String.valueOf(notXml.body()), String.valueOf(notXml.body()).contains("not well-formed"));
+        assertEquals(400, call("PUT", base + "/" + guid, Map.of("version", saved.body().get("version"), "subject", "s", "xml", "<html><body>"), h).status());
+
+        Reply copy = call("POST", base, Map.of("name", "Approval_fr", "copyOf", guid, "subject", "Demande $requestTitle$"), h);
+        assertEquals(String.valueOf(copy.body()), 201, copy.status());
+        assertEquals(2, ((List<?>) copy.body().get("tokens")).size());
+        assertEquals(409, call("DELETE", base + "/" + copy.body().get("guid"), Map.of("name", "Approval"), h).status());
+        assertEquals(204, call("DELETE", base + "/" + copy.body().get("guid"), Map.of("name", "Approval_fr"), h).status());
+    }
 }
