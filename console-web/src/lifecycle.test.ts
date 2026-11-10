@@ -11,7 +11,7 @@ describe('start all / stop all', () => {
   it('starts the stopped drivers that can start', () => {
     const p = plan('start', drivers);
     expect(p.act.map((x) => x.name)).toEqual(['b']);
-    expect(p.skip.map((x) => `${x.d.name}: ${x.why}`)).toEqual(['a: already running', 'c: disabled: it cannot start', 'e: already running', 'f: not readable']);
+    expect(p.skip.map((x) => `${x.d.name}: ${x.why}`)).toEqual(['a: already running', 'c: disabled, so it cannot start', 'e: already running', 'f: its GUID could not be read']);
   });
 
   it('stops the running and starting drivers', () => {

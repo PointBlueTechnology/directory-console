@@ -87,7 +87,7 @@ export function AttributeModal({ obj, etag, onClose, onDone, allowed, initial }:
             <FormSelect id="op" value={op} onChange={(_e, v) => setOp(v as typeof op)}>
               <FormSelectOption value="replace" label="Replace all values with these" />
               <FormSelectOption value="add" label="Add these values" />
-              <FormSelectOption value="remove" label="Remove these values (none listed: remove the attribute)" />
+              <FormSelectOption value="remove" label="Remove these values (leave empty to remove the whole attribute)" />
             </FormSelect>
           </FormGroup>
           <FormGroup label="Values" fieldId="values">
@@ -418,7 +418,7 @@ export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClos
       setPw(candidate);
       setAgain(candidate);
       setShown(candidate);
-      setMade(governing ? `Made from ${governing.name}, and checked against it.` : 'No password policy governs this user; made 12 or more characters long.');
+      setMade(governing ? `Generated to meet ${governing.name}, and checked against it.` : 'No password policy governs this user, so it was generated 12 or more characters long.');
     } catch (e) {
       setError(policy && e instanceof Error && !(e instanceof ApiError) ? new Error(`${policy.name}: ${e.message}`) : e);
     } finally {
@@ -479,7 +479,7 @@ export function PasswordModal({ obj, onClose, onDone }: { obj: DirObject; onClos
           </FormGroup>
           <Checkbox id="must-change" label="Must change it at the next login" isChecked={mustChange} onChange={(_e, v) => setMustChange(v)} />
           <HelperText><HelperTextItem>{policy ? `The ${policy.name} policy applies` : 'The directory\'s password policy applies'}; a refusal shows its reason here.</HelperTextItem></HelperText>
-          <ProblemAlert error={error} title={error && !(error instanceof ApiError) ? 'Not set' : undefined} />
+          <ProblemAlert error={error} title={error && !(error instanceof ApiError) ? 'Password not set' : undefined} />
         </Form>
       </ModalBody>
       <ModalFooter>

@@ -154,7 +154,7 @@ function TemplateEditor({ guid, onClose, onChanged }: { guid: string; onClose: (
       : plain
         ? { version: t!.version, subject: subject.trim(), tokens: tokens.map((x) => ({ name: x.name.trim(), description: x.description })), text: body }
         : { version: t!.version, subject: subject.trim(), tokens: tokens.map((x) => ({ name: x.name.trim(), description: x.description })), body };
-    run((c) => api.saveTemplate(guid, payload, c)).then((x) => { take(x); onChanged(); setNotice('Saved. It is used from the next notice sent.'); }, setError)
+    run((c) => api.saveTemplate(guid, payload, c)).then((x) => { take(x); onChanged(); setNotice('Saved. The next notice sent uses it.'); }, setError)
       .finally(() => setBusy(false));
   };
   const remove = () => {
@@ -197,7 +197,7 @@ function TemplateEditor({ guid, onClose, onChanged }: { guid: string; onClose: (
               {t.readable && (
                 <Tab eventKey="preview" title={<TabTitleText>Preview</TabTitleText>} isAriaDisabled={mode === 'xml'}>
                   <div className="dc-tab-body">
-                    <p className="dc-subtle">Marked: the tokens filled in when it is sent.</p>
+                    <p className="dc-subtle">Highlighted: the tokens that are filled in when the message is sent.</p>
                     {/* made while the tab is open: a sandboxed frame does not show a srcdoc changed after it loaded */}
                     {tab === 'preview' && (
                       <iframe title="Message preview" sandbox="" srcDoc={preview(body, plain)} style={{ width: '100%', height: '24rem', border: '1px solid var(--pf-t--global--border--color--default)' }} />
@@ -263,7 +263,7 @@ function TokensTable({ tokens, used, operator, onChange }: { tokens: TemplateTok
           ))}
         </Tbody>
       </Table>
-      {operator && <Button variant="link" size="sm" icon={<PlusIcon />} onClick={() => onChange([...tokens, { name: '', description: '' }])}>Token</Button>}
+      {operator && <Button variant="link" size="sm" icon={<PlusIcon />} onClick={() => onChange([...tokens, { name: '', description: '' }])}>Add a token</Button>}
       {undescribed.length > 0 && (
         <div className="dc-tab-body">
           <span className="dc-subtle">Used without a description (the sender fills these in too, such as its reply address): </span>

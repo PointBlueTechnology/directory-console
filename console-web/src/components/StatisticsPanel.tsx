@@ -53,6 +53,7 @@ export function StatisticsPanel({ api, guid }: { api: Idm; guid: string }) {
   }
   const shown = s.drivers.filter((d) => !waitingOnly || (d.cache?.size ?? 0) > 0);
   const totalWaiting = s.drivers.reduce((n, d) => n + (d.cache?.unprocessedSize ?? 0), 0);
+  const waitingDrivers = s.drivers.filter((d) => (d.cache?.unprocessedSize ?? 0) > 0).length;
   return (
     <div className="dc-tab-body">
       <DescriptionList isHorizontal isCompact>
@@ -60,7 +61,7 @@ export function StatisticsPanel({ api, guid }: { api: Idm; guid: string }) {
         {s.jvm && s.jvm.heapUsed && s.jvm.heapUsed !== '?' && <DescriptionListGroup><DescriptionListTerm>Engine JVM</DescriptionListTerm><DescriptionListDescription>
           {s.jvm.heapUsed} of {s.jvm.heapTotal} heap used · {s.jvm.threadsCurrent} threads (peak {s.jvm.threadsPeak})
         </DescriptionListDescription></DescriptionListGroup>}
-        <DescriptionListGroup><DescriptionListTerm>Waiting</DescriptionListTerm><DescriptionListDescription>{bytes(totalWaiting)} in {s.drivers.filter((d) => (d.cache?.unprocessedSize ?? 0) > 0).length} drivers' caches</DescriptionListDescription></DescriptionListGroup>
+        <DescriptionListGroup><DescriptionListTerm>Waiting</DescriptionListTerm><DescriptionListDescription>{bytes(totalWaiting)} in {waitingDrivers} {waitingDrivers === 1 ? "driver's cache" : "drivers' caches"}</DescriptionListDescription></DescriptionListGroup>
       </DescriptionList>
       <Flex className="dc-tab-body" alignItems={{ default: 'alignItemsCenter' }}>
         <FlexItem><Switch id="waiting-only" label="Only drivers with events waiting" isChecked={waitingOnly} onChange={(_e, v) => setWaitingOnly(v)} /></FlexItem>

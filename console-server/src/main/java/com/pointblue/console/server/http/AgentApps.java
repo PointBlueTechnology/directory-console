@@ -150,7 +150,7 @@ final class AgentApps {
 
     private Http.Problem authorizeAgain(AgentKeys.Key k) {
         return new Http.Problem(409, "authorize-again", "this key's Identity Applications sign-in stopped working; " + k.name()
-            + " authorizes it again in the console (Agent keys > " + k.label() + " > Authorize), with their password");
+            + " needs to authorize it again in the console (Agent keys > " + k.label() + " > Authorize), with their password");
     }
 
     /** A key revoked or removed: forget its session. */

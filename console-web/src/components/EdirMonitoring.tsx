@@ -102,9 +102,9 @@ export function AuditView() {
             <FormGroup label="Object events only for these classes" fieldId="cef-objects">
               <TextArea id="cef-objects" value={s.objectClasses.join('\n')} isDisabled={!edit} rows={3} resizeOrientation="vertical"
                 onChange={(_e, v) => set({ objectClasses: lines(v) })} />
-              <FormHelperText><HelperText><HelperTextItem>eDirectory class names, one per line, such as User or Organizational Unit. Empty: every class.</HelperTextItem></HelperText></FormHelperText>
+              <FormHelperText><HelperText><HelperTextItem>eDirectory class names, one per line, such as User or Organizational Unit. Leave empty for every class.</HelperTextItem></HelperText></FormHelperText>
             </FormGroup>
-            {([['attributeFilter', 'Attribute events only for', 'Empty: every class and attribute.'], ['exclude', 'Never audit', 'Commonly: Last Login Time, Login Time, Revision, Partition Status.']] as const).map(([k, label, help]) => (
+            {([['attributeFilter', 'Attribute events only for', 'Leave both empty for every class and attribute.'], ['exclude', 'Never audit', 'Commonly: Last Login Time, Login Time, Revision, Partition Status.']] as const).map(([k, label, help]) => (
               <Flex key={k}>
                 <FlexItem grow={{ default: 'grow' }}>
                   <FormGroup label={`${label}: classes`} fieldId={`cef-${k}-classes`}>
@@ -122,7 +122,7 @@ export function AuditView() {
               </Flex>
             ))}
           </ExpandableSection>
-          {(s.unknown?.length ?? 0) > 0 && <p className="dc-subtle">Also stored, and kept as it is: <span className="dc-mono">{s.unknown!.join(', ')}</span></p>}
+          {(s.unknown?.length ?? 0) > 0 && <p className="dc-subtle">Other stored settings, kept unchanged: <span className="dc-mono">{s.unknown!.join(', ')}</span></p>}
           {edit && (
             <ActionGroup>
               <Button type="submit" isLoading={busy} isDisabled={busy || !dirty}>Save</Button>
@@ -195,9 +195,9 @@ export function SnmpView() {
                     <Tr key={t.number}>
                       <Td dataLabel="Trap">{t.name} <span className="dc-subtle">({t.number})</span></Td>
                       <Td dataLabel="Sent"><Checkbox id={`t-${g.guid}-${t.number}-a`} aria-label={`Send ${t.name}`} isChecked={t.active} isDisabled={!edit}
-                        onChange={(_e, v) => change(g, { traps: { [t.number]: { active: v } } }, `${t.name} ${v ? 'on' : 'off'}.`)} /></Td>
+                        onChange={(_e, v) => change(g, { traps: { [t.number]: { active: v } } }, `${t.name} turned ${v ? 'on' : 'off'}.`)} /></Td>
                       <Td dataLabel="Failure traps"><Checkbox id={`t-${g.guid}-${t.number}-f`} aria-label={`Failure traps for ${t.name}`} isChecked={t.failure} isDisabled={!edit}
-                        onChange={(_e, v) => change(g, { traps: { [t.number]: { failure: v } } }, `Failure traps for ${t.name} ${v ? 'on' : 'off'}.`)} /></Td>
+                        onChange={(_e, v) => change(g, { traps: { [t.number]: { failure: v } } }, `Failure traps for ${t.name} turned ${v ? 'on' : 'off'}.`)} /></Td>
                       <Td dataLabel="Interval">
                         <IntervalField id={`t-${g.guid}-${t.number}-i`} label={`Interval for ${t.name}`} hideLabel value={t.interval} edit={edit}
                           onSave={(v) => change(g, { traps: { [t.number]: { interval: v } } }, `Interval for ${t.name} saved.`)} />
@@ -279,7 +279,7 @@ export function EncryptionView() {
                 {e.policies.map((p) => (
                   <Tr key={p.dn}>
                     <Td dataLabel="Policy"><a {...linkProps(`/objects/${p.guid}`)}>{p.name}</a><div className="dc-subtle dc-mono">{p.dn}</div></Td>
-                    <Td dataLabel="Attributes">{p.attributes.map((x) => <div key={x.attribute}>{x.attribute} <span className="dc-subtle">({x.scheme || '?'})</span></div>)}</Td>
+                    <Td dataLabel="Attributes">{p.attributes.map((x) => <div key={x.attribute}>{x.attribute} <span className="dc-subtle">({x.scheme || 'scheme unknown'})</span></div>)}</Td>
                     <Td dataLabel="Secure channel only">{p.requiresSecureChannel ? 'Yes' : <Label isCompact color="orange">No: readable in clear text</Label>}</Td>
                     <Td dataLabel="Servers">{p.servers.map((x) => x.name).join(', ') || <span className="dc-subtle">none</span>}</Td>
                     {edit && (
@@ -416,7 +416,7 @@ function PolicyModal({ value, onSave, onClose }: {
             <FormHelperText><HelperText><HelperTextItem>Changing an attribute's scheme leaves pieces of its old values on disk.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <Checkbox id="policy-secure" label="Readable only over a secure channel (LDAPS or StartTLS)" isChecked={v.secure} onChange={(_e, x) => setV({ ...v, secure: x })}
-            description="Off: encrypted values can be read in clear text over plain LDAP." />
+            description="When off, encrypted values can be read in clear text over plain LDAP." />
           <ProblemAlert error={error} />
         </Form>
       </ModalBody>
@@ -456,7 +456,7 @@ export function ReplicaFilterCard({ guid }: { guid: string }) {
         {notice && <Alert variant="success" isInline isPlain title={notice} className="dc-tab-body" />}
         {!f ? (!error && <Spinner size="md" aria-label="Reading the replica filter" />) : draft ? (
           <>
-            <p className="dc-subtle">LDAP class names, each with the attributes its filtered replicas keep (empty: all of them).</p>
+            <p className="dc-subtle">LDAP class names, each with the attributes its filtered replicas keep (leave empty to keep all of them).</p>
             {draft.map((c, i) => (
               <Flex key={i} className="dc-gap-bottom" alignItems={{ default: 'alignItemsCenter' }}>
                 <FlexItem><TextInput aria-label="Class" value={c.class} placeholder="inetOrgPerson" onChange={(_e, v) => setDraft(draft.map((x, j) => (j === i ? { ...x, class: v } : x)))} /></FlexItem>
@@ -473,7 +473,7 @@ export function ReplicaFilterCard({ guid }: { guid: string }) {
           </>
         ) : (
           <>
-            {f.classes.length === 0 ? <p>No filter: filtered replicas on this server would hold nothing{f.sparseReplicas.length > 0 ? ' (it lists some)' : ''}.</p> : (
+            {f.classes.length === 0 ? <p>No filter, so filtered replicas on this server hold nothing{f.sparseReplicas.length > 0 ? `, and it has ${f.sparseReplicas.length === 1 ? 'one' : f.sparseReplicas.length}: ${f.sparseReplicas.map((r) => r.name).join(', ')}` : ''}.</p> : (
               <>
                 <p className="dc-subtle">Its filtered replicas ({f.sparseReplicas.map((r) => r.name).join(', ') || 'none yet'}) hold only these classes and attributes.</p>
                 <Table aria-label="Replica filter" variant="compact">

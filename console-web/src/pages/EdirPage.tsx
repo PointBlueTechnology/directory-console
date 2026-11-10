@@ -330,7 +330,7 @@ export function ServerPage({ guid }: { guid: string }) {
                   <Td dataLabel="Rule">{ix.rule}</Td>
                   <Td dataLabel="Kind">
                     <Hint text={GLOSSARY[`index.${ix.type}` as Term]}>
-                      <span tabIndex={0}>{ix.type === 'user' ? 'User-defined' : ix.type === 'system' ? 'System' : ix.type === 'operational' ? 'Operational' : 'With its attribute'}</span>
+                      <span tabIndex={0}>{ix.type === 'user' ? 'User-defined' : ix.type === 'system' ? 'System' : ix.type === 'operational' ? 'Operational' : 'Created with the attribute'}</span>
                     </Hint>
                   </Td>
                   <Td dataLabel="State">
@@ -341,7 +341,7 @@ export function ServerPage({ guid }: { guid: string }) {
                   {admin && (
                     <Td isActionCell>
                       {ix.switchable && (ix.state === 'online' || ix.state === 'offline') && (
-                        <Hint text={ix.state === 'online' ? 'Stops maintaining the index, for a bulk load say. Searches on it get slower until it is back.' : 'Limber rebuilds the index.'}>
+                        <Hint text={ix.state === 'online' ? 'Stops maintaining the index, for example during a bulk load. Searches on it are slower until it is back online.' : 'Limber rebuilds the index.'}>
                           <Button variant="link" isInline className="dc-gap-right" onClick={() => act(`Index ${ix.name} ${ix.state === 'online' ? 'taken offline' : 'coming back online'}; limber applies it.`,
                             (c) => api.indexState(guid, ix.name, ix.state === 'online' ? 'offline' : 'online', c))}>{ix.state === 'online' ? 'Take offline' : 'Bring online'}</Button>
                         </Hint>
@@ -367,11 +367,11 @@ export function ServerPage({ guid }: { guid: string }) {
             const r = await run((c) => api.copyIndex(guid, copying, targets, c));
             const say = (st: string) => r.results.filter((x) => x.status === st).map((x) => x.name ?? x.server).join(', ');
             setNotice([say('copied') && `Index ${copying} copied to ${say('copied')}; limber builds it there.`,
-              say('already-there') && `Already on ${say('already-there')}.`, say('failed') && `Not copied to ${say('failed')}.`].filter(Boolean).join(' '));
+              say('already-there') && `${say('already-there')} already had an index named ${copying}.`, say('failed') && `Not copied to ${say('failed')}.`].filter(Boolean).join(' '));
             setCopying(null);
           }} />
       )}
-      {adding && <IndexModal onClose={() => setAdding(false)} onSave={(b) => { setAdding(false); act(`Index ${b.name} added; Limber builds it.`, (c) => api.addIndex(guid, b, c)); }} />}
+      {adding && <IndexModal onClose={() => setAdding(false)} onSave={(b) => { setAdding(false); act(`Index ${b.name} added; limber builds it.`, (c) => api.addIndex(guid, b, c)); }} />}
       {dialog}
       {sure.dialog}
     </PageSection>

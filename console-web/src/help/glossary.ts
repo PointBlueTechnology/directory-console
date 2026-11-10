@@ -111,8 +111,8 @@ export const GLOSSARY = {
   grade: 'How strong the sequence is, as NMAS ranks it.',
   notAuthorized: 'Not in the list of sequences that may be used.',
   'up.syncNds': 'Changing the Universal Password changes the NDS password too.',
-  'up.syncSimple': 'Keeps the simple password (used by some LDAP binds) the same.',
-  'up.syncDistribution': 'Keeps the distribution password, which Identity Manager can read, the same.',
+  'up.syncSimple': 'Keeps the simple password (used by some LDAP binds) the same as the Universal Password.',
+  'up.syncDistribution': 'Keeps the distribution password, which Identity Manager can read, the same as the Universal Password.',
   'up.removeNds': 'Removes the NDS password once a Universal Password is set.',
   'up.retrieval': 'Lets authorized agents, such as Identity Manager, read the password.',
   // console trust and settings

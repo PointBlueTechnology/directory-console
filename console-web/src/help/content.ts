@@ -64,7 +64,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Reading values',
         list: [
           'A value naming another object is a link: it opens that object.',
-          'A value that names an object and adds to it (eDirectory\'s Path syntax, such as a role assignment in nrfAssignedRoles) shows the object as a link, then the rest; a role assignment reads as since when, by whom and why. Editing uses the value exactly as stored.',
+          'A value that names an object and adds to it (eDirectory\'s Path syntax, such as a role assignment in nrfAssignedRoles) shows the object as a link, then the rest; a role assignment shows its dates, who requested it and why. Editing uses the value exactly as stored.',
           'Binary values show their size; ACL values show a summary (change rights on the Rights tab).',
           '"Set, never shown" marks values the console never displays, such as password hashes.',
           'Each value stays on one line, cut off with an ellipsis; point at it (or tab to it) to see it in full. Wrap long values shows them all wrapped; this browser remembers the choice.',
@@ -94,7 +94,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Setting a password',
         list: [
-          'Under the field: the policy that governs this user (its own, else the nearest container\'s, else the Login Policy\'s) and its rules in short.',
+          'Under the field are the policy that governs this user (its own, else the nearest container\'s, else the Login Policy\'s) and a summary of its rules.',
           'A password you type is checked by NMAS first; if the policy refuses it, the reason is shown and nothing is set.',
           'Generate makes a random password from the rules of the policy that governs this user, and has NMAS check it before offering it.',
           'Copy it from the box under the field before you set it: it is not shown again.',
@@ -109,7 +109,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       },
       {
         title: 'Login times',
-        paragraphs: ['The time grid can be shown in your time zone or in UTC. eDirectory keeps it in UTC, so after a daylight-saving change the allowed hours fall an hour differently in local time.'],
+        paragraphs: ['The time grid can be shown in your time zone or in UTC. eDirectory keeps it in UTC, so after a daylight-saving change the allowed hours shift by an hour in local time.'],
       },
     ],
     related: ['security.password-policies'],
@@ -122,10 +122,10 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Working with certificates',
         list: [
           'New certificate issues one for this user from the Organizational CA.',
-          'Download gives the certificate and its chain. Export with key gives a password-protected .pfx (PKCS#12) file with the private key; it needs a recent sign-in and is recorded in the audit log. eDirectory refuses a key not made exportable.',
+          'Download gives the certificate and its chain. Export with key gives a password-protected .pfx (PKCS#12) file with the private key; it needs a recent sign-in and is recorded in the audit log. eDirectory refuses if the key was not made exportable.',
         ],
       },
-      { title: 'Revoking', caution: true, paragraphs: ['Revoking cannot be undone, except with the reason "Certificate on hold". The CA lists the certificate on its CRL from the CRL\'s next issue.'] },
+      { title: 'Revoking', caution: true, paragraphs: ['Revoking cannot be undone, except with the reason "Certificate on hold". The certificate appears on the CA\'s CRL when the CRL is next issued.'] },
     ],
     related: ['security.certificates'],
   },
@@ -137,7 +137,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'How membership is kept',
         list: [
           'eDirectory records membership on both sides: the group lists the member, and the member lists the group.',
-          'Security equivalence gives the member the group\'s rights. "Missing" means the group grants it but this object does not carry it; adding the membership again repairs it.',
+          'Security equivalence gives the member the group\'s rights. "Missing" means the group lists this object as a member, but the object does not carry the group\'s security equivalence; adding the membership again repairs it.',
         ],
       },
     ],
@@ -237,7 +237,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Advanced',
         list: [
           'Depth: everything below the starting point, only what is directly inside it, or only that object.',
-          '"Build it" makes the filter from items: conditions (attribute, test, value) in groups that need all or any of what they hold. Groups go inside groups to any depth; put a condition or a group inside NOT to match what does not match it.',
+          '"Build it" makes the filter from conditions (attribute, test, value) in groups; a group matches when all, or any, of what it holds matches. Groups go inside groups to any depth; put a condition or a group inside NOT to match what does not match it.',
           '"Write LDAP filter text" takes an RFC 4515 filter. It is checked as you type, and attribute names are offered as you write them. In values, write \\28 for (, \\29 for ), \\2a for * and \\5c for \\.',
           'Switching between the two carries the filter across. A filter the builder has no test for (a*b*c, or an extensible match) stays as text.',
           '"Sounds like" matches names that sound alike; "is at least" and "is at most" compare in order.',
@@ -429,7 +429,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Refresh: the LDAP server re-reads its LDAP Server and LDAP Group objects. Connections stay open. eDirectory also does this by itself every 30 minutes.',
           'Reload: the LDAP module restarts, which applies TLS, cipher, bind-restriction, mutual authentication, port and certificate changes. Every LDAP connection to that server drops for a moment; reloading the server the console uses signs everyone out of the console.',
           'Both run on the LDAP server\'s own eDirectory server; with a password sign-in you may be asked to sign in to that server once.',
-          'This tab refreshes. Reload is on each LDAP server\'s own page; an LDAP group\'s page refreshes all of its servers.',
+          'This tab has Refresh for each server. Reload is on each LDAP server\'s own page; an LDAP group\'s page refreshes all of its servers.',
         ],
       },
     ],
@@ -505,7 +505,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Trusted roots',
         list: [
-          'Trusted root containers hold certificates that services set up to use them (NMAS, SSL clients configured with the container) accept, with whatever those roots sign.',
+          'A trusted root container holds root certificates. Services set up to use the container (NMAS, SSL clients configured with it) accept those roots and whatever they sign.',
           'New container makes one in the Security container, an Organization or an OU; it can be deleted once empty.',
           'Add a root takes a PEM or DER certificate; its name defaults to the certificate\'s CN, or OU. Removing a root stops those services accepting what it signed.',
           'These are the directory\'s trusted roots. The certificates the console itself trusts are under Settings > Trusted certificates.',
@@ -522,14 +522,14 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Server certificates',
         list: [
           'New server certificate: issued by the Organizational CA; eDirectory makes and keeps the key pair. Allow export when you make it if you will need the key elsewhere.',
-          'Download gives the certificate and its chain. Export with key gives a password-protected .pfx (PKCS#12) file with the private key; it needs a recent sign-in and is recorded in the audit log. eDirectory refuses a key not made exportable.',
+          'Download gives the certificate and its chain. Export with key gives a password-protected .pfx (PKCS#12) file with the private key; it needs a recent sign-in and is recorded in the audit log. eDirectory refuses if the key was not made exportable.',
           'PBES2 with AES-256 is the protection to use; PBES1 with 3DES is for older software, such as Java 8 or Windows Server 2016.',
           'A certificate an LDAP server uses cannot be deleted.',
         ],
       },
       { title: 'Expiry', paragraphs: ['Certificates that have expired, or expire within the warning window set in Settings > Certificate expiry (30 days unless changed), are listed at the top.'] },
       { title: 'CA configuration', paragraphs: ['Each switch changes the Organizational CA at once. Server self-provisioning lets eDirectory\'s own PKI Health Check create or renew a server\'s SSL CertificateDNS in place when ndsd starts or DSRepair runs there. Suite B mode needs a CA with only an EC P-256 or P-384 certificate.'] },
-      { title: 'Revoking', caution: true, paragraphs: ['Revoking cannot be undone, except with the reason "Certificate on hold". The CA lists the certificate on its CRL from the CRL\'s next issue.'] },
+      { title: 'Revoking', caution: true, paragraphs: ['Revoking cannot be undone, except with the reason "Certificate on hold". The certificate appears on the CA\'s CRL when the CRL is next issued.'] },
     ],
     related: ['settings.trust'],
   },
@@ -620,7 +620,7 @@ export const CONTENT: Record<string, HelpTopic> = {
     title: 'Drivers',
     summary: 'The driver set\'s drivers on the chosen server: state, start option, cache and trace level.',
     sections: [
-      { title: 'Start all and stop all', paragraphs: ['They act on every driver on the chosen server that needs it, one at a time, and show each result. A disabled driver is not started.'] },
+      { title: 'Start all and stop all', paragraphs: ['Start all starts every stopped driver on the chosen server, and Stop all stops every running one, one at a time, showing each result. A disabled driver is not started.'] },
     ],
     related: ['idm', 'idm.driver'],
   },
@@ -634,7 +634,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'New job offers the types this server\'s engine has.',
           'The schedule is five cron fields (minute hour day month weekday), in each server\'s local time. No schedule means it runs only when started.',
           'Objects: the job runs once per object found under each container or entry you give; with none it runs once.',
-          'Runs on: the servers whose engine runs the job. Each server needs it chosen; it runs in that server\'s local time.',
+          'Runs on: the servers whose engine runs the job; a server not chosen here does not run it. Each runs it in its own local time.',
           'Select a job to change it: enabled, schedule, servers, objects and its parameters. Only the values you change are rewritten; the rest of the job\'s definition is kept as it was.',
           'A job that is not enabled keeps its settings but never runs. Deleting a job asks for its name.',
         ],
@@ -655,7 +655,7 @@ export const CONTENT: Record<string, HelpTopic> = {
     title: 'Driver set properties',
     summary: 'The driver set\'s settings, as configured. They are changed in Designer, not here.',
     sections: [
-      { title: 'Global configuration values', paragraphs: ['GCVs are named settings policies read, set on the driver set and on each driver.'] },
+      { title: 'Global configuration values', paragraphs: ['GCVs are named settings that policies read. They are set on the driver set and on each driver.'] },
       { title: 'Java environment', paragraphs: ['Java environment changes take effect when the Identity Vault restarts.'] },
     ],
   },
@@ -696,7 +696,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'It grants entitlements defined on drivers, sometimes with values (a group to join, for example).',
           'The Entitlements Service driver writes the grants onto each member; the drivers holding the entitlements act on them.',
           'The driver reads the policies only when it starts, and stops itself when a policy\'s query changes: restart it after a change.',
-          'It grants and revokes person by person, as something that decides membership changes: an attribute a query uses (when the driver\'s filter includes it), or a policy\'s static members. A restart alone does not look at everyone again.',
+          'It grants and revokes for one person at a time, when something that decides their membership changes: an attribute a query uses (when the driver\'s filter includes it), or a policy\'s static members. A restart alone does not look at everyone again.',
           'Every policy needs a query, even one of static members only: the console gives such a policy one that matches nobody.',
         ],
       },
@@ -711,7 +711,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Creating and changing',
         list: [
           'A query finds members under a container: build its filter or type it, and test it to see who it finds now.',
-          'Search as: eDirectory works out who the query finds as this object, with its rights. A new policy uses the Entitlements Service driver; with nobody, the query adds no members.',
+          'Search as: eDirectory works out who the query finds as this object, with its rights. A new policy starts with the Entitlements Service driver; with Nobody, the query adds no members.',
           'Static members are added whatever the query finds; excluded ones never count.',
           'Grants: the entitlements this set\'s drivers define. One that takes values needs at least one: picked from its list, or typed as the application names them.',
           'A new policy goes in last; reorder it here. Changes take effect when the Entitlements Service driver restarts.',
@@ -757,7 +757,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'What the driver does',
         list: [
-          'It runs a pending work order at its next poll (every minute by default) once it is due, or at once when it is to run at the next poll.',
+          'It polls every minute by default. At each poll it runs the pending work orders that are due, and those set to run at the next poll.',
           'It adds a WorkToDo object, carrying the content, description and type, for the policies that act on the work order.',
           'It marks the work order done (or in error), adds a line to its log, and writes the time it ran as the due date. One that repeats gets its next due date and stays pending.',
           'On hold keeps it from running.',
@@ -887,7 +887,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'On this page',
         list: [
-          'Directories: what each configured directory\'s server presents now. Review trusts it; Check again asks again.',
+          'Directories: what each configured directory\'s server presents now. Review shows the certificate so you can trust it; Check again reads it again.',
           'Probe a server reads a server\'s certificate to trust it; Upload a certificate trusts a PEM file. Either can be for one directory or for all.',
           'Changed certificates: a pinned server presented a different one. Connections stay refused until you trust the new one; dismiss an alert only once you know why it changed.',
           'Certificates people accepted for directories they entered themselves are listed too, and can be removed.',
@@ -976,7 +976,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'On a directory with Identity Applications set up (Settings > Directory), a key made with your password also signs you in to Identity Applications once. The key keeps that sign-in, never the password.',
           'Its agent then sees your approval tasks and requests, who holds a role or resource, and assignments; with a key that may make changes, it approves or denies tasks, makes requests, revokes roles and resources, and retracts requests, as you. Those changes wait for your approval like the others.',
           '"Who has" lists only people under the Identity Applications\' user search root.',
-          'If the sign-in stops working (after 30 days, or when it is revoked), the key shows Authorize again: type your password there.',
+          'If the sign-in stops working (after 30 days, or when it is revoked), the key is marked "authorize again": use Authorize beside it and type your password.',
           'Keys made with single sign-on have no Identity Applications tools: the console has no password to sign in with.',
         ],
       },
@@ -1006,7 +1006,7 @@ export const CONTENT: Record<string, HelpTopic> = {
     summary: 'Narrow, named tasks (such as "reset a password") that people can run without a broader role.',
     sections: [
       { title: 'Fields', list: ['Required: must be filled in.', 'Read-only: shown, not changed.', 'Pattern: the value must match.', 'Fixed value: always set to this.'] },
-      { title: 'Moving presets', paragraphs: ['Export saves every preset as a JSON file; Import adds or replaces presets from one, by id. A preset granted to anyone cannot be removed.'] },
+      { title: 'Moving presets', paragraphs: ['Export saves every preset as a JSON file; Import adds or replaces presets from one, by id. A preset that a mapping still grants cannot be removed.'] },
     ],
   },
   'settings.sso': {
@@ -1126,7 +1126,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         title: 'Transports',
         list: [
           'TLS (RFC 5425, port 6514): the server\'s certificate must be from a public CA or a CA the console trusts, and name the host.',
-          'TCP (octet counting) or UDP (port 514) are not encrypted; UDP can lose messages without telling.',
+          'TCP (octet counting) or UDP (port 514) are not encrypted; UDP can lose messages without any error.',
         ],
       },
       { title: 'Facility', paragraphs: ['The syslog facility the messages carry; authpriv by default. Send a test sends one message now.'] },
@@ -1144,7 +1144,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Configuration history',
         list: [
-          'Every change to the console\'s settings is saved as a new version, with who made it and why. Select the change to see which settings it touched (secrets show only as a secret).',
+          'Every change to the console\'s settings is saved as a new version, with who made it and why. Select the change to see which settings it touched (secret values are not shown).',
           'Restore makes an earlier version current again, as a new version; nothing is lost from the history. Secrets come back with it.',
           'The trust store and the console\'s own certificate are not part of a version: they are files beside it.',
         ],

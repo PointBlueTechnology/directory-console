@@ -155,7 +155,7 @@ final class Agents {
     private void list(HttpExchange ex, Sessions.Session s) throws IOException {
         boolean all = "true".equals(Http.query(ex).get("all"));
         if (all && !s.principal.has(Role.ADMIN)) {
-            throw new Http.Problem(403, "forbidden", "everyone's keys are for admins");
+            throw new Http.Problem(403, "forbidden", "only admins can see everyone's agent keys");
         }
         String dir = s.principal.directoryId();
         Instant now = keys.now();
@@ -183,7 +183,7 @@ final class Agents {
         Sessions.Principal p = s.principal;
         DirectoryConfig d = DirectoryConfig.find(server.config.read(), p.directoryId());
         if (d == null || !(p.via().equals("direct") || p.via().equals("oidc"))) {
-            throw new Http.Problem(409, "not-available", "agent keys are for configured directories, signed in directly or with single sign-on");
+            throw new Http.Problem(409, "not-available", "agent keys need a sign-in to a configured directory, directly or with single sign-on");
         }
         if (!settings(d.id()).enabled()) {
             throw new Http.Problem(409, "agent-keys-off", "agent keys are off for this directory; an administrator turns them on in Settings > Directory");

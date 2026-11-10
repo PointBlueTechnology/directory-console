@@ -12,7 +12,7 @@ const ATTRIBUTE_FLAGS: [AttributeFlag, string, string][] = [
   ['serverRead', 'Server read', 'Servers may read it, without rights to it.'],
   ['writeManaged', 'Write managed', 'Adding a value needs rights to the object it names.'],
   ['perReplica', 'Kept per server', 'Each server keeps its own value; it is not replicated.'],
-  ['notSyncImmediate', 'Not synchronised immediately', 'A change waits for the next scheduled replication.'],
+  ['notSyncImmediate', 'Not synchronized immediately', 'A change waits for the next scheduled replication.'],
 ];
 
 const NAME = /^[A-Za-z][A-Za-z0-9-]{0,62}$/;
@@ -43,7 +43,7 @@ export function NewAttributeModal({ api, run, onClose, onDone }: { api: Edir; ru
   const [description, setDescription] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const problem = !NAME.test(name) ? 'A name starts with a letter and has letters, digits and hyphens.' : oid && !OID.test(oid) ? 'An OID is a dotted number.' : null;
+  const problem = !NAME.test(name) ? 'The name must start with a letter and use only letters, digits and hyphens.' : oid && !OID.test(oid) ? 'The OID must be numbers separated by dots, such as 2.16.840.1.' : null;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (problem) {
@@ -114,7 +114,7 @@ export function NewClassModal({ api, run, onClose, onDone }: { api: Edir; run: R
   const [container, setContainer] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const problem = !NAME.test(name) ? 'A name starts with a letter and has letters, digits and hyphens.' : oid && !OID.test(oid) ? 'An OID is a dotted number.' : null;
+  const problem = !NAME.test(name) ? 'The name must start with a letter and use only letters, digits and hyphens.' : oid && !OID.test(oid) ? 'The OID must be numbers separated by dots, such as 2.16.840.1.' : null;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (problem) {

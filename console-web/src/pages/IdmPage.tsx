@@ -184,7 +184,7 @@ function DriversTable({ api, drivers, onChanged, server, serverName }: {
       <ProblemAlert error={error} />
       {bulk && <BulkLifecycleModal action={bulk} drivers={drivers} api={api} serverName={serverName} onClose={() => setBulk(null)} onDone={onChanged} />}
       <Table aria-label="Drivers" variant="compact">
-        <Thead><Tr><Th>Driver</Th><Th>State</Th><Th info={tip('startOption')}>Starts</Th><Th info={tip('cache')}>Cache</Th><Th info={tip('unprocessed')}>Unprocessed</Th><Th info={tip('traceLevel')}>Trace</Th>{can('operator') && <Th screenReaderText="Actions" />}</Tr></Thead>
+        <Thead><Tr><Th>Driver</Th><Th>State</Th><Th info={tip('startOption')}>Start option</Th><Th info={tip('cache')}>Cache</Th><Th info={tip('unprocessed')}>Unprocessed</Th><Th info={tip('traceLevel')}>Trace</Th>{can('operator') && <Th screenReaderText="Actions" />}</Tr></Thead>
         <Tbody>
           {drivers.map((d) => {
             const running = d.state.toLowerCase() === 'running';
@@ -192,7 +192,7 @@ function DriversTable({ api, drivers, onChanged, server, serverName }: {
               <Tr key={d.dn}>
                 <Td dataLabel="Driver">{d.guid ? <a {...linkProps(`/idm/drivers/${d.guid}${server ? `?server=${server}` : ''}`)}>{d.name}</a> : d.name}</Td>
                 <Td dataLabel="State"><StateLabel state={d.state} /></Td>
-                <Td dataLabel="Starts">{d.startOption}</Td>
+                <Td dataLabel="Start option">{d.startOption}</Td>
                 <Td dataLabel="Cache">{d.cacheSize}</Td>
                 <Td dataLabel="Unprocessed">{d.unprocessedSize}</Td>
                 <Td dataLabel="Trace">{d.traceLevel ?? '—'}</Td>

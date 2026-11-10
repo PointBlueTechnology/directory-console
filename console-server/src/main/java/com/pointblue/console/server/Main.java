@@ -34,7 +34,7 @@ public final class Main {
         String publicUrl = env("CONSOLE_PUBLIC_URL", "https://localhost:" + port);
         Server server = new Server(new DataDir(dataPath), port, publicUrl, System.out);
         server.start();
-        System.out.println("Directory Console listening on " + port + (server.bootstrapping() ? " (setup required)" : ""));
+        System.out.println("Directory Console listening on port " + port + (server.bootstrapping() ? " (setup required)" : ""));
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop));
     }
 

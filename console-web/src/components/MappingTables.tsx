@@ -184,8 +184,8 @@ export function MappingTableEditor({ guid, parent, onClose, onChanged }: { guid?
             )}
             <Flex className="dc-tab-body" alignItems={{ default: 'alignItemsCenter' }}>
               <FlexItem><SearchInput placeholder="Filter rows" aria-label="Filter rows" value={filter} onChange={(_e, v) => setFilter(v)} onClear={() => setFilter('')} /></FlexItem>
-              {operator && <FlexItem><Button variant="secondary" size="sm" icon={<PlusIcon />} onClick={() => edit(() => setRows([...rows, columns.map(() => '')]))}>Row</Button></FlexItem>}
-              {operator && <FlexItem><Button variant="secondary" size="sm" icon={<PlusIcon />} onClick={addColumn}>Column</Button></FlexItem>}
+              {operator && <FlexItem><Button variant="secondary" size="sm" icon={<PlusIcon />} onClick={() => edit(() => setRows([...rows, columns.map(() => '')]))}>Add row</Button></FlexItem>}
+              {operator && <FlexItem><Button variant="secondary" size="sm" icon={<PlusIcon />} onClick={addColumn}>Add column</Button></FlexItem>}
               <FlexItem><Button variant="link" size="sm" onClick={exportCsv}>Export CSV</Button></FlexItem>
               {operator && (
                 <FlexItem>

@@ -791,7 +791,7 @@ final class Edir {
             }
         }
         if (!users.isEmpty()) {
-            throw new Http.Problem(409, "in-use", "in use by " + String.join(", ", users) + "; take it off those servers first", Map.of("usedBy", users));
+            throw new Http.Problem(409, "in-use", "the policy is in use by " + String.join(", ", users) + "; take it off those servers first", Map.of("usedBy", users));
         }
         try {
             l.delete(e.dn());

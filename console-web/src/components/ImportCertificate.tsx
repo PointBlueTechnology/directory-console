@@ -66,7 +66,7 @@ export function ImportCertificateModal({ servers, onImport, onClose }: {
           <FormGroup label="The file's password" fieldId="import-password" isRequired>
             <TextInput id="import-password" type="password" autoComplete="off" value={password} onChange={(_e, v) => setPassword(v)} />
           </FormGroup>
-          <FormGroup label="Name for it" fieldId="import-name" isRequired>
+          <FormGroup label="Certificate name" fieldId="import-name" isRequired>
             <TextInput id="import-name" value={name} onChange={(_e, v) => setName(v)} />
             <FormHelperText><HelperText><HelperTextItem>A name this server does not use yet.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>

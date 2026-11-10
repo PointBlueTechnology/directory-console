@@ -191,7 +191,7 @@ export function Search() {
       setNaming(null);
       setSavedNote(`Saved as ${name}, in this browser.`);
     } catch {
-      setSavedNote('This browser would not keep it (private window or blocked storage).');
+      setSavedNote('This browser couldn\'t save the search (private window or blocked storage).');
     }
   };
   const forget = () => {
@@ -200,7 +200,7 @@ export function Search() {
       setSavedNote(`${chosen} is no longer saved.`);
       setChosen('');
     } catch {
-      setSavedNote('This browser would not change its saved searches.');
+      setSavedNote(`This browser couldn't delete ${chosen}.`);
     }
   };
 
@@ -373,7 +373,7 @@ export function Search() {
                 </ToolbarContent>
               </Toolbar>
               {busy && !result && <Spinner aria-label="Searching" />}
-              {result && result.items.length === 0 && <EmptyState titleText="No matches" headingLevel="h2"><EmptyStateBody>Nothing matched. Check the name, the kind and where to search.</EmptyStateBody></EmptyState>}
+              {result && result.items.length === 0 && <EmptyState titleText="No matches" headingLevel="h2"><EmptyStateBody>Nothing matched. {mode === 'basic' ? 'Check the name, the kind and where to search.' : 'Check the filter and where to search.'}</EmptyStateBody></EmptyState>}
               {result && result.items.length > 0 && (
                 columns.length > 0
                   ? <ColumnsTable rows={result.items} columns={columns} selected={selected} onDetails={(r) => navigate(`/search?object=${r.guid}`)} />

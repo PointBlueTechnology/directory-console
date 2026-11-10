@@ -867,7 +867,7 @@ final class Idm {
     private static String kind(Map<String, Object> b, boolean job) {
         String kind = b.get("kind") == null ? "named" : Http.string(b, "kind", true);
         if (job && !kind.equals("named")) {
-            throw new Http.Problem(400, "bad-field", "a job has named passwords only");
+            throw new Http.Problem(400, "bad-field", "a job can only have named passwords");
         }
         if (!KINDS.contains(kind)) {
             throw new Http.Problem(400, "bad-field", "kind is one of " + KINDS);

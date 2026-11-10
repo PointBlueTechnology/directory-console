@@ -67,7 +67,7 @@ export function DriverPropertiesTab({ guid }: { guid: string }) {
   const rl = p.authentication.remoteLoader;
   return (
     <div className="dc-tab-body">
-      <p className="dc-subtle">Shown as configured; they are changed in Designer. The trace level is changed on the Trace tab.</p>
+      <p className="dc-subtle">Read-only here: change these properties in Designer. The trace level is changed on the Trace tab.</p>
       <Switch id="show-inactive" label="Show settings under options that are not chosen" isChecked={inactive} onChange={(_e, v) => setInactive(v)} className="dc-tab-body" />
       <DescriptionList isHorizontal isCompact className="dc-tab-body">
         <Item term="Shim">{p.general.javaModule ?? p.general.nativeModule ?? '—'}</Item>
@@ -147,7 +147,7 @@ export function DriverSetPropertiesTab({ guid }: { guid: string }) {
   const gcvs = p.gcvs.filter((g) => g.items.length > 0);
   return (
     <div className="dc-tab-body">
-      <p className="dc-subtle">Shown as configured; they are changed in Designer. The trace level is changed on the Trace tab.</p>
+      <p className="dc-subtle">Read-only here: change these properties in Designer. The trace level is changed on the Trace tab.</p>
       <DescriptionList isHorizontal isCompact className="dc-tab-body">
         <Item term="Servers">{p.servers.length ? p.servers.map((d) => <div key={d} className="dc-mono">{d}</div>) : <span className="dc-subtle">none</span>}</Item>
         {p.javaEnvironment.map((j) => <Item key={j.name} term={JAVA[j.name] ?? j.name}><span className="dc-mono">{j.value}</span></Item>)}

@@ -145,10 +145,10 @@ export function RbePanel({ api, setGuid, drivers, onDriversChanged }: {
             </div>
           )}
           <p className="dc-subtle dc-tab-body">
-            The Entitlements Service driver reads these policies when it starts. It then grants and revokes person by person, as
-            something that decides membership changes: an attribute a query uses (when the driver's filter includes it), or a
-            policy's static members. When policies grant different values of the same entitlement, the higher one wins where that
-            entitlement's conflict resolution says so (set in its driver).
+            The Entitlements Service driver reads these policies when it starts. After that it grants and revokes for one person
+            at a time, whenever something that decides their membership changes: an attribute a query uses (when the driver's
+            filter includes it), or a policy's static members. When policies grant different values of the same entitlement, the
+            higher-priority policy wins if that entitlement's conflict resolution is set to priority (in its driver).
           </p>
         </>
       )}

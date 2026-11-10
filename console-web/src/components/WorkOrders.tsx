@@ -75,7 +75,7 @@ export function WorkOrdersPanel({ api, setGuid, drivers }: { api: Idm; setGuid: 
           <div key={d.dn} className="dc-tab-body">
             {d.guid ? <a {...linkProps(`/idm/drivers/${d.guid}`)}>{d.name}</a> : d.name} {row && <StateLabel state={row.state} />}
             {' '}polls <span className="dc-mono">{d.container}</span>
-            {d.containerFrom === 'driver' && <span className="dc-subtle"> (no container GCV: the driver object itself)</span>}
+            {d.containerFrom === 'driver' && <span className="dc-subtle"> (no container GCV, so it polls the driver object itself)</span>}
             {d.containerFrom === 'gcv-unresolved' && (
               <Alert variant="warning" isInline isPlain title={`Its idv.workorder.container GCV names ${d.gcv}, which is not in the tree; the driver finds no work orders there.`} />
             )}
@@ -145,7 +145,7 @@ function WorkOrderEditor({ api, setGuid, guid, containers, others, onClose, onCh
   );
   const minutes = f.repeatMinutes ?? '';
   const problem = creating && !name.trim() ? 'The work order needs a name.'
-    : !/^\d+$/.test(minutes) ? 'Repeat every is a whole number of minutes; 0 runs it once.'
+    : !/^\d+$/.test(minutes) ? 'Repeat every must be a whole number of minutes; 0 runs it once.'
       : !f.now && !at ? 'Say when it runs: at the next poll, or at a time.' : null;
   const statuses = ['pending', 'onhold', ...(f.status && !['pending', 'onhold'].includes(f.status) ? [f.status] : [])];
   const candidates = others.filter((o) => o.guid !== guid);
@@ -190,7 +190,7 @@ function WorkOrderEditor({ api, setGuid, guid, containers, others, onClose, onCh
                 {wo.todos!.map((t) => (
                   <div key={t.guid}>
                     <span className="dc-mono">{t.name}</span>{t.type ? <span className="dc-subtle"> ({t.type})</span> : null}
-                    {operator && <> <Button variant="link" isInline isDanger onClick={() => sure.ask(`Remove ${t.name}?`, 'Whatever was to act on it will not see it.', 'Remove', () => removeTodo(t.guid))}>Remove</Button></>}
+                    {operator && <> <Button variant="link" isInline isDanger onClick={() => sure.ask(`Remove ${t.name}?`, 'The policies that act on it won\'t see it.', 'Remove', () => removeTodo(t.guid))}>Remove</Button></>}
                   </div>
                 ))}
               </Alert>
@@ -232,7 +232,7 @@ function WorkOrderEditor({ api, setGuid, guid, containers, others, onClose, onCh
               {text('type', 'Type')}
               {text('number', 'Number')}
               {text('contact', 'Contact')}
-              <FormGroup label="Delete it" fieldId="wo-delete">
+              <FormGroup label="Delete at" fieldId="wo-delete">
                 <TextInput type="datetime-local" id="wo-delete" aria-label="Delete at" value={toLocal(f.deleteDate)} isDisabled={!operator}
                   onChange={(_e, v) => set({ deleteDate: fromLocal(v) })} style={{ maxWidth: '16rem' }} />
                 <Checkbox id="wo-delete-error" label="Even after an error" isChecked={!!f.deleteOnError} isDisabled={!operator}

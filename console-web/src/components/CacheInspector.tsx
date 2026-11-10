@@ -59,7 +59,7 @@ export function CacheInspector({ api, guid, onChanged }: { api: Idm; guid: strin
         try {
           const r = await run((c) => api.deleteCacheEvents(guid, chosen, c));
           const skipped = r.results.filter((x) => x.status !== 'deleted');
-          setNotice(`Deleted ${r.deleted}.${skipped.length ? ` Left alone: ${skipped.map((x) => x.detail ?? x.status).join('; ')}.` : ''}`);
+          setNotice(`Deleted ${r.deleted} event${r.deleted === 1 ? '' : 's'}.${skipped.length ? ` Not deleted: ${skipped.map((x) => x.detail ?? x.status).join('; ')}.` : ''}`);
           reload();
         } catch (e) {
           setError(e);

@@ -780,7 +780,7 @@ final class Security {
         }
         String host = ls.first("ldapHostServer");
         if (host == null || k.first("hostServer") == null || !Names.same(host, k.first("hostServer"))) {
-            throw new Http.Problem(409, "other-server", k.first("cn") + " belongs to another server than " + ls.first("cn") + "'s");
+            throw new Http.Problem(409, "other-server", k.first("cn") + " belongs to a different server; choose one of this server's certificates for " + ls.first("cn"));
         }
         // the LDAP server names a certificate without its " - <server>" suffix
         String cn = String.valueOf(k.first("cn"));
@@ -1184,7 +1184,7 @@ final class Security {
         }
         int users = sequenceUsers(l, name);
         if (users > 0 && !String.valueOf(users).equals(ex.getRequestHeaders().getFirst("X-Confirm-Count"))) {
-            throw new Http.Problem(409, "confirm-count", users + " objects name " + name + " as their login sequence; confirm the count to change it",
+            throw new Http.Problem(409, "confirm-count", users + (users == 1 ? " object names " : " objects name ") + name + " as their login sequence; confirm the count to change it",
                 Map.of("count", users));
         }
     }
@@ -1945,7 +1945,7 @@ final class Security {
         int assigned = e.attributes().getOrDefault("nsimassignments", List.of()).size();
         String confirmed = ex.getRequestHeaders().getFirst("X-Confirm-Count");
         if (assigned > 0 && !String.valueOf(assigned).equals(confirmed)) {
-            throw new Http.Problem(409, "confirm-count", e.dn() + " is assigned to " + assigned + " object(s); deleting it unassigns them. Send X-Confirm-Count: " + assigned,
+            throw new Http.Problem(409, "confirm-count", e.dn() + " is assigned to " + assigned + (assigned == 1 ? " object; deleting it unassigns it." : " objects; deleting it unassigns them.") + " Send X-Confirm-Count: " + assigned,
                 Map.of("count", assigned));
         }
         Map<String, Object> detail = Map.of("dn", e.dn(), "assignments", assigned);
@@ -2232,7 +2232,7 @@ final class Security {
         List<Ldap.Entry> users = l.search("", "(&(objectClass=nspmPasswordPolicy)(nsimChallengeSetDN={0}))", new Object[] {e.dn()},
             SearchControls.SUBTREE_SCOPE, new String[] {"cn"}, 50);
         if (!users.isEmpty()) {
-            throw new Http.Problem(409, "in-use", "password policies use this challenge set: " + users.stream().map(Ldap.Entry::dn).toList(),
+            throw new Http.Problem(409, "in-use", "password policies use this challenge set: " + String.join(", ", users.stream().map(Ldap.Entry::dn).toList()),
                 Map.of("policies", users.stream().map(Ldap.Entry::dn).toList()));
         }
         Map<String, Object> detail = Map.of("dn", e.dn());

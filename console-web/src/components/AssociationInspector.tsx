@@ -87,7 +87,7 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
     const title = verb === 'delete' ? `Remove ${chosen.length} association${chosen.length === 1 ? '' : 's'}?` : `Set ${chosen.length} association${chosen.length === 1 ? '' : 's'} to ${newState}?`;
     const text = verb === 'delete'
       ? 'The driver then treats these objects as not associated: their next change may create or match an account in the connected system. The accounts there are not touched now.'
-      : 'Each association keeps its value; an association changed meanwhile is left alone.';
+      : 'Each association keeps its value. An association that changed since this list was read is left alone.';
     sure.ask(title, text, verb === 'delete' ? 'Remove' : 'Set', async () => {
       setBusy(true);
       setError(null);
@@ -108,7 +108,8 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
           }
         }
       }
-      setNotice({ text: `${verb === 'delete' ? 'Removed' : 'Changed'} ${done}.${failed.length ? ` Not done: ${failed.join('; ')}` : ''}`, partial: failed.length > 0 });
+      const counted = `${done} association${done === 1 ? '' : 's'}`;
+      setNotice({ text: `${verb === 'delete' ? `Removed ${counted}` : `Set ${counted} to ${newState}`}.${failed.length ? ` Not done: ${failed.join('; ')}` : ''}`, partial: failed.length > 0 });
       setBusy(false);
       countAll();
       list();
@@ -128,7 +129,7 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
         </ToggleGroup>
       )}
       {counts && !exact && <p className="dc-subtle dc-tab-body"><Hint text={explain('estimate')}><span tabIndex={0}>Counts marked ~ are estimates.</span></Hint></p>}
-      {counts && counts.undefined > 0 && <p className="dc-subtle dc-tab-body">{counts.undefined} with a state outside these five (shown under All).</p>}
+      {counts && counts.undefined > 0 && <p className="dc-subtle dc-tab-body">{counts.undefined} association{counts.undefined === 1 ? ' has' : 's have'} a state outside these five (shown under All).</p>}
       {notice && <Alert variant={notice.partial ? 'warning' : 'success'} isInline isPlain title={notice.text} className="dc-tab-body" />}
       <ProblemAlert error={error} />
       {operator && (
@@ -143,7 +144,7 @@ export function AssociationInspector({ driverDn }: { driverDn: string }) {
         </Flex>
       )}
       {!rows && !error && <Spinner size="md" aria-label="Reading associations" />}
-      {rows && rows.length === 0 && <p className="dc-tab-body">No objects{state ? ` in ${state}` : ''}.</p>}
+      {rows && rows.length === 0 && <p className="dc-tab-body">No associations{state ? ` in the ${state} state` : ''}.</p>}
       {rows && rows.length > 0 && (
         <Table aria-label="Associations" variant="compact" className="dc-tab-body">
           <Thead><Tr>{operator && <Th screenReaderText="Choose" />}<Th>Object</Th><Th>Class</Th><Th>State</Th><Th>Association</Th></Tr></Thead>

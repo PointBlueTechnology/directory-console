@@ -62,7 +62,7 @@ export function TrustedCertificates() {
   return (
     <div className="dc-tab-body">
       <p>This applies to the whole console: the certificates it trusts when it connects to eDirectory, and to single sign-on
-        providers and ACME CAs beside Java's public roots. Java's own store is never changed.</p>
+        providers and ACME CAs, in addition to Java's public roots. Java's own store is never changed.</p>
       <ProblemAlert error={error} onRetry={changed} />
       <HeadingLevel.Provider value="h3">
         {store && store.alerts.length > 0 && (
@@ -104,7 +104,7 @@ function DirectoriesSection({ live, me, onReview, onCheck }: { live: Live[] | nu
       {!live && <Spinner size="md" aria-label="Checking the directories" />}
       {live && (
         <Table aria-label="Directories' certificates" variant="compact">
-          <Thead><Tr><Th>Directory</Th><Th>Address</Th><Th>Certificate</Th><Th modifier="wrap">Server's expires</Th><Th modifier="wrap">CA's expires</Th><Th screenReaderText="Actions" /></Tr></Thead>
+          <Thead><Tr><Th>Directory</Th><Th>Address</Th><Th>Certificate</Th><Th modifier="wrap">Server certificate expires</Th><Th modifier="wrap">CA certificate expires</Th><Th screenReaderText="Actions" /></Tr></Thead>
           <Tbody>
             {live.map((l) => {
               const leaf = l.probe?.chain[0];
@@ -116,8 +116,8 @@ function DirectoriesSection({ live, me, onReview, onCheck }: { live: Live[] | nu
                   <Td dataLabel="Certificate">
                     {l.probe ? <TrustStatus status={l.probe.status} /> : l.error ? <span className="dc-subtle">{l.error}</span> : <Spinner size="sm" aria-label="Checking" />}
                   </Td>
-                  <Td dataLabel="Server's expires">{leaf && <ExpiryLabel notAfter={leaf.notAfter} />}</Td>
-                  <Td dataLabel="CA's expires">{root && root !== leaf && <ExpiryLabel notAfter={root.notAfter} />}</Td>
+                  <Td dataLabel="Server certificate expires">{leaf && <ExpiryLabel notAfter={leaf.notAfter} />}</Td>
+                  <Td dataLabel="CA certificate expires">{root && root !== leaf && <ExpiryLabel notAfter={root.notAfter} />}</Td>
                   <Td isActionCell>{l.probe && l.probe.status !== 'trusted' && <Button variant="secondary" size="sm" onClick={() => onReview(l)}>Review</Button>}</Td>
                 </Tr>
               );
@@ -159,7 +159,7 @@ function CertificatesSection({ store, directories, usedBy, onAdd, onChanged }: {
       <ProblemAlert error={error} />
       {!store && <Spinner size="md" aria-label="Loading the trusted certificates" />}
       {store && store.certificates.length === 0 && (
-        <EmptyState titleText="No certificates of the console's own" headingLevel="h3" variant="sm">
+        <EmptyState titleText="No certificates added" headingLevel="h3" variant="sm">
           <EmptyStateBody>Connections rely on the JDK's certificate authorities only.</EmptyStateBody>
         </EmptyState>
       )}
@@ -210,7 +210,7 @@ function HostExceptionsSection({ store, onChanged }: { store: { hostExceptions: 
   return (
     <section className="dc-tab-body" aria-labelledby="certs-exceptions">
       <H id="certs-exceptions" className="pf-v6-c-title pf-m-lg">Host exceptions</H>
-      <p className="dc-subtle">Addresses whose certificate names others, as behind NAT or a tunnel: each accepts exactly one certificate at exactly one address, and stops matching when that certificate is renewed. Add one by reviewing the directory above, or when signing in to another server.</p>
+      <p className="dc-subtle">Addresses whose certificate names a different host, as behind NAT or a tunnel: each accepts exactly one certificate at exactly one address, and stops matching when that certificate is renewed. Add one by reviewing the directory above, or when signing in to another server.</p>
       <ProblemAlert error={error} />
       {store && store.hostExceptions.length === 0 && <p>None.</p>}
       {store && store.hostExceptions.length > 0 && (
@@ -321,7 +321,7 @@ function ProbeModal({ directories, initial, onClose }: { directories: Directory[
           <FormGroup label="Trust it for" fieldId="probe-directory">
             <ScopeSelect id="probe-directory" value={`directory:${directory}`} onChange={(v) => setDirectory(v.slice('directory:'.length))}
               directories={directories} onlyDirectories />
-            <FormHelperText><HelperText><HelperTextItem>Judged as this directory's connections are, with the certificates already trusted for it.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>The certificate is checked as this directory's connections check it, against the certificates already trusted for it.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <ProblemAlert error={error} />
         </Form>

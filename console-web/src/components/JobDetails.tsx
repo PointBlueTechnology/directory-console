@@ -133,7 +133,7 @@ export function JobDetailsModal({ api, guid, onClose, onChanged }: { api: Idm; g
           <>
             <DescriptionList isHorizontal isCompact>
               <Item term="Owner">{job.owner.name} <span className="dc-subtle">({job.owner.kind})</span></Item>
-              {job.description && <Item term="Does">{job.description}</Item>}
+              {job.description && <Item term="Description">{job.description}</Item>}
               {job.javaClass && <Item term="Class"><span className="dc-mono">{job.javaClass}</span></Item>}
               {!scopeReadable && (
                 <Item term="Objects">

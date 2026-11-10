@@ -109,7 +109,8 @@ public final class Bootstrap {
 
               %s
 
-            This token is printed only here and in this file; a restart replaces it.
+            This token appears only in the console's log and in bootstrap.txt on its data volume;
+            a restart replaces it.
             """.formatted(url, token, token, fp);
         DataDir.write(data.bootstrapFile(), text.getBytes(StandardCharsets.UTF_8));
         out.println(text);

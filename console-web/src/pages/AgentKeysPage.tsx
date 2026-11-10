@@ -65,7 +65,7 @@ export function AgentKeysPage() {
       {changes.length > 0 && (
         <>
           <Title headingLevel="h2" className="dc-tab-body">Changes agents asked for</Title>
-          <p className="dc-subtle">A change waits here for {all ? 'its key\'s owner' : 'you'} to approve it, for an hour. Approving makes it then, as the agent&apos;s key.</p>
+          <p className="dc-subtle">A change waits here for an hour for {all ? 'its key\'s owner' : 'you'} to approve it. Approving makes the change at that moment, as the agent&apos;s key.</p>
           <Table aria-label="Changes agents asked for" variant="compact">
             <Thead>
               <Tr>
@@ -147,7 +147,7 @@ export function AgentKeysPage() {
                     {list.settings.apps && (
                       <Td dataLabel="Identity Applications">
                         {k.apps === 'authorized' ? <Label color="green">authorized</Label>
-                          : k.apps === 'authorize-again' ? <Label color="orange">authorize again</Label> : <span className="dc-subtle">no</span>}
+                          : k.apps === 'authorize-again' ? <Label color="orange">authorize again</Label> : <span className="dc-subtle">not authorized</span>}
                         {k.apps !== 'authorized' && k.via === 'direct' && session.me.via === 'direct' && k.dn.toLowerCase() === session.me.dn.toLowerCase() && (
                           <> <Button variant="link" isInline onClick={() => setAuthorizing(k)}>Authorize</Button></>
                         )}
@@ -210,7 +210,7 @@ function NewKey({ list, onCancel, onMade }: { list: AgentKeyList; onCancel: () =
           <FormGroup label="Expires after this many days" fieldId="key-days" isRequired>
             <TextInput id="key-days" type="number" min={1} max={longest} value={days} onChange={(_e, v) => setDays(v)} validated={daysOk ? 'default' : 'error'} />
             <FormHelperText><HelperText><HelperTextItem variant={daysOk ? 'default' : 'error'}>
-              1 to {longest} days{sso ? ' (keys made with single sign-on live at most 14 days)' : ''}. A key unused for 14 days also stops.
+              1 to {longest} days{sso ? ' (keys made with single sign-on live at most 14 days)' : ''}. A key that isn't used for 14 days also stops working.
             </HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <FormGroup label="What it may do" fieldId="key-roles" isStack>

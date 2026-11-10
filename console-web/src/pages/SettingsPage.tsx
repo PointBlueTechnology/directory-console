@@ -182,7 +182,7 @@ function DirectorySection({ s, api, etag, onSaved }: {
           <FormGroup fieldId="dir-agent-approve">
             <Checkbox id="dir-agent-approve" label="Changes an agent asks for wait for the person's approval in the console" isChecked={agentApprove}
               onChange={(_e, v) => setAgentApprove(v)}
-              description="On by default. Off, an agent's changes go ahead within its key's roles; on a production directory the agent then needs its name, typed by the person." />
+              description="On by default. When off, an agent's changes go ahead within its key's roles; on a production directory the agent then needs the directory's name, typed by the person." />
           </FormGroup>
           <ActionGroup>
             <Button variant="secondary" isDisabled={busy || !sessionOk(agentDays, 1, 90) || (agentOn && !s.serviceAccount)
@@ -204,7 +204,7 @@ function DirectorySection({ s, api, etag, onSaved }: {
           </FormGroup>
           <FormGroup label="Client secret" fieldId="dir-apps-secret">
             <TextInput id="dir-apps-secret" type="password" value={appsSecret} onChange={(_e, v) => setAppsSecret(v)} autoComplete="new-password"
-              placeholder={s.apps.clientSecretSet ? 'Set (leave empty to keep it)' : ''} />
+              placeholder={s.apps.clientSecretSet ? 'Set: leave empty to keep it' : ''} />
             <FormHelperText><HelperText><HelperTextItem>Kept encrypted, never shown again.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <ActionGroup>
@@ -239,7 +239,7 @@ function DirectorySection({ s, api, etag, onSaved }: {
         <FormSection title="Finding people at sign-in" titleElement="h3">
           <FormGroup label="Search bases" fieldId="dir-bases">
             <TextArea id="dir-bases" className="dc-mono" value={bases} onChange={(_e, v) => setBases(v)} resizeOrientation="vertical" placeholder="ou=users,o=acme" />
-            <FormHelperText><HelperText><HelperTextItem>One DN per line, where a short name is looked for; none searches the whole directory. Needs the service account.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>One DN per line, where short names are looked up. Leave empty to search the whole directory. Needs the service account.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <FormGroup role="radiogroup" label="When a name matches several people" fieldId="dir-dup" isStack>
             <Radio id="dir-dup-choose" name="dir-dup" label="Let them choose their account" isChecked={duplicates === 'choose'} onChange={() => setDuplicates('choose')} />
@@ -662,7 +662,7 @@ function SyslogSection() {
             setBusy(true);
             setNotice(null);
             setError(null);
-            syslog.test().then((r) => setNotice(r.ok ? `A test message went to ${st.host}.` : `Not sent: ${r.error}`), setError).finally(() => setBusy(false));
+            syslog.test().then((r) => setNotice(r.ok ? `A test message went to ${st.host}.` : `The test message wasn't sent: ${r.error}`), setError).finally(() => setBusy(false));
           }}>Send a test</Button>
         </ActionGroup>
       </Form>
@@ -969,9 +969,9 @@ function PresetsSection({ s, save, exportAll, onSaved }: {
     try {
       const parsed: unknown = JSON.parse(await f.text());
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        throw new Error('not an object of id → preset');
+        throw new Error('it should map each preset id to a preset');
       }
-      await go({ ...all(s.presets), ...(parsed as Record<string, unknown>) }, `Imported ${Object.keys(parsed).length} preset(s).`);
+      await go({ ...all(s.presets), ...(parsed as Record<string, unknown>) }, `Imported ${Object.keys(parsed).length} ${Object.keys(parsed).length === 1 ? 'preset' : 'presets'}.`);
     } catch (x) {
       setImportError(`That file is not a task preset export: ${x instanceof Error ? x.message : String(x)}`);
     }
@@ -1004,7 +1004,7 @@ function PresetsSection({ s, save, exportAll, onSaved }: {
                 <Tr key={p.id}>
                   <Td dataLabel="Preset">{p.name}<div className="dc-subtle dc-mono">{p.id}</div></Td>
                   <Td dataLabel="Class" className="dc-mono">{p.objectClass}</Td>
-                  <Td dataLabel="Actions"><LabelGroup>{p.actions.map((a) => <Label key={a} isCompact>{a === 'attributes' ? `${p.attributes.length} field(s)` : a}</Label>)}</LabelGroup></Td>
+                  <Td dataLabel="Actions"><LabelGroup>{p.actions.map((a) => <Label key={a} isCompact>{a === 'attributes' ? `${p.attributes.length} ${p.attributes.length === 1 ? 'field' : 'fields'}` : a}</Label>)}</LabelGroup></Td>
                   <Td dataLabel="Granted to">{to.length ? to.map((g) => <div key={g}>{g}</div>) : <span className="dc-subtle">Nobody yet</span>}</Td>
                   <Td isActionCell modifier="nowrap">
                     <Button variant="link" isInline onClick={() => setEditing({ preset: p })}>Edit</Button>{' '}
@@ -1056,7 +1056,7 @@ function SsoSection({ s, save, test, check, onSaved }: {
 
   if (!s.serviceAccount) {
     return <Alert className="dc-tab-body" variant="warning" isInline title="Single sign-on needs the console's service account">
-      The console finds and acts for people who sign in through single sign-on with this directory's service account. Configure one first.
+      The console finds and acts for people who sign in through single sign-on with this directory's service account. Set one on the Directory tab first.
     </Alert>;
   }
   const submit = (e: React.FormEvent) => {
@@ -1085,7 +1085,7 @@ function SsoSection({ s, save, test, check, onSaved }: {
           </FormGroup>
           <FormGroup label="Client secret" fieldId="sso-secret">
             <TextInput id="sso-secret" type="password" autoComplete="off" value={secret} onChange={(_e, v) => setSecret(v)} isDisabled={publicClient}
-              placeholder={s.oidc?.clientSecretSet ? 'Set — leave empty to keep it' : ''} />
+              placeholder={s.oidc?.clientSecretSet ? 'Set: leave empty to keep it' : ''} />
             <Checkbox id="sso-public" label="Public client (PKCE only, no secret)" description={explain('publicClient')} isChecked={publicClient} onChange={(_e, v) => setPublicClient(v)} />
           </FormGroup>
           <FormGroup label="Button label" fieldId="sso-label">

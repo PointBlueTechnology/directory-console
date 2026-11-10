@@ -12,10 +12,10 @@ export function describeCron(cron: string): string | null {
   const num = (s: string) => /^\d+$/.test(s);
   const every = (s: string) => /^\*\/(\d+)$/.exec(s)?.[1];
   if (every(min) && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
-    return `every ${every(min)} minutes`;
+    return every(min) === '1' ? 'every minute' : `every ${every(min)} minutes`;
   }
   if (num(min) && every(hour) && dom === '*' && mon === '*' && dow === '*') {
-    return `every ${every(hour)} hours, at ${min.padStart(2, '0')} minutes past`;
+    return `every ${every(hour) === '1' ? 'hour' : `${every(hour)} hours`}, at ${min.padStart(2, '0')} minutes past`;
   }
   if (num(min) && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
     return `every hour, at ${min.padStart(2, '0')} minutes past`;

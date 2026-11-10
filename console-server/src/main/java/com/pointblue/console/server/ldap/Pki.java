@@ -316,7 +316,7 @@ public final class Pki {
                 case "dns" -> 2;
                 case "uri" -> 6;
                 case "ip" -> 7;
-                default -> throw new IllegalArgumentException("a name is dns:, ip:, email: or uri:");
+                default -> throw new IllegalArgumentException("each alternative name starts with dns:, ip:, email: or uri:");
             };
             sans.add(Map.of("type", type, "value", n.substring(colon + 1)));
         }

@@ -112,7 +112,7 @@ function useApply(servers: { guid: string | null; name: string; hostGuid?: strin
 function Saved({ needs, apply, busy }: { needs: 'refresh' | 'reload'; apply: (reload: boolean) => void; busy: boolean }) {
   return (
     <Alert variant="info" isInline className="dc-tab-body"
-      title={needs === 'reload' ? 'Saved. The LDAP server applies these settings when its LDAP module is reloaded.' : 'Saved. The LDAP server applies it when refreshed, or by itself within 30 minutes.'}
+      title={needs === 'reload' ? 'Saved. The LDAP server applies these settings when its LDAP module is reloaded.' : 'Saved. The LDAP server applies the change when refreshed, or by itself within 30 minutes.'}
       actionLinks={<AlertActionLink onClick={() => apply(needs === 'reload')} isDisabled={busy}>{needs === 'reload' ? 'Reload now' : 'Refresh now'}</AlertActionLink>} />
   );
 }
@@ -168,7 +168,7 @@ function TlsFields({ value, onChange, prefix }: { value: unknown; onChange: (v: 
             <Checkbox id={`${prefix}-tls13`} label="TLS 1.3" isChecked={has('TLSv1.3')} onChange={(_e, on) => toggle('TLSv1.3', on)} />
           </>
         )}
-        <FormHelperText><HelperText><HelperTextItem>None chosen: eDirectory's defaults, limited by each server's cipher level.</HelperTextItem></HelperText></FormHelperText>
+        <FormHelperText><HelperText><HelperTextItem>With none chosen, eDirectory's defaults apply, limited by each server's cipher level.</HelperTextItem></HelperText></FormHelperText>
       </FormGroup>
       <FormGroup label="Ciphers (TLS 1.2)" fieldId={`${prefix}-ciphers`}>
         <TextArea id={`${prefix}-ciphers`} className="dc-mono" value={t.ciphers} onChange={(_e, v) => onChange({ ...t, ciphers: v.trim() })} resizeOrientation="vertical" rows={2} />

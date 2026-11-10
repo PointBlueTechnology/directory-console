@@ -91,7 +91,7 @@ export function AccountTab({ obj, onChanged }: { obj: DirObject; onChanged: () =
       {account.lockedByIntruder && (
         <Alert component={level} variant="warning" isInline title="This account is locked by intruder detection" className="dc-tab-body"
           actionLinks={editor ? <Button variant="link" isInline onClick={unlock} isLoading={busy}>Unlock</Button> : undefined}>
-          {account.intruderAttempts !== null && <>{account.intruderAttempts} failed attempts. </>}
+          {account.intruderAttempts !== null && <>{account.intruderAttempts} failed {account.intruderAttempts === 1 ? 'attempt' : 'attempts'}. </>}
           {account.intruderAddress && <>The last came from {account.intruderAddress}. </>}
           {account.intruderResetTime && <>Resets on its own at {new Date(account.intruderResetTime).toLocaleString()}.</>}
         </Alert>

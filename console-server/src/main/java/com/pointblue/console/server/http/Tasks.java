@@ -462,7 +462,7 @@ final class Tasks {
         String confirm = ex.getRequestHeaders().getFirst("X-Confirm-Count");
         List<Ldap.Entry> all = l.search(e.dn(), "(objectClass=*)", null, SearchControls.SUBTREE_SCOPE, new String[] {"1.1"}, SUBTREE_LIMIT + 1);
         if (all.size() > SUBTREE_LIMIT) {
-            throw new Http.Problem(409, "subtree-too-large", "more than " + SUBTREE_LIMIT + " objects; delete smaller parts first");
+            throw new Http.Problem(409, "subtree-too-large", "the subtree has more than " + SUBTREE_LIMIT + " objects; delete smaller parts of it first");
         }
         if (confirm == null || !confirm.trim().equals(String.valueOf(all.size()))) {
             throw new Http.Problem(409, "confirm-count", "send X-Confirm-Count with the number of objects to delete (" + all.size() + " now)",

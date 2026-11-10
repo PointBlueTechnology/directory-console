@@ -94,7 +94,7 @@ export function PasswordPolicyPage({ guid }: { guid: string }) {
     }
   };
   const remove = () => sure.ask(`Delete ${p.name}?`, p.assignments.length
-    ? `It is assigned to ${p.assignments.length} object(s); deleting it unassigns them, and they fall back to whatever applies above them.`
+    ? `It is assigned to ${p.assignments.length} ${p.assignments.length === 1 ? 'object' : 'objects'}; deleting it unassigns them, and they fall back to whatever policy applies above them.`
     : 'Nothing is assigned this policy.', 'Delete', async () => {
     try {
       await run((c) => api.deletePolicy(guid, p.assignments.length, c));
@@ -293,7 +293,7 @@ function TestPassword({ api, p }: { api: ReturnType<typeof security>; p: Passwor
           <Alert isInline className="dc-tab-body" variant={result.passes ? 'success' : 'danger'}
             title={result.passes ? 'The policy accepts it' : `The policy refuses it: ${result.reason}`}>
             {result.governing
-              ? (result.same ? `${user?.name} is governed by this policy.` : `${user?.name} is governed by ${result.governing}, not this policy: the answer is that policy's.`)
+              ? (result.same ? `${user?.name} is governed by this policy.` : `${user?.name} is governed by ${result.governing}, not this policy, so the result is for that policy.`)
               : `No password policy governs ${user?.name}.`}
           </Alert>
         )}
@@ -367,7 +367,7 @@ export function ChallengeSetPage({ guid }: { guid: string }) {
           <ActionGroup>
             <Button type="submit" variant="primary">Save</Button>
             <Button variant="link" onClick={() => setDraft(s)}>Discard changes</Button>
-            <Button variant="danger" onClick={() => sure.ask(`Delete ${s.name}?`, 'A challenge set that a password policy uses is not deleted.', 'Delete', async () => {
+            <Button variant="danger" onClick={() => sure.ask(`Delete ${s.name}?`, 'It can\'t be deleted while a password policy uses it.', 'Delete', async () => {
               try {
                 await run((c) => api.deleteChallengeSet(guid, c));
                 navigate('/security/challenge-sets');

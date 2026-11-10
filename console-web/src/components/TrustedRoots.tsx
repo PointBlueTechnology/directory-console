@@ -73,7 +73,7 @@ export function TrustedRootsCard({ pki, api, editor, onChanged }: {
           );
         })}
         {making && <NewContainerModal onClose={() => setMaking(false)}
-          onSave={(parent, name) => confirmed.run((x) => api.createTrustedRootContainer(parent, name, x)).then((p) => { done(`${name} made.`)(p); setMaking(false); })} />}
+          onSave={(parent, name) => confirmed.run((x) => api.createTrustedRootContainer(parent, name, x)).then((p) => { done(`${name} created.`)(p); setMaking(false); })} />}
         {adding && <AddRootModal container={adding.name} onClose={() => setAdding(null)}
           onSave={(cert, name) => confirmed.run((x) => api.addTrustedRoot(adding.guid, cert, name, x)).then((p) => { done(`Root added to ${adding.name}.`)(p); setAdding(null); })} />}
         {confirmed.dialog}
@@ -105,7 +105,7 @@ function NewContainerModal({ onSave, onClose }: { onSave: (parent: string, name:
       <ModalHeader title="New trusted root container" labelId="trc-title" />
       <ModalBody>
         <Form id="trc-form" onSubmit={save}>
-          <FormGroup label="In" fieldId="trc-parent" isRequired>
+          <FormGroup label="Parent container" fieldId="trc-parent" isRequired>
             <TextInput id="trc-parent" className="dc-mono" value={parent} onChange={(_e, v) => setParent(v)} placeholder="cn=Security, or an organization or OU" />
             <FormHelperText><HelperText><HelperTextItem>The Security container, an Organization or an OU.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
@@ -116,7 +116,7 @@ function NewContainerModal({ onSave, onClose }: { onSave: (parent: string, name:
         </Form>
       </ModalBody>
       <ModalFooter>
-        <Button type="submit" form="trc-form" isLoading={busy} isDisabled={busy || !parent.trim() || !name.trim()}>Make it</Button>
+        <Button type="submit" form="trc-form" isLoading={busy} isDisabled={busy || !parent.trim() || !name.trim()}>Create</Button>
         <Button variant="link" onClick={onClose}>Cancel</Button>
       </ModalFooter>
     </Modal>

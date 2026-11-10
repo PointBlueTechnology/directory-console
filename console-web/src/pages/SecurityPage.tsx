@@ -76,7 +76,7 @@ function CertificatesView() {
   useEffect(load, [load]);
   useEffect(() => { if (editor) { edir(me.directory).servers().then(setServers).catch(() => setServers([])); } }, [editor, me.directory]);
   const remove = (k: Pki['serverCertificates'][number]) => sure.ask(`Delete ${k.name}?`,
-    `The key pair and certificate go with it; nothing can bring them back. Clients that trust it by this certificate (not the directory CA) will stop trusting ${k.server?.name ?? 'the server'}.`,
+    `The key pair and certificate go with it; nothing can bring them back. Clients that trust this certificate itself (rather than the directory CA) will stop trusting ${k.server?.name ?? 'the server'}.`,
     'Delete', () => {
       setOpError(null);
       confirmed.run((c) => api.deleteServerCertificate(k.guid!, c)).then(load, setOpError);
@@ -211,7 +211,7 @@ function CertificatesView() {
         <CardBody>
           {pki.crls.length === 0 ? <p>None configured.</p> : (
             <Table aria-label="CRLs" variant="compact">
-              <Thead><Tr><Th>Configuration</Th><Th>Type</Th><Th>Number</Th><Th>Issued</Th><Th>Next</Th><Th>Revoked</Th><Th>Published at</Th></Tr></Thead>
+              <Thead><Tr><Th>Configuration</Th><Th>Type</Th><Th>Number</Th><Th>Issued</Th><Th>Next issue</Th><Th>Revoked</Th><Th>Published at</Th></Tr></Thead>
               <Tbody>
                 {pki.crls.map((c) => (
                   <Tr key={c.dn}>
@@ -219,7 +219,7 @@ function CertificatesView() {
                     <Td dataLabel="Type">{c.type.toUpperCase()}</Td>
                     <Td dataLabel="Number">{c.number ?? '—'}</Td>
                     <Td dataLabel="Issued">{c.issued ? new Date(c.issued).toLocaleString() : '—'}</Td>
-                    <Td dataLabel="Next">{c.nextIssue ? new Date(c.nextIssue).toLocaleString() : '—'}</Td>
+                    <Td dataLabel="Next issue">{c.nextIssue ? new Date(c.nextIssue).toLocaleString() : '—'}</Td>
                     <Td dataLabel="Revoked">{c.revoked ?? '—'}</Td>
                     <Td dataLabel="Published at">{c.distributionPoints.map((d) => <div key={d} className="dc-mono">{d}</div>)}</Td>
                   </Tr>

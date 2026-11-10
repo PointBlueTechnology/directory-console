@@ -9,11 +9,11 @@ export function plan(action: 'start' | 'stop', drivers: DriverRow[]) {
   const skip: { d: DriverRow; why: string }[] = [];
   for (const d of drivers) {
     if (!d.guid) {
-      skip.push({ d, why: 'not readable' });
+      skip.push({ d, why: 'its GUID could not be read' });
     } else if (action === 'start' && isRunning(d)) {
       skip.push({ d, why: 'already running' });
     } else if (action === 'start' && isDisabled(d)) {
-      skip.push({ d, why: 'disabled: it cannot start' });
+      skip.push({ d, why: 'disabled, so it cannot start' });
     } else if (action === 'stop' && !isRunning(d)) {
       skip.push({ d, why: 'not running' });
     } else {

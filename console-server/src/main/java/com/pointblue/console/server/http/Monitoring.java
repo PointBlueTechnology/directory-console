@@ -149,7 +149,7 @@ final class Monitoring {
         List<String> out = strings(o, field);
         for (String n : out) {
             if (n.isEmpty() || n.contains("$") || n.contains("=") || n.length() > 128) {
-                throw new Http.Problem(400, "bad-field", field + " holds eDirectory names without $ or =");
+                throw new Http.Problem(400, "bad-field", field + " must list eDirectory names of 1 to 128 characters, without $ or =");
             }
         }
         return out;

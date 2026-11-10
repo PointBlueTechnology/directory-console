@@ -55,7 +55,7 @@ export function ScopeEditor({ scope, setScope, required, disabled }: {
   scope: { dn: string; scope: JobScopeKind }[]; setScope: (s: { dn: string; scope: JobScopeKind }[]) => void; required: boolean; disabled?: boolean;
 }) {
   return (
-    <FormGroup label={required ? 'Objects (this job needs some)' : 'Objects'} fieldId="job-scope" role="group">
+    <FormGroup label={required ? 'Objects (this job needs at least one)' : 'Objects'} fieldId="job-scope" role="group">
       {scope.map((s, i) => (
         <Flex key={i} alignItems={{ default: 'alignItemsCenter' }} flexWrap={{ default: 'wrap' }}>
           <FlexItem grow={{ default: 'grow' }}>

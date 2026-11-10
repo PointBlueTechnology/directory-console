@@ -92,7 +92,7 @@ export function ExportModal({ query, scopes, format: fixedFormat, title, onClose
   return (
     <Modal variant="small" isOpen onClose={onClose} aria-labelledby="export-title">
       <ModalHeader title={title} labelId="export-title"
-        description="Written as it is read, with your own rights. Passwords and private keys are never included." />
+        description="Includes only what your account can read. Passwords and private keys are never included." />
       <ModalBody>
         <Form id="export-form" onSubmit={(e) => { e.preventDefault(); void run(); }}>
           <FormGroup label="Format" fieldId="export-format" role="radiogroup" isInline>
@@ -108,7 +108,7 @@ export function ExportModal({ query, scopes, format: fixedFormat, title, onClose
             </HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           {scopes && (
-            <FormGroup label="What" fieldId="export-what" role="radiogroup" isStack>
+            <FormGroup label="What to export" fieldId="export-what" role="radiogroup" isStack>
               {scopes.map((s) => <Radio key={s.scope} id={`export-${s.scope}`} name="export-what" label={s.label}
                 isChecked={scope === s.scope} onChange={() => setScope(s.scope)} />)}
             </FormGroup>

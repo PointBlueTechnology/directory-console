@@ -11,7 +11,7 @@ export interface Problem {
 
 export class ApiError extends Error {
   constructor(readonly status: number, readonly problem: Problem) {
-    super(problem.detail || problem.title || `HTTP ${status}`);
+    super(problem.detail || problem.title || `The request failed (HTTP ${status}).`);
   }
 
   get code(): string {
@@ -332,7 +332,7 @@ export async function request<T>(method: string, path: string, body?: unknown, h
   if (!r.ok && r.status !== 207) {
     const problem: Problem = typeof parsed === 'object' && parsed !== null
       ? (parsed as Problem)
-      : { type: 'about:blank', title: 'error', status: r.status, detail: `HTTP ${r.status}` };
+      : { type: 'about:blank', title: 'error', status: r.status, detail: `The request failed (HTTP ${r.status}), with no details from the server.` };
     if (r.status === 401 && !path.startsWith('/api/v2/session')) {
       onSignedOut();
     }
@@ -1944,7 +1944,7 @@ async function download(method: string, path: string, body?: unknown): Promise<s
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!r.ok) {
-    const p = await r.json().catch(() => ({ title: 'error', detail: `HTTP ${r.status}` }));
+    const p = await r.json().catch(() => ({ title: 'error', detail: `The request failed (HTTP ${r.status}), with no details from the server.` }));
     if (r.status === 401) {
       onSignedOut();
     }

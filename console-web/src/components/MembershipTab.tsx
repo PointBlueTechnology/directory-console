@@ -41,7 +41,7 @@ function Results({ done }: { done: Done | null }) {
     return <Alert component={level} variant="success" isInline isPlain title={title} />;
   }
   return (
-    <Alert component={level} variant="danger" isInline title={`${failed.length} change(s) failed`}>
+    <Alert component={level} variant="danger" isInline title={`${failed.length} ${failed.length === 1 ? 'change' : 'changes'} failed`}>
       <ul>{failed.map((r, i) => <li key={i}>{r.group.name} / {r.member.name}: {r.detail}</li>)}</ul>
     </Alert>
   );

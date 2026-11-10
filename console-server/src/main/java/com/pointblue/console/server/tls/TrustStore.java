@@ -531,7 +531,7 @@ public final class TrustStore {
             try {
                 leaf.checkValidity();
             } catch (CertificateException e) {
-                throw new Untrusted(Reason.EXPIRED, "the server's certificate is not valid now (" + leaf.getNotAfter().toInstant() + ")", chain);
+                throw new Untrusted(Reason.EXPIRED, "the server's certificate is outside its validity period (" + leaf.getNotBefore().toInstant() + " to " + leaf.getNotAfter().toInstant() + ")", chain);
             }
             boolean pinned = entries.stream().anyMatch(e -> e.kind == Kind.PINNED_SERVER && e.id.equals(leafId));
             if (!pinned) {
@@ -555,8 +555,8 @@ public final class TrustStore {
                     if (alerting) {
                         raise(host, port, directoryId, pins, leaf);
                     }
-                    throw new Untrusted(Reason.PIN_CHANGED, "the server's certificate is not the one pinned for this address: it changed, or this is not the expected server."
-                        + " Administrators have been alerted", chain);
+                    throw new Untrusted(Reason.PIN_CHANGED, "the server's certificate is not the one pinned for this address: it changed, or this is not the expected server"
+                        + (alerting ? ". Administrators have been alerted" : ""), chain);
                 }
             }
             if (!Certs.matches(leaf, host)) {

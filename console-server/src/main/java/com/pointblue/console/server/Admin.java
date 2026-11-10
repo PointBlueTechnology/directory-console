@@ -99,7 +99,8 @@ final class Admin {
 
     private static int verifyAudit(Path dataPath) throws IOException {
         AuditLog.Verification v = new AuditLog(new DataDir(dataPath)).verify();
-        System.out.println(v.intact() ? "intact: " + v.lines() + " lines" : "BROKEN after " + v.lines() + " lines: " + v.problem());
+        String entries = v.lines() + (v.lines() == 1 ? " entry" : " entries");
+        System.out.println(v.intact() ? "Audit log intact: " + entries + " checked." : "Audit log broken after " + entries + ": " + v.problem());
         return v.intact() ? 0 : 1;
     }
 }

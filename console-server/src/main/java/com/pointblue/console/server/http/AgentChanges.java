@@ -137,7 +137,7 @@ final class AgentChanges {
         if (path.equals("/api/v2/agent-changes") && method.equals("GET")) {
             boolean all = "true".equals(Http.query(ex).get("all"));
             if (all && !s.principal.has(Role.ADMIN)) {
-                throw new Http.Problem(403, "forbidden", "everyone's changes are for admins");
+                throw new Http.Problem(403, "forbidden", "only admins can see everyone's changes");
             }
             List<Map<String, Object>> out = new ArrayList<>();
             changes.values().stream()
