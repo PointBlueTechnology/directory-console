@@ -126,7 +126,7 @@ function Overview({ api, guid, status, onChanged }: { api: Idm; guid: string; st
   };
 
   const rows: [string, unknown][] = [
-    ['Starts', status.startOption], ['Cache', status.cacheSize], ['Unprocessed', status.unprocessedSize],
+    ['Start option', status.startOption], ['Cache', status.cacheSize], ['Unprocessed', status.unprocessedSize],
     ['Trace level', status.traceLevel], ['Trace file', status.traceFile],
   ];
   return (
@@ -288,13 +288,13 @@ function ServerComparison({ guid }: { guid: string }) {
       <ProblemAlert error={error} />
       {!c ? <Spinner size="md" aria-label="Loading" /> : (
         <Table aria-label="The driver on each server" variant="compact">
-          <Thead><Tr><Th>Server</Th><Th>State</Th><Th>Starts</Th></Tr></Thead>
+          <Thead><Tr><Th>Server</Th><Th>State</Th><Th>Start option</Th></Tr></Thead>
           <Tbody>
             {c.servers.map((r) => (
               <Tr key={r.server.guid}>
                 <Td dataLabel="Server">{r.server.name}</Td>
                 {r.status === 'ok' ? (
-                  <><Td dataLabel="State">{r.state ? <StateLabel state={r.state} /> : '—'}</Td><Td dataLabel="Starts">{show(r.startOption)}</Td></>
+                  <><Td dataLabel="State">{r.state ? <StateLabel state={r.state} /> : '—'}</Td><Td dataLabel="Start option">{show(r.startOption)}</Td></>
                 ) : (
                   <Td dataLabel="State" colSpan={2}>
                     {r.status === 'server-sign-in-required'

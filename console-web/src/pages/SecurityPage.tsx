@@ -353,7 +353,7 @@ function LoginMethodsView() {
       if (x instanceof ApiError && x.code === 'confirm-count') {
         const count = Number(x.problem.count);
         return new Promise<LoginPolicy>((resolve, reject) => sure.ask(`${count} ${count === 1 ? 'object uses' : 'objects use'} ${name}`,
-          `They name ${name} as their login sequence. Changing it changes how they log in.`, 'Go ahead',
+          `They name ${name} as their login sequence, so this changes how they log in.`, 'Go ahead',
           () => confirmed.run((c) => op(c, count)).then(resolve, reject)));
       }
       throw x;

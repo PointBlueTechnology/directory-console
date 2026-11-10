@@ -503,7 +503,7 @@ final class Tasks {
                 if (f.ndsError != null) {
                     extra.put("ndsError", f.ndsError);
                 }
-                throw new Http.Problem(409, "subtree-partly-deleted", deleted + " of " + dns.size() + " objects were deleted; " + d + ": " + f.getMessage(), extra);
+                throw new Http.Problem(409, "subtree-partly-deleted", "only " + deleted + " of " + dns.size() + (dns.size() == 1 ? " object was" : " objects were") + " deleted; " + d + ": " + f.getMessage(), extra);
             }
             deleted++;
         }

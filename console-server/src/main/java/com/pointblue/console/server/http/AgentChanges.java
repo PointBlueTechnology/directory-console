@@ -176,7 +176,7 @@ final class AgentChanges {
     private void approve(HttpExchange ex, Sessions.Session s, Change c) throws IOException {
         synchronized (c) {
             if (!c.state.equals("pending")) {
-                throw new Http.Problem(409, "not-pending", "this change is " + c.state);
+                throw new Http.Problem(409, "not-pending", "this change is no longer waiting for approval (it is " + c.state + ")");
             }
             String confirm = Http.string(Http.body(ex), "confirm", false);
             DirectoryConfig d = server.directoryOf(s);

@@ -280,7 +280,7 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
                 <p><strong>Move LDAP servers to the new certificates</strong> (optional; each takes effect when that LDAP server is reloaded).</p>
                 {connected && (
                   <Alert variant="warning" isInline isPlain title={`The console reaches the directory through ${connected.name}`}>
-                    If the console trusts it by its own certificate rather than the directory's CA, accept the new certificate on the Certificates page after the reload.
+                    If the console trusts it by its own certificate rather than the directory's CA, trust the new certificate in Settings &gt; Trusted certificates after the reload.
                   </Alert>
                 )}
                 <Table aria-label="LDAP servers" variant="compact">
@@ -312,7 +312,7 @@ export function DefaultCertificatesModal({ servers, onClose, onChanged }: { serv
             {step === 'done' && (
               <div className="dc-tab-body">
                 <List>
-                  <ListItem>The old certificates are still there; delete them on the Certificates page once nothing uses them.</ListItem>
+                  <ListItem>The old certificates are still there; delete them on the Security page's Certificates tab once nothing uses them.</ListItem>
                   <ListItem>Clients that trust these servers by their certificate, not the directory's CA, must trust the new ones before an LDAP server is moved.</ListItem>
                 </List>
                 {!reloading && reloadedNames.length > 0 && <Alert variant="success" isInline isPlain title={`Reloaded: ${reloadedNames.join(', ')}.`} />}

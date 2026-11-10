@@ -12,7 +12,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         list: [
           'A container\'s name opens it; clicking anywhere else on a row shows the object\'s details beside the list.',
           'To view or edit a container itself, use the details button at the end of its row, or Details beside the open container\'s name.',
-          'Export as LDIF… in an object\'s actions saves it, a container\'s children, or a container and everything below it (as LDIF, CSV or JSON).',
+          'Export… in an object\'s actions saves it, a container\'s children, or a container and everything below it (as LDIF, CSV or JSON).',
           'The label at the top of the page names the directory you are signed in to; hover over it for its address. It is red for a production directory.',
           'The number after a container\'s name is how many objects it holds, as eDirectory reports it.',
           'Everything, Containers and Other objects filter the list. Other objects are the leaves: users, groups and the like.',
@@ -1033,7 +1033,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'By default people may sign in with single sign-on or with their name and password.',
           'Single sign-on only: the sign-in page offers single sign-on first, and only the break-glass accounts and the accounts listed here may sign in with a password. Listed accounts keep the roles their groups give them.',
           'Keep a way in for when the provider is down: the break-glass accounts always have one.',
-          'While password sign-in is limited, single sign-on and the service account cannot be removed. Allow passwords again first.',
+          'While password sign-in is limited, single sign-on and the service account cannot be removed. First choose "Anyone may sign in with a password or with single sign-on".',
         ],
       },
     ],

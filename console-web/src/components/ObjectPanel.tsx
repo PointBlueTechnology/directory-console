@@ -158,7 +158,7 @@ export function ObjectPanel({ guid, onChanged, headingLevel = 'h2' }: Props) {
               {(tasks.length > 0 || editor) && <Divider component="li" />}
               <DropdownList>
                 <DropdownItem onClick={() => { setMenu(false); setDialog({ kind: 'export' }); }}
-                  description={obj.container ? 'This object, its children, or everything below it' : undefined}>Export as LDIF…</DropdownItem>
+                  description={obj.container ? 'This object, its children, or everything below it' : undefined}>Export…</DropdownItem>
               </DropdownList>
             </Dropdown>
           </FlexItem>
