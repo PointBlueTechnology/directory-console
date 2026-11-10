@@ -84,7 +84,7 @@ export function NewAttributeModal({ api, run, onClose, onDone }: { api: Edir; ru
           </FormGroup>
           <FormGroup label="OID" fieldId="attr-new-oid">
             <TextInput id="attr-new-oid" value={oid} onChange={(_e, v) => setOid(v.trim())} className="dc-mono" />
-            <FormHelperText><HelperText><HelperTextItem>Your organisation's OID for it, or empty for one under 2.25.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>Your organization's OID for it, or empty for one under 2.25.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           <FormGroup label="Description" fieldId="attr-new-desc">
             <TextInput id="attr-new-desc" value={description} onChange={(_e, v) => setDescription(v)} />
@@ -172,7 +172,7 @@ export function NewClassModal({ api, run, onClose, onDone }: { api: Edir; run: R
           )}
           <FormGroup label="OID" fieldId="class-new-oid">
             <TextInput id="class-new-oid" value={oid} onChange={(_e, v) => setOid(v.trim())} className="dc-mono" />
-            <FormHelperText><HelperText><HelperTextItem>Your organisation's OID for it, or empty for one under 2.25.</HelperTextItem></HelperText></FormHelperText>
+            <FormHelperText><HelperText><HelperTextItem>Your organization's OID for it, or empty for one under 2.25.</HelperTextItem></HelperText></FormHelperText>
           </FormGroup>
           {name && problem && <HelperText><HelperTextItem variant="error">{problem}</HelperTextItem></HelperText>}
           <ProblemAlert error={error} />

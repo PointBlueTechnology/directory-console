@@ -191,7 +191,7 @@ export interface Account {
   lockedByIntruder: boolean | null;
   intruderAttempts: number | null;
   intruderResetTime: string | null;
-  /** Where the last failed login counted towards lockout came from. */
+  /** Where the last failed login counted toward lockout came from. */
   intruderAddress?: string | null;
   loginExpires: string | null;
   maxConnections: number | null;
@@ -1366,7 +1366,7 @@ export function edir(id: string) {
     /** A server's policy (null: none), then limber there; applied is false when the policy has not reached that server yet. */
     assignEncryptionPolicy: (server: string, policy: string | null, confirm?: string) =>
       request<EncryptionOverview & { applied?: boolean }>('PUT', `${base}/servers/${guidPath(server)}/encryption-policy`, { policy }, h(confirm)).then((r) => r.data),
-    /** Every filtered replica on the server resynchronises. An empty list clears the filter. */
+    /** Every filtered replica on the server resynchronizes. An empty list clears the filter. */
     setReplicaFilter: (server: string, classes: { class: string; attributes: string[] }[], confirm?: string) =>
       request<ReplicaFilter>('PUT', `${base}/servers/${guidPath(server)}/replica-filter`, { classes }, h(confirm)).then((r) => r.data),
     replicaFilter: (server: string) => request<ReplicaFilter>('GET', `${base}/servers/${guidPath(server)}/replica-filter`).then((r) => r.data),

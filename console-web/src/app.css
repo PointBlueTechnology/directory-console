@@ -1,4 +1,4 @@
-/* Layout only; colours and type come from PatternFly tokens and the Point Blue theme. */
+/* Layout only; colors and type come from PatternFly tokens and the Point Blue theme. */
 .dc-browser {
   display: grid;
   grid-template-columns: minmax(16rem, 22rem) 1fr;

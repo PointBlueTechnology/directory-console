@@ -57,7 +57,7 @@ final class Monitoring {
         return m;
     }
 
-    /** cefConfiguration values → settings; values it does not recognise are returned under "unknown". */
+    /** cefConfiguration values → settings; values it does not recognize are returned under "unknown". */
     static Map<String, Object> parseCef(List<String> values) {
         Map<String, Object> m = cefDefaults();
         m.put("events", new ArrayList<>());

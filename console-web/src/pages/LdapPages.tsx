@@ -128,7 +128,7 @@ function NumberField({ id, label, help, more, value, onChange }: { id: string; l
 }
 
 function ReferralFields({ s, set, prefix }: { s: LdapSettings; set: (k: string, v: LdapSettings[string]) => void; prefix: string }) {
-  const behaviour = num(s.ldapDefaultReferralBehavior);
+  const behavior = num(s.ldapDefaultReferralBehavior);
   return (
     <>
       {([['ldapSearchReferralUsage', 'Referrals for searches'], ['lDAPOtherReferralUsage', 'Referrals for other operations']] as const).map(([k, label]) => (
@@ -142,8 +142,8 @@ function ReferralFields({ s, set, prefix }: { s: LdapSettings; set: (k: string, 
       <FormGroup label="Return the default referral when" fieldId={`${prefix}-default-referral`} role="group"
         labelHelp={<FieldHelp label="Default referral">Only when the referral setting is Always refer.</FieldHelp>}>
         {DEFAULT_REFERRAL.map(([bit, label]) => (
-          <Checkbox key={bit} id={`${prefix}-dr-${bit}`} label={label} isChecked={(behaviour & bit) !== 0}
-            onChange={(_e, on) => set('ldapDefaultReferralBehavior', on ? behaviour | bit : behaviour & ~bit)} />
+          <Checkbox key={bit} id={`${prefix}-dr-${bit}`} label={label} isChecked={(behavior & bit) !== 0}
+            onChange={(_e, on) => set('ldapDefaultReferralBehavior', on ? behavior | bit : behavior & ~bit)} />
         ))}
       </FormGroup>
     </>

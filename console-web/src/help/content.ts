@@ -365,7 +365,7 @@ export const CONTENT: Record<string, HelpTopic> = {
       {
         title: 'Replica filter',
         caution: true,
-        paragraphs: ['The filter says which classes and attributes this server\'s filtered (sparse) replicas hold, by LDAP name. Changing it resynchronises every filtered replica on the server. A filtered read/write replica can create an object only if the filter holds all of its mandatory attributes.'],
+        paragraphs: ['The filter says which classes and attributes this server\'s filtered (sparse) replicas hold, by LDAP name. Changing it resynchronizes every filtered replica on the server. A filtered read/write replica can create an object only if the filter holds all of its mandatory attributes.'],
       },
     ],
     related: ['edir', 'edir.encryption'],
@@ -456,7 +456,7 @@ export const CONTENT: Record<string, HelpTopic> = {
         list: [
           'Limits: 0 means no limit. The search entry limit does not apply to administrators of the LDAP Server object.',
           'Persistent searches and event monitoring let clients follow changes; they can load a busy server, so cap them.',
-          'Compatibility settings are for clients that expect non-standard behaviour: change them only for such a client.',
+          'Compatibility settings are for clients that expect non-standard behavior: change them only for such a client.',
           'Trace chooses what the LDAP server writes to ndstrace.',
         ],
       },
@@ -650,7 +650,7 @@ export const CONTENT: Record<string, HelpTopic> = {
     ],
     related: ['idm'],
   },
-  'idm.servers': { title: 'Servers and activation', summary: 'Which servers run this driver set, and Identity Manager\'s activation (licence) state on each.', sections: [] },
+  'idm.servers': { title: 'Servers and activation', summary: 'Which servers run this driver set, and Identity Manager\'s activation (license) state on each.', sections: [] },
   'idm.properties': {
     title: 'Driver set properties',
     summary: 'The driver set\'s settings, as configured. They are changed in Designer, not here.',
@@ -803,16 +803,16 @@ export const CONTENT: Record<string, HelpTopic> = {
     summary: 'One driver on the chosen server: its state and start option, and tabs for its jobs, associations, cache and settings.',
     sections: [
       {
-        title: 'Resynchronising',
+        title: 'Resynchronizing',
         caution: true,
-        paragraphs: ['Resynchronising asks the driver to send its objects again, optionally only those changed since a date. On a large driver this loads the connected system.'],
+        paragraphs: ['Resynchronizing asks the driver to send its objects again, optionally only those changed since a date. On a large driver this loads the connected system.'],
       },
     ],
     related: ['idm', 'idm.driver.cache'],
   },
   'idm.driver.overview': {
     title: 'Driver overview',
-    summary: 'State, start option and cache on the chosen server, with start, stop and restart, resynchronising and migrating.',
+    summary: 'State, start option and cache on the chosen server, with start, stop and restart, resynchronizing and migrating.',
     sections: [
       { title: 'Start option', paragraphs: ['Automatic starts with the engine; Manual waits to be started. Disabled deletes the cache and keeps no events: stop the driver instead to keep queueing them.'] },
       { title: 'On each server', paragraphs: ['With more than one server, a table shows the driver\'s state and start option on each.'] },
@@ -824,7 +824,7 @@ export const CONTENT: Record<string, HelpTopic> = {
           'Application objects into the vault: the engine asks the application for its objects and brings each in through the publisher channel\'s matching, creation and placement policies.',
         ],
       },
-      { title: 'Resynchronising', caution: true, paragraphs: ['Resynchronising asks the driver to send its objects again, optionally only those changed since a date. On a large driver this loads the connected system.'] },
+      { title: 'Resynchronizing', caution: true, paragraphs: ['Resynchronizing asks the driver to send its objects again, optionally only those changed since a date. On a large driver this loads the connected system.'] },
     ],
     related: ['idm.driver'],
   },

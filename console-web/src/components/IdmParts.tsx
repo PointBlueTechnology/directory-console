@@ -16,7 +16,7 @@ import { NewJobModal } from './NewJob';
 import { type Term, explain } from '../help/glossary';
 import { Hint } from '../help/Help';
 
-/** A driver's state as a coloured label. */
+/** A driver's state as a colored label. */
 export function StateLabel({ state }: { state: string }) {
   const s = state.toLowerCase();
   const color = s === 'running' ? 'green' : s === 'stopped' ? 'grey' : s.includes('start') || s.includes('stop') ? 'blue' : 'orange';

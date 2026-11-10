@@ -48,7 +48,7 @@ public final class Ldap implements AutoCloseable {
     public static final String PROXIED_AUTHZ = "2.16.840.1.113730.3.4.18";
     /** eDirectory's GetEffectivePrivileges request and response. */
     static final String EFFECTIVE_PRIVILEGES = "2.16.840.1.113719.1.27.100.33";
-    /** Virtual list view request and response. eDirectory honours them without listing them in the root DSE. */
+    /** Virtual list view request and response. eDirectory honors them without listing them in the root DSE. */
     /** Attributes always read as bytes, whatever the schema says (the login time map is a bit map). */
     static final String BINARY = "GUID loginAllowedTimeMap networkAddress loginIntruderAddress XmlData DirXML-Data DirXML-ShimConfigInfo DirXML-ConfigValues DirXML-EngineControlValues DirXML-DriverFilter DirXML-uiXMLBigPerReplica Replica nDSPKIPublicKeyCertificate nDSPKIPublicKeyCertificateEC "
         + "nDSPKICertificateChain nDSPKITrustedRootCertificate certificateRevocationList cACertificate userCertificate nsimChallengeSetGUID";

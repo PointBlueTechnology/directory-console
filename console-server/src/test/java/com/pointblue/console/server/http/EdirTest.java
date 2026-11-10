@@ -309,7 +309,7 @@ public class EdirTest {
         assertEquals("TLS changes need the LDAP module reloaded", "reload", tls.body().get("needs"));
         assertEquals("refresh", call("PATCH", t + "/servers/" + sg, Map.of("settings", Map.of("searchSizeLimit", 100)), h).body().get("needs"));
 
-        // a mapping keeps Identity Console's extra fields (spelt as it spells them)
+        // a mapping keeps Identity Console's extra fields (spelled as it spells them)
         Reply described = call("PATCH", t + "/groups/" + gg, Map.of("settings", Map.of("ldapAttributeList", List.of(
             Map.of("eDirectory", "Surname", "ldap", List.of("sn", "surname"), "obsolete", false, "description", "family name")))), h);
         assertEquals(String.valueOf(described.body()), 200, described.status());

@@ -192,25 +192,25 @@ function Resync({ api, guid }: { api: Idm; guid: string }) {
   return (
     <Form className="dc-tab-body" onSubmit={(e) => {
       e.preventDefault();
-      sure.ask('Resynchronise this driver?', `The driver sends ${since ? 'every object changed since then' : 'all of its objects'} again. On a large driver this loads the connected system for some time.`,
-        'Resynchronise', async () => {
+      sure.ask('Resynchronize this driver?', `The driver sends ${since ? 'every object changed since then' : 'all of its objects'} again. On a large driver this loads the connected system for some time.`,
+        'Resynchronize', async () => {
           setError(null);
           try {
             await run((c) => api.resync(guid, since ? new Date(since).toISOString() : null, c));
-            setNotice('Resynchronisation requested.');
+            setNotice('Resynchronization requested.');
           } catch (x) {
             setError(x);
           }
         });
     }}>
-      <Title headingLevel="h2" size="md">Resynchronise</Title>
+      <Title headingLevel="h2" size="md">Resynchronize</Title>
       <p className="dc-subtle">{explain('resync')}</p>
       <FormGroup label="Only objects changed since (optional)" fieldId="resync-since">
         <TextInput id="resync-since" type="datetime-local" value={since} onChange={(_e, v) => setSince(v)} />
       </FormGroup>
       {notice && <Alert component={level} variant="success" isInline isPlain title={notice} />}
       <ProblemAlert error={error} />
-      <div><Button type="submit" variant="secondary">Resynchronise</Button></div>
+      <div><Button type="submit" variant="secondary">Resynchronize</Button></div>
       {dialog}
       {sure.dialog}
     </Form>

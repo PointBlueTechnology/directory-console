@@ -97,7 +97,7 @@ export function Shell() {
                 </Tooltip>
               </ToolbarItem>
               <ToolbarItem>
-                <ToggleGroup aria-label="Colour theme">
+                <ToggleGroup aria-label="Color theme">
                   <ToggleGroupItem icon={<SunIcon />} aria-label="Light theme" isSelected={!dark} onChange={() => setDark(false)} />
                   <ToggleGroupItem icon={<MoonIcon />} aria-label="Dark theme" isSelected={dark} onChange={() => setDark(true)} />
                 </ToggleGroup>

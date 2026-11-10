@@ -443,7 +443,7 @@ export function ReplicaFilterCard({ guid }: { guid: string }) {
   const save = () => {
     const classes = (draft ?? []).filter((c) => c.class.trim()).map((c) => ({ class: c.class.trim(), attributes: c.attributes.split(/[\s,]+/).filter(Boolean) }));
     sure.ask(classes.length ? 'Set the replica filter?' : 'Clear the replica filter?',
-      `${f?.sparseReplicas.length ? `Every filtered replica on this server (${f.sparseReplicas.map((r) => r.name).join(', ')}) resynchronises.` : 'This server has no filtered replicas yet.'} A filtered read/write replica can create an object only when the filter holds all of its mandatory attributes.`,
+      `${f?.sparseReplicas.length ? `Every filtered replica on this server (${f.sparseReplicas.map((r) => r.name).join(', ')}) resynchronizes.` : 'This server has no filtered replicas yet.'} A filtered read/write replica can create an object only when the filter holds all of its mandatory attributes.`,
       classes.length ? 'Set it' : 'Clear it',
       () => confirmed.run((c) => api.setReplicaFilter(guid, classes, c)).then((x) => { setF(x); setDraft(null); setNotice('Replica filter saved.'); setError(null); }, setError));
   };

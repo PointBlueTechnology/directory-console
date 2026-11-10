@@ -14,7 +14,7 @@ export function replicaTypeHelp(type: string): string {
   return key in GLOSSARY ? GLOSSARY[key as keyof typeof GLOSSARY] : type;
 }
 
-/** A replica type as a coloured label, its meaning on hover: the master purple, subordinate references grey. */
+/** A replica type as a colored label, its meaning on hover: the master purple, subordinate references gray. */
 export function ReplicaTypeLabel({ type }: { type: string }) {
   return (
     <Hint text={replicaTypeHelp(type)}>

@@ -240,7 +240,7 @@ public final class Partitions {
     /**
      * Set {@code serverDn}'s replica filter (.35, as JLDAP's SetReplicationFilterRequest): the server's DN, then
      * SEQUENCE OF SEQUENCE { class name, SEQUENCE OF attribute name }. An empty list clears it. Every filtered
-     * replica on the server resynchronises.
+     * replica on the server resynchronizes.
      */
     public static void setReplicaFilter(Ldap l, String serverDn, List<FilterClass> filter) throws NamingException {
         java.io.ByteArrayOutputStream classes = new java.io.ByteArrayOutputStream();

@@ -343,7 +343,7 @@ function HistoryAndBackupSection() {
       <ProblemAlert error={error} />
       {pending && (
         <Alert variant="warning" isInline className="dc-tab-body" title="A restore is waiting: restart the console to apply it"
-          actionLinks={<Button variant="link" isInline onClick={() => act('cancel', records.cancel, () => { setPending(null); setNotice('The restore was cancelled.'); })}>Cancel it</Button>}>
+          actionLinks={<Button variant="link" isInline onClick={() => act('cancel', records.cancel, () => { setPending(null); setNotice('The restore was canceled.'); })}>Cancel it</Button>}>
           From a backup made {pending.createdAt ? new Date(pending.createdAt).toLocaleString() : '(unknown)'}{pending.consoleVersion ? ` by version ${pending.consoleVersion}` : ''}.
           At the next start the configuration, trust store, the console's certificate and the configuration key are replaced; everyone signs in again.
         </Alert>

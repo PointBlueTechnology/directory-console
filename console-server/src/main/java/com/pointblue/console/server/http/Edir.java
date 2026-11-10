@@ -867,7 +867,7 @@ final class Edir {
 
     /**
      * {@code PUT servers/{id}/replica-filter}: {classes: [{class, attributes: [...]}]}; an empty list clears it. Every
-     * filtered replica on the server resynchronises.
+     * filtered replica on the server resynchronizes.
      */
     private void setReplicaFilter(HttpExchange ex, Ldap l, Sessions.Session s, String guid) throws IOException, NamingException {
         Ldap.Entry srv = server.objects.byGuid(l, guid, "objectClass", "cn");

@@ -30,7 +30,7 @@ import javax.naming.ldap.LdapName;
 /**
  * Live check of setup and sign-in against a lab vault: the real server, in-process, driven through its setup and
  * sign-in API exactly as a person would, against the environment named on the command line. Not a JUnit
- * test (CI never runs it). Read-only towards eDirectory: binds, searches, GetEffectivePrivileges. It never
+ * test (CI never runs it). Read-only toward eDirectory: binds, searches, GetEffectivePrivileges. It never
  * tries a wrong password against a real account (no intruder-lockout risk) and prints outcomes only, never
  * a password.
  *

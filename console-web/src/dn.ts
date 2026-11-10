@@ -1,7 +1,7 @@
 // Just enough RFC 4514 to decide whether one DN is at or under another, for what the UI offers. The
 // server decides for real (Names.within); this only keeps the UI from offering what it would refuse.
 
-/** The RDNs of {@code dn}, leaf first, each normalised (types and values case-folded, AVAs sorted). */
+/** The RDNs of {@code dn}, leaf first, each normalized (types and values case-folded, AVAs sorted). */
 export function rdns(dn: string): string[] {
   const out: string[] = [];
   let cur = '';
@@ -19,10 +19,10 @@ export function rdns(dn: string): string[] {
   if (cur.trim() !== '' || out.length > 0) {
     out.push(cur);
   }
-  return out.map(normalise).filter((r) => r !== '');
+  return out.map(normalize).filter((r) => r !== '');
 }
 
-function normalise(rdn: string): string {
+function normalize(rdn: string): string {
   const avas: string[] = [];
   let cur = '';
   for (let i = 0; i < rdn.length; i++) {

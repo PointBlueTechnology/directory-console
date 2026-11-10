@@ -92,7 +92,7 @@ public final class LivePhase6Check {
 
             String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
             LiveSetupCheck.Reply cs = call("POST", T + "/security/challenge-sets", Map.of("name", "dcp6cs-" + ts, "description", "Directory Console live check",
-                "required", List.of(Map.of("kind", "admin", "text", "What is your favourite colour?", "min", 2, "max", 40), Map.of("kind", "user", "min", 4, "max", 64)),
+                "required", List.of(Map.of("kind", "admin", "text", "What is your favorite color?", "min", 2, "max", 40), Map.of("kind", "user", "min", 4, "max", 64)),
                 "random", List.of(Map.of("kind", "admin", "text", "Name of your first pet?", "min", 2, "max", 40), Map.of("kind", "admin", "text", "City of birth?", "min", 2, "max", 40)),
                 "randomCount", 1), admin);
             set = (String) cs.body().get("guid");

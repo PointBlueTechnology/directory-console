@@ -3,7 +3,7 @@
  * Import after @patternfly/patternfly's CSS. Only design tokens are overridden, so PatternFly
  * upgrades keep working; components are never restyled here.
  *
- * Brand colours (confirmed 2026-10-09): Point Blue's blue (#3b82f6), darkened in the light theme so
+ * Brand colors (confirmed 2026-10-09): Point Blue's blue (#3b82f6), darkened in the light theme so
  * links and primary buttons keep a 4.5:1 contrast on white.
  */
 :root {

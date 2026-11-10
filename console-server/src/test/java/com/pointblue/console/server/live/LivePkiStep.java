@@ -678,7 +678,7 @@ public final class LivePkiStep {
                 found.add(name + (n > 1 ? " x" + n : ""));
             }
         });
-        return found.isEmpty() ? "unrecognised" : String.join(", ", found);
+        return found.isEmpty() ? "unrecognized" : String.join(", ", found);
     }
 
     /** An anonymous read of one attribute over clear LDAP (port 389): its value, or the error eDirectory gives. */

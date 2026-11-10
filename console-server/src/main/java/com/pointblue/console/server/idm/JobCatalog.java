@@ -8,7 +8,7 @@ import javax.naming.ldap.ExtendedResponse;
 import javax.naming.ldap.LdapContext;
 
 /**
- * The engine's job catalogue: DiscoverJobs (IDM extended operation 51), which reads the job definitions
+ * The engine's job catalog: DiscoverJobs (IDM extended operation 51), which reads the job definitions
  * packaged in the job jars on that server, and NotifyJobUpdate. Encoded and decoded with DirXMLDev's
  * {@link IdmOps} (no engine jars) and sent on the person's own JNDI connection to that server. DiscoverJobs
  * answers with a chunked result (a handle and a size), read as DirXMLDev's Vault reads one: 64 512 bytes a

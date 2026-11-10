@@ -28,10 +28,10 @@ import javax.net.ssl.X509TrustManager;
  * operations? Bound as the environment's account, it sends read-only engine requests for one driver
  * with no control, acting as that account, and acting as a test user made for the run with no rights
  * (and no password); then a start-option "change" to the value it already has. If the test user's
- * requests are refused, the control is honoured and a single sign-on session can use the engine on the
+ * requests are refused, the control is honored and a single sign-on session can use the engine on the
  * service account's connection.
  *
- * <p>Found on ig4 (eDirectory 9.2.8, IDM 4.8.7, 2026-10-23): the control is honoured, and the engine
+ * <p>Found on ig4 (eDirectory 9.2.8, IDM 4.8.7, 2026-10-23): the control is honored, and the engine
  * keeps the last identity it was given on that connection: after any request under the control, requests
  * without it are decided as that person too (plain LDAP operations are not affected). So an engine
  * connection used this way must belong to one person and carry the control on every request. The test
