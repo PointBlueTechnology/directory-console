@@ -100,7 +100,7 @@ Back up first: a volume snapshot of the `console-data` claim, or a backup from *
 Then change the image tag to the new version (pin versions on Kubernetes rather than following `latest`):
 
 ```bash
-kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.4.6
+kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.4.7
 ```
 
 ```bash
@@ -117,10 +117,10 @@ restoring the backup if the release notes say the configuration format changed. 
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.4.6
+    image: ghcr.io/pointbluetechnology/directory-console:0.4.7
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.4.6 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.4.7 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -140,6 +140,9 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.4.7:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.4.6
+  needs no restore. Wording only: messages, labels, help and the server's error details say more plainly what happened
+  and what to do. A script that matched an error detail's exact text may need updating; problem types are unchanged.
 - **0.4.6:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.4.5
   needs no restore. A driver set has Work orders and E-mail templates tabs. Work orders are found in the container the
   Work Order driver checks, including one set in a linked settings object, and can be created, changed, run again and
