@@ -18,15 +18,27 @@ import { Hint } from '../help/Help';
 const GROUPS = ['groupOfNames', 'dynamicGroup'];
 const MEMBERS = ['inetOrgPerson', 'groupOfNames'];
 
+/** A membership change's results, and whether it removed (each change adds or removes, never both). */
+interface Done {
+  results: MembershipResult[];
+  removed: boolean;
+}
+
 /** What a membership change did, one line per pair; failures say which side and whether it was undone. */
-function Results({ results }: { results: MembershipResult[] | null }) {
+function Results({ done }: { done: Done | null }) {
   const level = useHeading();
-  if (!results) {
+  if (!done) {
     return null;
   }
+  const { results, removed } = done;
   const failed = results.filter((r) => r.status === 'failed');
   if (failed.length === 0) {
-    return <Alert component={level} variant="success" isInline isPlain title={`Done: ${results.filter((r) => r.status === 'ok').length} changed, ${results.filter((r) => r.status === 'unchanged').length} already so`} />;
+    const changed = results.filter((r) => r.status === 'ok').length;
+    const unchanged = results.filter((r) => r.status === 'unchanged').length;
+    const title = removed
+      ? `Done: ${changed} removed, ${unchanged} ${unchanged === 1 ? "wasn't a member" : "weren't members"}`
+      : `Done: ${changed} added, ${unchanged} already ${unchanged === 1 ? 'a member' : 'members'}`;
+    return <Alert component={level} variant="success" isInline isPlain title={title} />;
   }
   return (
     <Alert component={level} variant="danger" isInline title={`${failed.length} change(s) failed`}>
@@ -40,7 +52,7 @@ export function UserGroupsTab({ obj, onChanged }: { obj: DirObject; onChanged: (
   const { tree, canAt } = useSession();
   const [groups, setGroups] = useState<(Reference & { securityEquivalent: boolean })[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [results, setResults] = useState<MembershipResult[] | null>(null);
+  const [done, setDone] = useState<Done | null>(null);
   const [error, setError] = useState<unknown>(null);
   const load = useCallback(() => {
     tree.memberships(obj.guid).then((r) => setGroups(r.items)).catch(setError);
@@ -50,7 +62,7 @@ export function UserGroupsTab({ obj, onChanged }: { obj: DirObject; onChanged: (
   const change = async (add: (string | { dn: string })[], remove: (string | { dn: string })[]) => {
     setError(null);
     try {
-      setResults(await tree.changeMemberships(obj.guid, add, remove));
+      setDone({ results: await tree.changeMemberships(obj.guid, add, remove), removed: remove.length > 0 });
       load();
       onChanged();
     } catch (e) {
@@ -67,7 +79,7 @@ export function UserGroupsTab({ obj, onChanged }: { obj: DirObject; onChanged: (
           </ToolbarContent>
         </Toolbar>
       )}
-      <Results results={results} />
+      <Results done={done} />
       <ProblemAlert error={error} />
       {!groups && !error && <Spinner aria-label="Loading groups" />}
       {groups && groups.length === 0 && <p className="dc-subtle">Not a member of any group.</p>}
@@ -102,7 +114,7 @@ export function GroupMembersTab({ obj, etag, onChanged }: { obj: DirObject; etag
   const [members, setMembers] = useState<Members | null>(null);
   const [adding, setAdding] = useState(false);
   const [editingQuery, setEditingQuery] = useState(false);
-  const [results, setResults] = useState<MembershipResult[] | null>(null);
+  const [done, setDone] = useState<Done | null>(null);
   const [error, setError] = useState<unknown>(null);
   const load = useCallback(() => {
     tree.members(obj.guid, (page - 1) * perPage + 1, perPage).then(setMembers).catch(setError);
@@ -112,7 +124,7 @@ export function GroupMembersTab({ obj, etag, onChanged }: { obj: DirObject; etag
   const change = async (add: (string | { dn: string })[], remove: (string | { dn: string })[]) => {
     setError(null);
     try {
-      setResults(await tree.changeMembers(obj.guid, add, remove));
+      setDone({ results: await tree.changeMembers(obj.guid, add, remove), removed: remove.length > 0 });
       load();
       onChanged();
     } catch (e) {
@@ -141,7 +153,7 @@ export function GroupMembersTab({ obj, etag, onChanged }: { obj: DirObject; etag
           </ToolbarItem>
         </ToolbarContent>
       </Toolbar>
-      <Results results={results} />
+      <Results done={done} />
       <ProblemAlert error={error} />
       {!members && !error && <Spinner aria-label="Loading members" />}
       {members && members.total === 0 && <p className="dc-subtle">No members.</p>}
