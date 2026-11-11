@@ -166,9 +166,16 @@ On Kubernetes, the same through `kubectl exec`; without a container, `java -jar 
 
 You need JDK 21, Maven, Node.js 24 and Docker. The server builds on two Point Blue libraries,
 [DirXMLDev](https://github.com/PointBlueTechnology/DirXMLDev) and
-[DirXMLSimulator](https://github.com/PointBlueTechnology/DirXMLSimulator). Install their releases into
-your local Maven repository at the versions named in [`pom.xml`](pom.xml) (`dirxmldev.version`,
-`simulator.version`), as [CI does](.github/workflows/test.yml). Then:
+[DirXMLSimulator](https://github.com/PointBlueTechnology/DirXMLSimulator). Versions on Maven Central
+(`com.pointbluetech.dirxml`) Maven fetches by itself. For older ones, DirXMLDev's `bin/install-deps`
+installs the releases into your local Maven repository at the versions named in [`pom.xml`](pom.xml)
+(`dirxmldev.version`, `simulator.version`):
+
+```bash
+~/IdeaProjects/DirXMLDev/bin/install-deps --pom pom.xml
+```
+
+Then:
 
 ```bash
 container/build.sh
@@ -181,6 +188,19 @@ container/build.sh
 4. builds the image `directory-console:<version>`.
 
 To run your build, use `CONSOLE_IMAGE=directory-console:<version> docker compose up -d`.
+
+### console-auth on Maven Central
+
+`console-auth` (OpenID Connect sign-in and TLS trust, shared with DirXMLDevWeb) is published to Maven
+Central as `com.pointbluetech.console:console-auth`, at the console's version, from the first release
+after the move. With the checkout clean and at the release tag:
+
+```bash
+~/IdeaProjects/DirXMLDev/bin/publish-central --module console-auth ~/IdeaProjects/directory-console
+```
+
+It builds the `central` profile, refuses the bundle if any file in it names something on the publish
+blocklist, and uploads it. The server module is not published.
 
 ### Working on the web UI
 
