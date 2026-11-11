@@ -7,7 +7,7 @@
     <parent>
         <groupId>com.pointbluetech.console</groupId>
         <artifactId>directory-console</artifactId>
-        <version>0.4.10</version>
+        <version>0.4.11</version>
     </parent>
 
     <artifactId>console-auth</artifactId>

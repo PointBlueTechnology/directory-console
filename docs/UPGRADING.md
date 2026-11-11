@@ -100,7 +100,7 @@ Back up first: a volume snapshot of the `console-data` claim, or a backup from *
 Then change the image tag to the new version (pin versions on Kubernetes rather than following `latest`):
 
 ```bash
-kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.4.10
+kubectl -n directory-console set image deploy/directory-console console=ghcr.io/pointbluetechnology/directory-console:0.4.11
 ```
 
 ```bash
@@ -117,10 +117,10 @@ restoring the backup if the release notes say the configuration format changed. 
 `compose.yaml`, change the image line to, for example:
 
 ```yaml
-    image: ghcr.io/pointbluetechnology/directory-console:0.4.10
+    image: ghcr.io/pointbluetechnology/directory-console:0.4.11
 ```
 
-or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.4.10 docker compose up -d`.
+or set it from the environment without editing the file: `CONSOLE_IMAGE=ghcr.io/pointbluetechnology/directory-console:0.4.11 docker compose up -d`.
 To upgrade, change the version, then run `docker compose pull` and `docker compose up -d`.
 
 ## Going back
@@ -140,6 +140,9 @@ log exactly as they were at the backup; anything changed since is lost.
 
 ## Notes for particular versions
 
+- **0.4.11:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.4.10
+  needs no restore. Built on DirXMLDev 0.70.0 and simulator 1.9.0, now from Maven Central under
+  `com.pointbluetech` coordinates; nothing in the console changed.
 - **0.4.10:** nothing to change in `compose.yaml`, and the configuration format is the same, so going back to 0.4.9
   needs no restore. Built on DirXMLDev 0.68.0, which now finds the Work Order driver's container for the Work orders
   tab: a driver behind a Remote Loader is found as before, and a GCV naming an LDAP DN that isn't there falls back to
