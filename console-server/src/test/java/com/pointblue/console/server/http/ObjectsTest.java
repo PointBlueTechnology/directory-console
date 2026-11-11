@@ -796,7 +796,7 @@ public class ObjectsTest {
             + " name=\"idv.workorder.container\" type=\"dn\"><value>\\ACME_TREE\\system\\Set1\\WO\\Orders</value></definition></definitions></configuration-values>";
         edir.add("dn: cn=Set1,o=system", "objectClass: DirXML-DriverSet", "cn: Set1");
         edir.add("dn: cn=AD,cn=Set1,o=system", "objectClass: DirXML-Driver", "cn: AD", "DirXML-JavaModule: com.novell.nds.dirxml.remote.driver.DriverShimImpl");
-        edir.add("dn: cn=WO,cn=Set1,o=system", "objectClass: DirXML-Driver", "cn: WO", "DirXML-JavaModule: " + WorkOrders.SHIM,
+        edir.add("dn: cn=WO,cn=Set1,o=system", "objectClass: DirXML-Driver", "cn: WO", "DirXML-JavaModule: " + com.pointblue.dirxml.dev.operate.Operate.WORK_ORDER_SHIM,
             "DirXML-Policies: cn=NOVLWOBASE-GCVs,cn=WO,cn=Set1,o=system#0#14");
         edir.add("dn: cn=NOVLWOBASE-GCVs,cn=WO,cn=Set1,o=system", "objectClass: DirXML-GlobalConfigDef", "cn: NOVLWOBASE-GCVs");
         edir.server.modify("cn=NOVLWOBASE-GCVs,cn=WO,cn=Set1,o=system", new com.unboundid.ldap.sdk.Modification(com.unboundid.ldap.sdk.ModificationType.ADD,

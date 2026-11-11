@@ -4,8 +4,9 @@ import com.pointblue.console.server.auth.Role;
 import com.pointblue.console.server.auth.Sessions;
 import com.pointblue.console.server.ldap.Ldap;
 import com.pointblue.console.server.ldap.Names;
+import com.pointblue.dirxml.dev.deploy.Vault;
+import com.pointblue.dirxml.dev.operate.Operate;
 import com.sun.net.httpserver.HttpExchange;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -26,11 +27,6 @@ import javax.naming.directory.BasicAttribute;
 import javax.naming.directory.DirContext;
 import javax.naming.directory.ModificationItem;
 import javax.naming.directory.SearchControls;
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilderFactory;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
 
 /**
  * The Work Order driver's {@code DirXML-WorkOrder} objects, read and changed over LDAP with the person's own rights,
@@ -53,8 +49,6 @@ import org.w3c.dom.NodeList;
  */
 final class WorkOrders {
 
-    static final String SHIM = "com.novell.nds.dirxml.driver.workorder.WorkOrderDriverShim";
-    static final String CONTAINER_GCV = "idv.workorder.container";
     static final String OC = "DirXML-WorkOrder";
     static final List<String> SETTABLE_STATUSES = List.of("pending", "onhold");
     private static final DateTimeFormatter GENERALIZED = DateTimeFormatter.ofPattern("yyyyMMddHHmmss'Z'").withZone(ZoneOffset.UTC);
@@ -141,131 +135,69 @@ final class WorkOrders {
     }
 
     /**
-     * The set's Work Order drivers (by shim class, or a {@code workorder-dn} shim parameter for one behind a Remote
-     * Loader) and the container each uses: the GCV from the driver (its own values, then the GCV objects linked to it),
-     * else from the set; failing that, the driver object, NetIQ's suggestion.
+     * The set's Work Order drivers and the container each uses, as DirXMLDev finds them ({@code Operate.workOrderDrivers}):
+     * a driver with the Work Order shim or a {@code workorder-dn} shim parameter (one behind a Remote Loader); the GCV from
+     * the driver (its own values, then the GCV objects linked to it), else from the set; failing that, the driver object,
+     * NetIQ's suggestion. It reads through {@code l}, so with the person's rights and their session's controls.
      */
     List<Map<String, Object>> drivers(Ldap l, String setDn) throws NamingException {
-        Ldap.Entry set = l.read(setDn, "DirXML-ConfigValues", "DirXML-Policies");
-        String fromSet = set == null ? null : gcv(l, set);
         List<Map<String, Object>> out = new ArrayList<>();
-        for (Ldap.Entry d : l.search(setDn, "(objectClass=DirXML-Driver)", null, SearchControls.ONELEVEL_SCOPE,
-                new String[] {"GUID", "cn", "DirXML-JavaModule", "DirXML-ShimConfigInfo", "DirXML-ConfigValues", "DirXML-Policies"}, 500)) {
-            String shim = text(d, "DirXML-ShimConfigInfo");
-            if (!SHIM.equals(d.first("DirXML-JavaModule")) && (shim == null || !shim.contains("workorder-dn"))) {
-                continue;
+        try {
+            for (Operate.WorkOrderDriver d : Operate.workOrderDrivers(Operate.readOnly(directory(l)), setDn)) {
+                Map<String, Object> m = new LinkedHashMap<>(Names.identity(d.driver().dn));
+                List<byte[]> g = d.driver().attrs.get("GUID");
+                m.put("guid", g == null || g.isEmpty() ? null : Names.guidHex(g.get(0)));
+                m.put("gcv", d.gcv());
+                m.put("container", d.container());
+                m.put("containerFrom", d.from());
+                out.add(m);
             }
-            String value = gcv(l, d);
-            if (value == null) {
-                value = fromSet;
-            }
-            String container = value == null ? null : ldapDn(l, value);
-            Map<String, Object> m = ref(d);
-            m.put("gcv", value);
-            m.put("container", container != null ? container : d.dn());
-            m.put("containerFrom", container != null ? "gcv" : value != null ? "gcv-unresolved" : "driver");
-            out.add(m);
+        } catch (Failed f) {
+            throw f.cause;
         }
         return out;
     }
 
-    /** The GCV's value on {@code e}: its own DirXML-ConfigValues, then the GCV objects it links (policy set 14). */
-    private static String gcv(Ldap l, Ldap.Entry e) throws NamingException {
-        String own = gcvValue(text(e, "DirXML-ConfigValues"));
-        if (own != null) {
-            return own;
+    /** A directory failure carried out of DirXMLDev's reads, which take no checked exceptions. */
+    private static final class Failed extends RuntimeException {
+        final NamingException cause;
+
+        Failed(NamingException cause) {
+            super(cause);
+            this.cause = cause;
         }
-        for (Object v : e.attributes().getOrDefault("dirxml-policies", List.of())) {
-            String raw = String.valueOf(v);
-            int last = raw.lastIndexOf('#');
-            if (last < 0 || !raw.substring(last + 1).trim().equals("14")) {
-                continue;
-            }
-            int mid = raw.lastIndexOf('#', last - 1);
-            if (mid < 0) {
-                continue;
-            }
-            Ldap.Entry g = l.read(raw.substring(0, mid), "DirXML-ConfigValues", "DirXML-Data");
-            String value = g == null ? null : gcvValue(text(g, "DirXML-ConfigValues"));
-            if (value == null && g != null) {
-                value = gcvValue(text(g, "DirXML-Data"));
-            }
-            if (value != null) {
-                return value;
-            }
-        }
-        return null;
     }
 
-    /** The value of the container GCV in a {@code <configuration-values>} document, or null (absent or blank). */
-    static String gcvValue(String xml) {
-        if (xml == null || xml.isBlank()) {
-            return null;
-        }
-        try {
-            DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
-            f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-            f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            f.setExpandEntityReferences(false);
-            NodeList defs = f.newDocumentBuilder().parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8))).getElementsByTagName("definition");
-            for (int i = 0; i < defs.getLength(); i++) {
-                Element d = (Element) defs.item(i);
-                if (!CONTAINER_GCV.equals(d.getAttribute("name"))) {
-                    continue;
-                }
-                for (Node n = d.getFirstChild(); n != null; n = n.getNextSibling()) {
-                    if (n instanceof Element v && v.getTagName().equals("value")) {
-                        String t = v.getTextContent().trim();
-                        return t.isEmpty() ? null : t;
-                    }
+    /** DirXMLDev's reads and searches, done through the person's connection {@code l}. */
+    private static Operate.Directory directory(Ldap l) {
+        String[] attrs = {"*", "GUID"};
+        return new Operate.Directory() {
+            @Override
+            public Vault.Entry read(String dn) {
+                try {
+                    Ldap.Entry e = l.read(dn, attrs);
+                    return e == null ? null : vaultEntry(e);
+                } catch (NamingException e) {
+                    throw new Failed(e);
                 }
             }
-        } catch (Exception x) {
-            return null;
-        }
-        return null;
+
+            @Override
+            public List<Vault.Entry> search(String base, String filter, int scope) {
+                try {
+                    return l.search(base, filter, null, scope, attrs, 1000).stream().map(WorkOrders::vaultEntry).toList();
+                } catch (NamingException e) {
+                    throw new Failed(e);
+                }
+            }
+        };
     }
 
-    private static final String[] NAMING = {"cn", "ou", "o", "l", "dc", "c"};
-
-    /**
-     * A slash DN ({@code system\driverset1\Work Orders}, with or without the tree's name first) as an LDAP DN, found a
-     * level at a time since the slash form leaves out each level's naming attribute; an LDAP DN as it is. Null when a
-     * level is not there.
-     */
-    static String ldapDn(Ldap l, String value) throws NamingException {
-        String v = value.trim();
-        if (v.contains("=") && !v.contains("\\")) {
-            return l.read(v, "1.1") == null ? null : v;
-        }
-        List<String> parts = new ArrayList<>();
-        for (String p : v.split("\\\\")) {
-            if (!p.isBlank()) {
-                parts.add(p.trim());
-            }
-        }
-        String dn = resolve(l, parts);
-        // a leading tree name is not an object
-        return dn == null && parts.size() > 1 ? resolve(l, parts.subList(1, parts.size())) : dn;
-    }
-
-    private static String resolve(Ldap l, List<String> parts) throws NamingException {
-        String dn = "";
-        for (String p : parts) {
-            String found = null;
-            for (String a : NAMING) {
-                String candidate = Names.child(dn, a, p);
-                if (l.read(candidate, "1.1") != null) {
-                    found = candidate;
-                    break;
-                }
-            }
-            if (found == null) {
-                return null;
-            }
-            dn = found;
-        }
-        return parts.isEmpty() ? null : dn;
+    private static Vault.Entry vaultEntry(Ldap.Entry e) {
+        Vault.Entry v = new Vault.Entry(e.dn());
+        e.attributes().forEach((name, values) -> v.attrs.put(name, values.stream()
+            .map(o -> o instanceof byte[] b ? b : String.valueOf(o).getBytes(StandardCharsets.UTF_8)).toList()));
+        return v;
     }
 
     private Map<String, Object> list(Ldap l, String setDn) throws NamingException {
