@@ -12,8 +12,8 @@ No NetIQ/OpenText code is included. Identity Manager is reached through DirXMLDe
 |---|---|---|---|
 | JLDAP (`com.novell.ldap:jldap`) | 4.3 | image (`/app/lib`) | OpenLDAP Public License 2.0.1 |
 | Bouncy Castle (`bcprov`, `bcpkix`, `bcutil`, `-jdk18on`) | 1.80, 1.80.2 | image (`/app/lib`) | Bouncy Castle Licence (MIT) |
-| DirXMLDev (`com.pointblue.dirxml:dirxml-dev`) | see `pom.xml` | image (`/app/lib`) | MIT, Point Blue Technology |
-| DirXMLSimulator (`com.pointblue.dirxml:dirxml-simulator`) | see `pom.xml` | image (`/app/lib`) | MIT, Point Blue Technology |
+| DirXMLDev (`com.pointbluetech.dirxml:dirxml-dev`) | see `pom.xml` | image (`/app/lib`) | MIT, Point Blue Technology |
+| DirXMLSimulator (`com.pointbluetech.dirxml:dirxml-simulator`) | see `pom.xml` | image (`/app/lib`) | MIT, Point Blue Technology |
 | PatternFly, React and their dependencies | see below | web UI | MIT; `tslib` 0BSD |
 | Red Hat Display, Red Hat Text, Red Hat Mono fonts | from PatternFly 6.6.1 | web UI | SIL Open Font License 1.1 |
 

@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.pointblue.console</groupId>
+        <groupId>com.pointbluetech.console</groupId>
         <artifactId>directory-console</artifactId>
         <version>0.4.10</version>
     </parent>
@@ -17,11 +17,11 @@
 
     <dependencies>
         <dependency>
-            <groupId>com.pointblue.console</groupId>
+            <groupId>com.pointbluetech.console</groupId>
             <artifactId>console-auth</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.pointblue.dirxml</groupId>
+            <groupId>com.pointbluetech.dirxml</groupId>
             <artifactId>dirxml-dev</artifactId>
         </dependency>
         <dependency>
@@ -29,7 +29,7 @@
             <artifactId>jldap</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.pointblue.dirxml</groupId>
+            <groupId>com.pointbluetech.dirxml</groupId>
             <artifactId>dirxml-simulator</artifactId>
             <scope>runtime</scope>
         </dependency>
