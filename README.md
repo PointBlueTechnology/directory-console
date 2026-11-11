@@ -166,16 +166,13 @@ On Kubernetes, the same through `kubectl exec`; without a container, `java -jar 
 
 You need JDK 21, Maven, Node.js 24 and Docker. The server builds on two Point Blue libraries,
 [DirXMLDev](https://github.com/PointBlueTechnology/DirXMLDev) and
-[DirXMLSimulator](https://github.com/PointBlueTechnology/DirXMLSimulator). Versions on Maven Central
-(`com.pointbluetech.dirxml`) Maven fetches by itself. For older ones, DirXMLDev's `bin/install-deps`
-installs the releases into your local Maven repository at the versions named in [`pom.xml`](pom.xml)
-(`dirxmldev.version`, `simulator.version`):
+[DirXMLSimulator](https://github.com/PointBlueTechnology/DirXMLSimulator), at the versions named in
+[`pom.xml`](pom.xml) (`dirxmldev.version`, `simulator.version`). Both are on Maven Central
+(`com.pointbluetech.dirxml`), so Maven fetches them by itself. To build an older version of the console that pins
+releases from before Maven Central, first run DirXMLDev's `bin/install-deps --pom pom.xml`, which installs those
+releases into your local Maven repository.
 
-```bash
-~/IdeaProjects/DirXMLDev/bin/install-deps --pom pom.xml
-```
-
-Then:
+Build with:
 
 ```bash
 container/build.sh

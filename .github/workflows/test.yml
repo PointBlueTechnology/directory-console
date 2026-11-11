@@ -1,5 +1,5 @@
 # Every pull request and push to main: the web UI's type check, tests and build, then the Java
-# modules' tests against DirXMLDev's released jar (with the built UI in the server).
+# modules' tests against DirXMLDev from Maven Central (with the built UI in the server).
 name: test
 on:
   push:
@@ -17,16 +17,6 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: DirXMLDev and simulator jars from their releases
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          CORE=$(sed -n 's#.*<dirxmldev.version>\([^<]*\)</dirxmldev.version>.*#\1#p' pom.xml | head -1)
-          gh release download "v$CORE" --repo PointBlueTechnology/DirXMLDev -p "dirxml-dev-$CORE.jar" -D /tmp
-          mvn -B -q install:install-file -Dfile=/tmp/dirxml-dev-$CORE.jar -DgroupId=com.pointbluetech.dirxml -DartifactId=dirxml-dev -Dversion=$CORE -Dpackaging=jar
-          SIM=$(sed -n 's#.*<simulator.version>\([^<]*\)</simulator.version>.*#\1#p' pom.xml | head -1)
-          gh release download "v$SIM" --repo PointBlueTechnology/DirXMLSimulator -p "dirxml-simulator-$SIM.jar" -D /tmp
-          mvn -B -q install:install-file -Dfile=/tmp/dirxml-simulator-$SIM.jar -DgroupId=com.pointbluetech.dirxml -DartifactId=dirxml-simulator -Dversion=$SIM -Dpackaging=jar
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
