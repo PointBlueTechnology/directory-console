@@ -48,7 +48,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- The DirXMLDev and simulator releases these modules build on; both are on Maven Central
              (com.pointbluetech.dirxml) from DirXMLDev 0.70.0 and simulator 1.9.0, and Maven fetches them. -->
-        <dirxmldev.version>0.70.0</dirxmldev.version>
+        <dirxmldev.version>0.71.0</dirxmldev.version>
         <simulator.version>1.9.0</simulator.version>
         <bouncycastle.version>1.80</bouncycastle.version>
     </properties>
